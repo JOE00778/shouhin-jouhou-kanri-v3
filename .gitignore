@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+data_warehouse/warehouse.db
+data_warehouse/warehouse.db-*
+.streamlit/secrets.toml
+data/inputs/
+data/outputs/
+*.xlsx
+*.xls
