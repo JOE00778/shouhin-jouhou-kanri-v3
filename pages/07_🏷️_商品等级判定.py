@@ -174,26 +174,25 @@ with tab1:
             except Exception:
                 df['advice'] = '—'
 
-        # KPI 卡片 (6 档显示)
-        c1, c2, c3, c4, c5, c6 = st.columns(6)
-        c7, c8, c9 = st.columns(3)
+        # KPI 卡片 (4 档 A/B/C/停售)
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c6, c7, c8 = st.columns(3)
 
         if 'new_rank' in df.columns:
             counts = df['new_rank'].value_counts()
             c1.metric(t("A"), int(counts.get('A', 0)))
             c2.metric(t("B"), int(counts.get('B', 0)))
             c3.metric(t("C"), int(counts.get('C', 0)))
-            c4.metric(t("停售"), int(counts.get('停售', 0)))
-            c5.metric(t("⚠️ 停售/处理 (3月无动销)"), int(counts.get('停售/处理', 0)))
+            c4.metric(t("停售 (含 3 月无动销)"), int(counts.get('停售', 0)))
             change_n = (df['old_rank'] != df['new_rank']).sum() if 'old_rank' in df.columns else 0
-            c6.metric(t("有变化"), int(change_n))
+            c5.metric(t("有变化"), int(change_n))
 
         # 趋势计数
         if 'trend' in df.columns:
             trend_counts = df['trend'].value_counts()
-            c7.metric(t("⬆️ 升级"), int(trend_counts.get('⬆️ 升级', 0)))
-            c8.metric(t("⬇️ 降级"), int(trend_counts.get('⬇️ 降级', 0)))
-            c9.metric(t("➡️ 维持"), int(trend_counts.get('➡️ 维持', 0)))
+            c6.metric(t("⬆️ 升级"), int(trend_counts.get('⬆️ 升级', 0)))
+            c7.metric(t("⬇️ 降级"), int(trend_counts.get('⬇️ 降级', 0)))
+            c8.metric(t("➡️ 维持"), int(trend_counts.get('➡️ 维持', 0)))
 
         # 过滤区块
         st.markdown(t("### 过滤"))

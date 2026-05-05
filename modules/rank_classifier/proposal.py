@@ -217,8 +217,7 @@ def generate_proposal(
 
             # 等级波动标记（升 / 降 / 维持）
             rank_order = {'A': 4, 'Aランク': 4, 'Bランク': 3, 'B': 3,
-                          'Cランク': 2, 'C': 2, 'NEW': 1,
-                          '停售/处理': 0, '停售': 0,
+                          'Cランク': 2, 'C': 2, 'NEW': 1, '停售': 0,
                           '取扱中止': 0, 'メーカー取扱中止': 0}
             old_score = rank_order.get(str(old_rank), 1)
             new_score = rank_order.get(new_rank, 2)
