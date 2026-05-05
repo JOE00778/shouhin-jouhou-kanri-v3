@@ -40,7 +40,7 @@ st.title(t("💰 定義原価編集"))
 st.caption(
     f"NetSuite Standard Cost（定義原価）統一編集口 · "
     f"自動判定阈值 |Δ|≥{THRESHOLD_YEN:.0f}¥ 或 |Δ%|≥{THRESHOLD_PCT:.0%} · "
-    f"新值 = ⌈avg_cost⌉ · avg_cost = ASEAN集計専用 H列定義原価 ÷ F列販売数量 (按SKU多店铺聚合)"
+    f"新值 = ⌈avg_cost⌉ · avg_cost = アイテム.xls H 列「平均原価」 (直接拉取)"
 )
 st.info(t(
     "📌 当前判断标准品 (纳入更新流程的 SKU) 范围: "
@@ -184,9 +184,8 @@ if step == 1:
         # 数据源 (Boss 2026-05 决定):
         # - std_cost_old / handling_status / qty_on_hand ← inventory_snapshot
         #   (来自 輸出通常在庫数残数検索結果.xls)
-        # - avg_cost (新算法) ← sales_line aggregated
-        #   = SUM(defined_cost) / SUM(qty_sold)  按 SKU 多店铺聚合
-        #   (来自【ASEAN】店舗別売上 集計専用.xls 的 H 列定義原価 / F 列販売数量)
+        # - avg_cost ← nst_item_summary.avg_cost (H 列「平均原価」)
+        #   (来自 アイテム.xls 8 列原表)
         # std_cost_new = ⌈avg_cost⌉ 向上取整
         # ========================================================
         agg_sql = f"""
@@ -203,28 +202,24 @@ if step == 1:
         """
         rows = conn.execute(agg_sql, params).fetchall()
 
-        # 从 sales_line (ASEAN 集計専用) 算单位平均成本: SUM(defined_cost) / SUM(qty_sold)
+        # 从 nst_item_summary 直接拉 H 列 avg_cost (Boss 决定用此表)
         item_codes = [r["item_code"] for r in rows if r["item_code"]]
         avg_cost_by_code: dict[str, float] = {}
         if item_codes:
             placeholders = ",".join(f":c{i}" for i in range(len(item_codes)))
-            sales_params = {f"c{i}": v for i, v in enumerate(item_codes)}
-            sales_rows = conn.execute(
+            ic_params = {f"c{i}": v for i, v in enumerate(item_codes)}
+            item_rows = conn.execute(
                 f"""
-                SELECT item_code,
-                       SUM(COALESCE(defined_cost, 0)) AS sum_cost,
-                       SUM(COALESCE(qty_sold, 0))     AS sum_qty
-                FROM sales_line
-                WHERE source = 'asean_monthly'
-                  AND item_code IN ({placeholders})
-                GROUP BY item_code
+                SELECT item_code, avg_cost
+                FROM nst_item_summary
+                WHERE item_code IN ({placeholders})
+                  AND avg_cost IS NOT NULL
+                  AND avg_cost > 0
                 """,
-                sales_params,
+                ic_params,
             ).fetchall()
-            for sr in sales_rows:
-                qty = sr["sum_qty"] or 0
-                if qty > 0:
-                    avg_cost_by_code[sr["item_code"]] = sr["sum_cost"] / qty
+            for ir in item_rows:
+                avg_cost_by_code[ir["item_code"]] = float(ir["avg_cost"])
 
         # 跑业务规则
         decisions = []

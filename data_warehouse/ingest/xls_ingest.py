@@ -664,6 +664,25 @@ def ingest_shopee_income(
             "errors": errors, "period_start": payout_date_top, "period_end": payout_date_top}
 
 
+def ingest_item_summary(path, conn, *, source_name: str | None = None) -> dict:
+    """アイテム.xls (NetSuite SpreadsheetML) → nst_item_summary 表.
+    Wrapper over xml_netsuite.ItemSummaryIngestor for INGESTOR_REGISTRY 接口统一."""
+    from data_warehouse.ingest.xml_netsuite import ItemSummaryIngestor
+    path = Path(path)
+    source_name = source_name or path.name
+    # 整表 truncate 再插 (覆盖性快照)
+    conn.execute("DELETE FROM nst_item_summary")
+    r = ItemSummaryIngestor().run(str(path), conn, source_name=source_name)
+    # 适配 INGESTOR_REGISTRY 期望的 result 格式
+    return {
+        "run_id": r.get("run_id"),
+        "total": r.get("total_rows", 0),
+        "inserted": r.get("inserted", 0),
+        "errors": r.get("errors", 0),
+        "period_start": None, "period_end": None,
+    }
+
+
 # ============================================================
 # 自动派发：根据文件名启发式选择 ingestor
 # ============================================================
@@ -676,6 +695,7 @@ INGESTOR_REGISTRY: dict[str, callable] = {
     "turnover": ingest_inventory_turnover,
     "shopee_orders": ingest_shopee_orders_raw,
     "shopee_income": ingest_shopee_income,
+    "item_summary": ingest_item_summary,
 }
 
 
@@ -701,4 +721,8 @@ def detect_ingestor(filename: str) -> str | None:
         return "shopee_income"
     if "mtkshop" in n.lower() and "income" in n.lower():
         return "shopee_income"
+    # NetSuite アイテム概要 (8 列, R1 表头, page 03 平均原価源)
+    # 注: 需早于 export_item 检查, 因「アイテム」三字 + 数字尾缀 vs「輸出 アイテム別」二者不冲突
+    if n.startswith("アイテム") or n.startswith("ｱｲﾃﾑ"):
+        return "item_summary"
     return None

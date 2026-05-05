@@ -214,13 +214,91 @@ class InventoryIngestor(XMLIngestor):
         except ValueError: return None
 
 
+class ItemSummaryIngestor(XMLIngestor):
+    """アイテム.xls 8 列 (R1 表头).
+    A=名前 B=UPCコード C=表示名 D=取扱区分
+    E=アイテム定義原価 F=利用可能 G=利用可能な保管棚手持 H=平均原価
+    用途: page 03 定義原価編集 直接拉 H 列做 ceil 判定。"""
+    ingestor_name = "xml_netsuite.ItemSummaryIngestor"
+    target_table = "nst_item_summary"
+
+    def parse_rows(self, path: str) -> list[dict]:
+        rows = []
+        tree = ET.parse(path)
+        for ws in tree.getroot().findall("ss:Worksheet", NS):
+            table = ws.find("ss:Table", NS)
+            if table is None: continue
+            all_rows = table.findall("ss:Row", NS)
+            if len(all_rows) < 2: continue
+            for row in all_rows[1:]:
+                cells = self._extract_cells(row)
+                if not cells or all(c == "" for c in cells): continue
+                if not cells[0]: continue
+                rows.append({
+                    "item_code": cells[0],
+                    "upc": cells[1] if len(cells) > 1 else "",
+                    "display_name": cells[2] if len(cells) > 2 else "",
+                    "handling_status": cells[3] if len(cells) > 3 else "",
+                    "std_cost": cells[4] if len(cells) > 4 else None,
+                    "available": cells[5] if len(cells) > 5 else None,
+                    "available_on_hand": cells[6] if len(cells) > 6 else None,
+                    "avg_cost": cells[7] if len(cells) > 7 else None,
+                })
+        return rows
+
+    def parse_row(self, raw: dict[str, str]) -> dict | None:
+        if not raw.get("item_code"): return None
+        return {
+            "item_code": str(raw.get("item_code", "")).strip(),
+            "upc": str(raw.get("upc") or "").strip(),
+            "display_name": raw.get("display_name", ""),
+            "handling_status": raw.get("handling_status", ""),
+            "std_cost": self._f(raw.get("std_cost")),
+            "available": self._f(raw.get("available")),
+            "available_on_hand": self._f(raw.get("available_on_hand")),
+            "avg_cost": self._f(raw.get("avg_cost")),
+            "source_file": "",
+            "imported_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    def upsert_sql(self) -> str:
+        return (
+            "INSERT OR REPLACE INTO nst_item_summary "
+            "(item_code, upc, display_name, handling_status, std_cost, "
+            "available, available_on_hand, avg_cost, source_file, imported_at) "
+            "VALUES (:item_code, :upc, :display_name, :handling_status, :std_cost, "
+            ":available, :available_on_hand, :avg_cost, :source_file, :imported_at)"
+        )
+
+    @staticmethod
+    def _extract_cells(row) -> list[str]:
+        cells = {}; col_index = 0
+        for c in row.findall("ss:Cell", NS):
+            idx = c.get("{urn:schemas-microsoft-com:office:spreadsheet}Index")
+            if idx: col_index = int(idx) - 1
+            d = c.find("ss:Data", NS)
+            cells[col_index] = d.text if d is not None and d.text else ""
+            col_index += 1
+        max_idx = max(cells.keys()) if cells else 0
+        return [cells.get(i, "") for i in range(max_idx + 1)]
+
+    @staticmethod
+    def _f(val):
+        if val is None: return None
+        s = str(val).strip()
+        if not s: return None
+        try: return float(s)
+        except ValueError: return None
+
+
 def main():
     from data_warehouse.db.migrations import run as init_db
     conn = init_db(str(Path("data_warehouse/warehouse.db")))
     files = [("【ASEAN】在庫回転率699.xls", TurnoverIngestor()),
         ("【ASEAN】店舗別売上　集計専用-694.xls", StoreSalesIngestor()),
         ("【輸出】店舗別売上_JO-366.xls", StoreSalesIngestor()),
-        ("輸出通常在庫数残数検索結果480.xls", InventoryIngestor())]
+        ("輸出通常在庫数残数検索結果480.xls", InventoryIngestor()),
+        ("アイテム362.xls", ItemSummaryIngestor())]
     print("=" * 60 + "\nNetSuite XML Ingestor Start\n" + "=" * 60)
     for path, ingestor in files:
         if not Path(path).exists(): print(f"\n✗ {path} - NOT FOUND"); continue

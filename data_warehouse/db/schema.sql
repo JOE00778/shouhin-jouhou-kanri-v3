@@ -851,3 +851,27 @@ CREATE TABLE IF NOT EXISTS shopee_income_lines (
 CREATE INDEX IF NOT EXISTS idx_shopee_income_orderno     ON shopee_income_lines(order_no);
 CREATE INDEX IF NOT EXISTS idx_shopee_income_payoutdate  ON shopee_income_lines(payout_date);
 CREATE INDEX IF NOT EXISTS idx_shopee_income_seller      ON shopee_income_lines(seller_account);
+
+-- ============================================================
+-- nst_item_summary · NetSuite アイテム概要 (アイテム.xls 8 列)
+-- A=名前 B=UPCコード C=表示名 D=取扱区分 E=アイテム定義原価
+-- F=利用可能 G=利用可能な保管棚手持 H=平均原価
+-- 用途: page 03 定義原価編集 直接拉 H 列「平均原価」做 ceil 判定
+-- ============================================================
+CREATE TABLE IF NOT EXISTS nst_item_summary (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  item_code         TEXT NOT NULL,        -- A 列 名前
+  upc               TEXT,                  -- B 列 UPCコード
+  display_name      TEXT,                  -- C 列 表示名
+  handling_status   TEXT,                  -- D 列 取扱区分
+  std_cost          REAL,                  -- E 列 アイテム定義原価 (当前)
+  available         REAL,                  -- F 列 利用可能
+  available_on_hand REAL,                  -- G 列 利用可能な保管棚手持
+  avg_cost          REAL,                  -- H 列 平均原価 (新定义原価源)
+  source_file       TEXT,
+  imported_at       TEXT NOT NULL,
+  UNIQUE(item_code)
+);
+CREATE INDEX IF NOT EXISTS idx_nst_item_summary_upc      ON nst_item_summary(upc);
+CREATE INDEX IF NOT EXISTS idx_nst_item_summary_avg      ON nst_item_summary(avg_cost);
+CREATE INDEX IF NOT EXISTS idx_nst_item_summary_handling ON nst_item_summary(handling_status);
