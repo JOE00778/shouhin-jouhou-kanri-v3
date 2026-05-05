@@ -748,24 +748,9 @@ CREATE TABLE IF NOT EXISTS std_cost_history (
 CREATE INDEX IF NOT EXISTS idx_stdcost_hist_iid     ON std_cost_history(internal_id);
 CREATE INDEX IF NOT EXISTS idx_stdcost_hist_changed ON std_cost_history(changed_at);
 
--- ============================================================
--- 销售聚合（对齐原 order-management-app sales 表）
--- 字段: jan / quantity_sold / stock_available / stock_ordered
--- 业务: 按 SKU 聚合最近一个月的销售 + 当前库存快照
--- ============================================================
-CREATE TABLE IF NOT EXISTS sales (
-  id              INTEGER PRIMARY KEY AUTOINCREMENT,
-  jan             TEXT NOT NULL,
-  quantity_sold   INTEGER NOT NULL DEFAULT 0,
-  stock_available INTEGER NOT NULL DEFAULT 0,
-  stock_ordered   INTEGER NOT NULL DEFAULT 0,
-  period_label    TEXT,                -- e.g. "2026-04" / "直近1ヶ月"
-  source_file     TEXT,
-  imported_at     TEXT NOT NULL,
-  UNIQUE(jan, period_label)
-);
-CREATE INDEX IF NOT EXISTS idx_sales_jan    ON sales(jan);
-CREATE INDEX IF NOT EXISTS idx_sales_period ON sales(period_label);
+-- (移除: 之前曾追加重名的 sales 表(jan/quantity_sold), 跟 line 50 主表 sales(internal_id/sold_at) 冲突
+--  导致 CREATE TABLE IF NOT EXISTS 跳过 + 后续 idx_sales_jan 索引失败 → executescript 崩溃 → 全 page 挂掉
+--  page 04 已经改回用 sales_line 聚合, 不再需要这张表)
 
 -- ============================================================
 -- 店舗別粗利月度（对齐原 store_profit_lines 表）
