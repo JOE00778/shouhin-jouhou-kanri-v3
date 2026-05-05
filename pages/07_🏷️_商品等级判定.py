@@ -9,15 +9,44 @@ from modules.rank_classifier.proposal import generate_proposal, export_csv
 st.set_page_config(page_title=t("商品等级判定"), page_icon="🏷️", layout="wide")
 lang_selector()
 st.title(t("🏷️ 商品等级判定（季度·Boss-only）"))
-st.caption(t("基于销售前 80% × 利润率 ≥59% 的 4 档判定 (A/B/C/停售) · 仅 Boss 可确认变更"))
+st.caption(t(
+    "基于销售前 80% × 利润率 ≥59% 的 4 档判定 (A/B/C/停售) · "
+    "仅 Boss 可确认变更 · 财年 3 月开始 (Q1=3-5月 / Q2=6-8月 / Q3=9-11月 / Q4=12-2月)"
+))
 
 DB = Path(__file__).parent.parent / "data_warehouse" / "warehouse.db"
 
-# 日期映射：Q → year_month（用于 operation_advice_monthly JOIN）
-QUARTER_TO_MONTH = {'2026-Q1': '2026-04', '2026-Q2': '2026-07'}
+# ============================================================
+# 财年季度定义 (Boss 决定: 公司财年 3 月开始)
+# Q1: 3-5 月  代表月 = 4月
+# Q2: 6-8 月  代表月 = 7月
+# Q3: 9-11月  代表月 = 10月
+# Q4: 12-2 月 代表月 = 1月 (跨年)
+# 注: FY = 财年起始年份。如 FY2026-Q1 = 2026年3-5月
+# ============================================================
+QUARTER_TO_MONTH = {
+    'FY2026-Q1': '2026-04',  # 2026 年 3-5 月
+    'FY2026-Q2': '2026-07',  # 2026 年 6-8 月
+    'FY2026-Q3': '2026-10',  # 2026 年 9-11 月
+    'FY2026-Q4': '2027-01',  # 2026 年 12 月 - 2027 年 2 月
+    'FY2025-Q4': '2026-01',  # 2025 年 12 月 - 2026 年 2 月 (跨年保留)
+}
+
+QUARTER_RANGES = {
+    'FY2026-Q1': '2026-03 ~ 2026-05',
+    'FY2026-Q2': '2026-06 ~ 2026-08',
+    'FY2026-Q3': '2026-09 ~ 2026-11',
+    'FY2026-Q4': '2026-12 ~ 2027-02',
+    'FY2025-Q4': '2025-12 ~ 2026-02',
+}
 
 # 季度选择器
-q = st.selectbox(t("季度"), ['2026-Q1', '2026-Q2'], index=0)
+q = st.selectbox(
+    t("季度"),
+    ['FY2026-Q1', 'FY2026-Q2', 'FY2026-Q3', 'FY2026-Q4', 'FY2025-Q4'],
+    index=0,
+    format_func=lambda x: f"{x} ({QUARTER_RANGES.get(x, '?')})",
+)
 
 # Tab 1: 生成新建议  Tab 2: 历史回看
 tab1, tab2 = st.tabs([t('🆕 新建议'), t('📜 历史回看')])
