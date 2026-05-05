@@ -45,14 +45,14 @@ def handle_action(conn, row, action):
 # ============================================================================
 
 st.title(t("⚠️ 改廃確認（Boss-only）"))
-st.caption("月度改廃信号审核 · 三按钮：取扱中止 / 継続 / 代替品調査 · 取扱中止自动联动等级=停売")
+st.caption(t("月度改廃信号审核 · 三按钮：取扱中止 / 継続 / 代替品調査 · 取扱中止自动联动等级=停売"))
 
 from shared.db import get_connection, DB_PATH
 DB = DB_PATH
 conn = get_connection()
 
 # Tab 1: 待確認  Tab 2: 历史回看
-tab1, tab2 = st.tabs(['🆕 待確認', '📜 历史回看'])
+tab1, tab2 = st.tabs([t('🆕 待確認'), t('📜 历史回看')])
 
 # ============================================================================
 # Tab 1: 待確認
@@ -81,13 +81,13 @@ with tab1:
     """, conn)
 
     if pending.empty:
-        st.success("✅ 暂无待確認改廃信号")
+        st.success(t("✅ 暂无待確認改廃信号"))
     else:
-        st.markdown(f"### 待確認 {len(pending)} 条")
+        st.markdown(t(f"### 待確認 {len(pending)} 条"))
 
         # 按 source 过滤
         sources = sorted(pending['source'].unique().tolist())
-        sel_src = st.multiselect("来源筛选", options=sources, default=sources)
+        sel_src = st.multiselect(t("来源筛选"), options=sources, default=sources)
         view = pending[pending['source'].isin(sel_src)] if sel_src else pending
 
         # 逐行展示 + 三按钮
@@ -104,15 +104,15 @@ with tab1:
                 """)
 
                 # 三按钮
-                if c2.button("🚫 取扱中止", key=f"halt-{idx}"):
+                if c2.button(t("🚫 取扱中止"), key=f"halt-{idx}"):
                     handle_action(conn, row, '取扱中止')
                     st.rerun()
 
-                if c3.button("✅ 継続", key=f"keep-{idx}"):
+                if c3.button(t("✅ 継続"), key=f"keep-{idx}"):
                     handle_action(conn, row, '継続')
                     st.rerun()
 
-                if c4.button("🔍 代替品調査", key=f"investigate-{idx}"):
+                if c4.button(t("🔍 代替品調査"), key=f"investigate-{idx}"):
                     handle_action(conn, row, '代替品調査')
                     st.rerun()
 
@@ -130,12 +130,12 @@ with tab2:
     """, conn)
 
     if history.empty:
-        st.info("暂无历史确认记录")
+        st.info(t("暂无历史确认记录"))
     else:
         # 按月度过滤
         history['month'] = pd.to_datetime(history['acknowledged_at']).dt.strftime('%Y-%m')
         months = sorted(history['month'].unique().tolist(), reverse=True)
-        sel_m = st.multiselect("月份筛选", options=months, default=months)
+        sel_m = st.multiselect(t("月份筛选"), options=months, default=months)
 
         if sel_m:
             mask = history['month'].isin(sel_m)

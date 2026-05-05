@@ -33,7 +33,7 @@ st.caption(
 
 inv_count = conn.execute("SELECT COUNT(*) AS c FROM inventory_snapshot").fetchone()["c"]
 if inv_count == 0:
-    st.warning("⚠️ `inventory_snapshot` 表为空。请到「⚙️ 数据导入与设置」上传库存数据 .xls。")
+    st.warning(t("⚠️ `inventory_snapshot` 表为空。请到「⚙️ 数据导入与设置」上传库存数据 .xls。"))
     st.stop()
 
 
@@ -118,12 +118,12 @@ ALL = "全部"
 
 c1, c2 = st.columns(2)
 with c1:
-    keyword_code = st.text_input("商品コード / JAN", placeholder="例: 4515061012818")
+    keyword_code = st.text_input(t("商品コード / JAN"), placeholder="例: 4515061012818")
 with c2:
-    keyword_name = st.text_input("商品名（部分一致）", placeholder="例: パーフェクトジェル")
+    keyword_name = st.text_input(t("商品名（部分一致）"), placeholder="例: パーフェクトジェル")
 
 multi_jan = st.text_area(
-    "批量 JAN（换行 / 逗号分隔）",
+    t("批量 JAN（换行 / 逗号分隔）"),
     placeholder="4901234567890\n4987654321098",
     height=100,
 )
@@ -132,21 +132,21 @@ c3, c4, c5, c6 = st.columns(4)
 
 with c3:
     handle_opts = sorted([h for h in df["handling_status"].dropna().unique().tolist()])
-    handle_pick = st.selectbox("取扱区分", [ALL, "在扱中（除取扱中止）"] + handle_opts)
+    handle_pick = st.selectbox(t("取扱区分"), [ALL, "在扱中（除取扱中止）"] + handle_opts)
 
 with c4:
     rank_opts = sorted([
         r for r in df["rank"].dropna().unique().tolist()
         if r and r != "取扱中止"
     ])
-    rank_pick = st.selectbox("商品ランク", [ALL] + rank_opts)
+    rank_pick = st.selectbox(t("商品ランク"), [ALL] + rank_opts)
 
 with c5:
     dept_opts = sorted([d for d in df["department"].dropna().unique().tolist()])
-    dept_pick = st.selectbox("部門", [ALL] + dept_opts)
+    dept_pick = st.selectbox(t("部門"), [ALL] + dept_opts)
 
 with c6:
-    show_only_in_stock = st.checkbox("仅有库存（qty > 0）", value=False)
+    show_only_in_stock = st.checkbox(t("仅有库存（qty > 0）"), value=False)
 
 
 # ============================================================
@@ -193,14 +193,14 @@ if show_only_in_stock:
 # 顶部统计 + 表格
 # ============================================================
 hl, hr = st.columns([1, 0.2])
-hl.subheader("商品一覧")
+hl.subheader(t("商品一覧"))
 hr.markdown(
     f"<h4 style='text-align:right; margin-top: .6em;'>{len(df_view):,} / {total_skus:,} 件</h4>",
     unsafe_allow_html=True,
 )
 
 if df_view.empty:
-    st.info("当前条件下没有任何 SKU。调整过滤再试。")
+    st.info(t("当前条件下没有任何 SKU。调整过滤再试。"))
     st.stop()
 
 # 排序：默认按销量降序
@@ -213,7 +213,7 @@ sort_options = {
     "周转率升序（最差先）": ("turnover_rate", True),
     "商品コード": ("item_code", True),
 }
-sort_pick = st.selectbox("排序", list(sort_options.keys()))
+sort_pick = st.selectbox(t("排序"), list(sort_options.keys()))
 sort_col, sort_asc = sort_options[sort_pick]
 df_view = df_view.sort_values(sort_col, ascending=sort_asc, na_position="last")
 
@@ -253,7 +253,7 @@ st.dataframe(df_show, use_container_width=True, hide_index=True)
 # CSV 下载
 csv = df_show.to_csv(index=False).encode("utf-8-sig")
 st.download_button(
-    "📥 当前视图 CSV",
+    t("📥 当前视图 CSV"),
     data=csv,
     file_name=f"item_search_{len(df_show)}.csv",
     mime="text/csv",
@@ -264,14 +264,14 @@ st.download_button(
 # 单 SKU 详情卡片
 # ============================================================
 st.divider()
-st.subheader("🔎 SKU 详情卡片")
+st.subheader(t("🔎 SKU 详情卡片"))
 
 if len(df_view) > 0:
     sku_choices = df_view.apply(
         lambda r: f"{r['item_code']} · {r['display_name'] or '(无商品名)'}",
         axis=1
     ).tolist()
-    pick = st.selectbox("选择 SKU", sku_choices)
+    pick = st.selectbox(t("选择 SKU"), sku_choices)
     pick_row = df_view.iloc[sku_choices.index(pick)]
 
     cd1, cd2, cd3 = st.columns(3)
@@ -292,7 +292,7 @@ if len(df_view) > 0:
             st.metric("回転率", f"{pick_row['turnover_rate']:.2f}")
 
     # 各仓库库存细分
-    st.markdown("**各仓库库存细分**")
+    st.markdown(t("**各仓库库存细分**"))
     inv_detail = pd.DataFrame([dict(r) for r in conn.execute(
         """
         SELECT location, bin_number, qty_on_hand, qty_committed, qty_backorder, std_cost, avg_cost
@@ -306,7 +306,7 @@ if len(df_view) > 0:
         st.dataframe(inv_detail, use_container_width=True, hide_index=True)
 
     # 销售明细
-    st.markdown("**销售明细**")
+    st.markdown(t("**销售明细**"))
     sales_detail = pd.DataFrame([dict(r) for r in conn.execute(
         """
         SELECT source, period_start, period_end, store, qty_sold, revenue, gross_profit, gross_margin
@@ -317,6 +317,6 @@ if len(df_view) > 0:
         (pick_row["item_code"],),
     ).fetchall()])
     if sales_detail.empty:
-        st.caption("（无销售记录）")
+        st.caption(t("（无销售记录）"))
     else:
         st.dataframe(sales_detail, use_container_width=True, hide_index=True)

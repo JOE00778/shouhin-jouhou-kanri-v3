@@ -24,7 +24,7 @@ st.set_page_config(page_title=t("店铺别毛利"), page_icon="🏪", layout="wi
 conn = get_connection()
 
 st.title(t("🏪 店铺别毛利"))
-st.caption("基于 NetSuite 销售报表 · 自带毛利+毛利率，零计算直接展示")
+st.caption(t("基于 NetSuite 销售报表 · 自带毛利+毛利率，零计算直接展示"))
 
 
 sales_count = conn.execute(
@@ -32,8 +32,8 @@ sales_count = conn.execute(
 ).fetchone()["c"]
 if sales_count == 0:
     st.warning(
-        "⚠️ 没有店铺级销售数据。请到「⚙️ 数据导入与设置」上传 "
-        "`【ASEAN】店舗別売上 集計専用.xls` 或 `【輸出】店舗別売上.xls`。"
+        t("⚠️ 没有店铺级销售数据。请到「⚙️ 数据导入与设置」上传 "
+        "`【ASEAN】店舗別売上 集計専用.xls` 或 `【輸出】店舗別売上.xls`。")
     )
     st.stop()
 
@@ -51,7 +51,7 @@ src_label = {
     "export_store": "輸出 店铺×SKU",
 }
 sel_src = st.selectbox(
-    "数据源", src_opts, format_func=lambda s: src_label.get(s, s)
+    t("数据源"), src_opts, format_func=lambda s: src_label.get(s, s)
 )
 
 period_opts = conn.execute(
@@ -60,7 +60,7 @@ period_opts = conn.execute(
 ).fetchall()
 period_choices = [(r["period_start"], r["period_end"]) for r in period_opts]
 sel_period = st.selectbox(
-    "期间",
+    t("期间"),
     period_choices,
     format_func=lambda p: f"{p[0]} ~ {p[1]}",
 )
@@ -78,19 +78,19 @@ df = pd.DataFrame([dict(r) for r in conn.execute(
 ).fetchall()])
 
 if df.empty:
-    st.info("此条件下无数据。")
+    st.info(t("此条件下无数据。"))
     st.stop()
 
 # 加 market 列（基于 store）
 df = add_market_column(df, store_col="store")
 
 # 市场过滤
-mk_choices = ["全部市场"] + ALL_MARKETS
-mk_pick = st.selectbox("市场", mk_choices, index=0)
-if mk_pick != "全部市场":
+mk_choices = [t("全部市场")] + ALL_MARKETS
+mk_pick = st.selectbox(t("市场"), mk_choices, index=0)
+if mk_pick != t("全部市场"):
     df = df[df["market"] == mk_pick]
 if df.empty:
-    st.info("此市场下无数据。")
+    st.info(t("此市场下无数据。"))
     st.stop()
 
 
@@ -104,16 +104,16 @@ total_gp = df["gross_profit"].fillna(0).sum()
 total_margin = (total_gp / total_rev * 100) if total_rev else 0
 
 c1, c2, c3, c4, c5 = st.columns(5)
-c1.metric("总销量", f"{total_qty:,}")
-c2.metric("总售价（¥）", f"{total_rev:,.0f}")
-c3.metric("总成本（¥）", f"{total_cost:,.0f}")
-c4.metric("毛利（¥）", f"{total_gp:,.0f}")
-c5.metric("毛利率", f"{total_margin:.2f}%")
+c1.metric(t("总销量"), f"{total_qty:,}")
+c2.metric(t("总售价（¥）"), f"{total_rev:,.0f}")
+c3.metric(t("总成本（¥）"), f"{total_cost:,.0f}")
+c4.metric(t("毛利（¥）"), f"{total_gp:,.0f}")
+c5.metric(t("毛利率"), f"{total_margin:.2f}%")
 
 st.divider()
 
 tab_market, tab_store, tab_top_skus = st.tabs(
-    ["🌐 按市场聚合", "📊 按店铺聚合", "🏆 TOP SKU 贡献"]
+    [t("🌐 按市场聚合"), t("📊 按店铺聚合"), t("🏆 TOP SKU 贡献")]
 )
 
 # ============================================================
@@ -168,7 +168,7 @@ with tab_store:
 # Tab 2：TOP SKU
 # ============================================================
 with tab_top_skus:
-    n_top = st.slider("Top N", 10, 100, 30, 10)
+    n_top = st.slider(t("Top N"), 10, 100, 30, 10)
     g = df.groupby(["item_code", "display_name"], as_index=False).agg(
         销量=("qty_sold", lambda s: int(s.fillna(0).sum())),
         总售价=("revenue", lambda s: s.fillna(0).sum()),

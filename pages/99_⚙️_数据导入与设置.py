@@ -26,14 +26,14 @@ st.set_page_config(page_title=t("数据导入与设置"), page_icon="⚙️", la
 conn = get_connection()
 
 st.title(t("⚙️ 数据导入与设置"))
-st.caption("把 NetSuite 标准导出 .xls 拖到这里，工具自动识别类型并入库")
+st.caption(t("把 NetSuite 标准导出 .xls 拖到这里，工具自动识别类型并入库"))
 
 tab_import, tab_status, tab_logs, tab_legacy = st.tabs(
     [
-        "📤 一键导入（NetSuite .xls）",
-        "📊 数据现状",
-        "📜 导入历史",
-        "🛠 旧 CSV（item_master）",
+        t("📤 一键导入（NetSuite .xls）"),
+        t("📊 数据现状"),
+        t("📜 导入历史"),
+        t("🛠 旧 CSV（item_master）"),
     ]
 )
 
@@ -42,8 +42,8 @@ tab_import, tab_status, tab_logs, tab_legacy = st.tabs(
 # Tab 1：一键多文件导入
 # ============================================================
 with tab_import:
-    st.subheader("拖拽 6 类 NetSuite 导出文件")
-    with st.expander("📖 支持的文件类型", expanded=False):
+    st.subheader(t("拖拽 6 类 NetSuite 导出文件"))
+    with st.expander(t("📖 支持的文件类型"), expanded=False):
         st.markdown(
             """
             | 文件名包含 | 入到哪张表 | 内容 |
@@ -60,7 +60,7 @@ with tab_import:
         )
 
     uploaded_files = st.file_uploader(
-        "拖拽或选择 .xls 文件（可多选）",
+        t("拖拽或选择 .xls 文件（可多选）"),
         type=["xls", "xlsx"],
         accept_multiple_files=True,
         key="bulk_xls_uploader",
@@ -68,7 +68,7 @@ with tab_import:
 
     if uploaded_files:
         # 预扫描：识别每个文件
-        st.write("### 文件识别结果")
+        st.write(t("### 文件识别结果"))
         plan: list[tuple[str, str, object]] = []  # (filename, ingestor_key, file_obj)
         for f in uploaded_files:
             key = detect_ingestor(f.name)
@@ -78,7 +78,7 @@ with tab_import:
             else:
                 st.error(f"❌ `{f.name}` 文件名无法识别类型，跳过")
 
-        if plan and st.button(f"🚀 开始导入 {len(plan)} 个文件", type="primary"):
+        if plan and st.button(t(f"🚀 开始导入 {len(plan)} 个文件"), type="primary"):
             INPUTS_DIR.mkdir(parents=True, exist_ok=True)
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
             results = []
@@ -100,10 +100,10 @@ with tab_import:
 
                 progress.progress((i + 1) / len(plan))
 
-            status.write("✅ 全部处理完成")
+            status.write(t("✅ 全部处理完成"))
 
             # 汇总结果
-            st.write("### 导入汇总")
+            st.write(t("### 导入汇总"))
             for name, key, result, err in results:
                 if err:
                     st.error(f"❌ `{name}` ({key}): {err}")
@@ -124,7 +124,7 @@ with tab_import:
 # Tab 2：数据现状
 # ============================================================
 with tab_status:
-    st.subheader("各表当前数据量")
+    st.subheader(t("各表当前数据量"))
 
     def _count(t: str) -> int:
         try:
@@ -133,15 +133,15 @@ with tab_status:
             return 0
 
     cols = st.columns(4)
-    cols[0].metric("商品（item）", f"{_count('item'):,}")
-    cols[1].metric("库存快照", f"{_count('inventory_snapshot'):,}")
-    cols[2].metric("销售明细", f"{_count('sales_line'):,}")
-    cols[3].metric("库存周转", f"{_count('inventory_turnover'):,}")
+    cols[0].metric(t("商品（item）"), f"{_count('item'):,}")
+    cols[1].metric(t("库存快照"), f"{_count('inventory_snapshot'):,}")
+    cols[2].metric(t("销售明细"), f"{_count('sales_line'):,}")
+    cols[3].metric(t("库存周转"), f"{_count('inventory_turnover'):,}")
 
     st.divider()
 
     # 按 source 拆分销售
-    st.write("**销售数据按来源拆分：**")
+    st.write(t("**销售数据按来源拆分：**"))
     rows = conn.execute(
         """
         SELECT source, COUNT(*) AS rows, MIN(period_start) AS p_from, MAX(period_end) AS p_to
@@ -151,9 +151,9 @@ with tab_status:
     if rows:
         st.dataframe([dict(r) for r in rows], use_container_width=True, hide_index=True)
     else:
-        st.info("还没有销售数据。")
+        st.info(t("还没有销售数据。"))
 
-    st.write("**库存数据按 location 拆分：**")
+    st.write(t("**库存数据按 location 拆分：**"))
     rows = conn.execute(
         """
         SELECT location, COUNT(*) AS rows,
@@ -165,14 +165,14 @@ with tab_status:
     if rows:
         st.dataframe([dict(r) for r in rows], use_container_width=True, hide_index=True)
     else:
-        st.info("还没有库存数据。")
+        st.info(t("还没有库存数据。"))
 
 
 # ============================================================
 # Tab 3：导入历史
 # ============================================================
 with tab_logs:
-    st.subheader("最近导入记录")
+    st.subheader(t("最近导入记录"))
     runs = conn.execute(
         """
         SELECT run_id, ingestor, source_file, total_rows, inserted, errors, run_at
@@ -180,12 +180,12 @@ with tab_logs:
         """
     ).fetchall()
     if not runs:
-        st.info("还没有任何导入记录。")
+        st.info(t("还没有任何导入记录。"))
     else:
         st.dataframe([dict(r) for r in runs], use_container_width=True, hide_index=True)
         run_ids = [r["run_id"] for r in runs]
         sel = st.selectbox(
-            "查看错误明细：",
+            t("查看错误明细："),
             run_ids,
             format_func=lambda i: f"#{i} · "
             + next(r["ingestor"] for r in runs if r["run_id"] == i)
@@ -198,24 +198,24 @@ with tab_logs:
                 (sel,),
             ).fetchall()
             if errs:
-                st.warning(f"⚠️ {len(errs)} 个失败行：")
+                st.warning(t(f"⚠️ {len(errs)} 个失败行："))
                 st.dataframe([dict(r) for r in errs], use_container_width=True, hide_index=True)
             else:
-                st.success("✅ 这次导入无失败行。")
+                st.success(t("✅ 这次导入无失败行。"))
 
 
 # ============================================================
 # Tab 4：兼容旧 CSV
 # ============================================================
 with tab_legacy:
-    st.subheader("旧版 item_master CSV 导入")
-    st.caption("如果还需要导入 `/Users/joe/CC/item_master_cleaned.csv` 风格的本地表")
+    st.subheader(t("旧版 item_master CSV 导入"))
+    st.caption(t("如果还需要导入 `/Users/joe/CC/item_master_cleaned.csv` 风格的本地表"))
 
     item_count = conn.execute("SELECT COUNT(*) AS c FROM item").fetchone()["c"]
-    st.metric("当前 item 表行数", f"{item_count:,}")
+    st.metric(t("当前 item 表行数"), f"{item_count:,}")
 
-    uploaded = st.file_uploader("旧 item_master CSV", type=["csv"], key="legacy_item_uploader")
-    if uploaded and st.button("导入"):
+    uploaded = st.file_uploader(t("旧 item_master CSV"), type=["csv"], key="legacy_item_uploader")
+    if uploaded and st.button(t("导入")):
         try:
             summary = LocalItemMasterIngestor().run(
                 io.BytesIO(uploaded.getvalue()), conn, source_name=uploaded.name

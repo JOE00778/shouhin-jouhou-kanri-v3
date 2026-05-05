@@ -20,20 +20,20 @@ from shared.db import DB_PATH, get_connection
 DB = DB_PATH
 
 st.title(t("💡 运营调整建议（B/C 档）"))
-st.caption(
+st.caption(t(
     f"双轴矩阵：毛利率 × 月周转率 → 5 档建议 · "
     f"阈值 毛利{MARGIN_LOW}/{MARGIN_HIGH}% · 周转{TURNOVER_LOW}/{TURNOVER_HIGH}"
-)
+))
 
 # 月度选择器 + 重算
 col_ym, col_recalc = st.columns([2, 1])
 with col_ym:
-    ym = st.selectbox("月度", ["2026-04"], index=0)
+    ym = st.selectbox(t("月度"), ["2026-04"], index=0)
 with col_recalc:
-    if st.button("🔄 重新计算"):
-        with st.spinner("生成中..."):
+    if st.button(t("🔄 重新计算")):
+        with st.spinner(t("生成中...")):
             generate_advice(ym, str(DB))
-        st.success("✅ 已更新")
+        st.success(t("✅ 已更新"))
         st.rerun()
 
 # 数据加载
@@ -44,35 +44,35 @@ df = pd.read_sql_query(
 )
 
 if df.empty:
-    st.warning("⚠️ 暂无数据。请先点【🔄 重新计算】。")
+    st.warning(t("⚠️ 暂无数据。请先点【🔄 重新计算】。"))
     st.stop()
 
 # KPI 卡片
-st.markdown("### 总览")
+st.markdown(t("### 总览"))
 c1, c2, c3, c4, c5, c6 = st.columns(6)
 counts = df["advice"].value_counts()
-c1.metric("🔥 重点提价", int(counts.get("🔥 重点提价", 0)))
-c2.metric("🔥 重点降价", int(counts.get("🔥 重点降价", 0)))
-c3.metric("⬆️ 提价候选", int(counts.get("⬆️ 提价候选", 0)))
-c4.metric("⚠️ 降价候选", int(counts.get("⚠️ 降价候选", 0)))
-c5.metric("⬇️ 降级候选", int(counts.get("⬇️ 降级候选", 0)))
-c6.metric("✅ 维持", int(counts.get("✅ 维持", 0)))
+c1.metric(t("🔥 重点提价"), int(counts.get("🔥 重点提价", 0)))
+c2.metric(t("🔥 重点降价"), int(counts.get("🔥 重点降价", 0)))
+c3.metric(t("⬆️ 提价候选"), int(counts.get("⬆️ 提价候选", 0)))
+c4.metric(t("⚠️ 降价候选"), int(counts.get("⚠️ 降价候选", 0)))
+c5.metric(t("⬇️ 降级候选"), int(counts.get("⬇️ 降级候选", 0)))
+c6.metric(t("✅ 维持"), int(counts.get("✅ 维持", 0)))
 
 st.divider()
 
 # 等级 × 建议矩阵
-st.markdown("### 等级 × 建议 矩阵")
-matrix = pd.crosstab(df["rank"], df["advice"], margins=True, margins_name="合计")
+st.markdown(t("### 等级 × 建议 矩阵"))
+matrix = pd.crosstab(df["rank"], df["advice"], margins=True, margins_name=t("合计"))
 st.dataframe(matrix, use_container_width=True)
 
 st.divider()
 
 # 4 个清单 tab
 tabs = st.tabs([
-    "🔥 重点降价",
-    "🔥 重点提价",
-    "⬇️ 降级候选",
-    "📋 全部建议",
+    t("🔥 重点降价"),
+    t("🔥 重点提价"),
+    t("⬇️ 降级候选"),
+    t("📋 全部建议"),
 ])
 
 display_cols = [
@@ -93,7 +93,7 @@ display_names = {
 
 def _show(filtered_df: pd.DataFrame, top_n: int = 100):
     if filtered_df.empty:
-        st.info("无数据")
+        st.info(t("无数据"))
         return
     # join name from inventory
     inv = pd.read_sql_query(
@@ -107,31 +107,31 @@ def _show(filtered_df: pd.DataFrame, top_n: int = 100):
         columns=display_names
     )
     st.dataframe(show, use_container_width=True, height=500)
-    st.caption(f"显示前 {min(len(show), top_n)} 行 / 共 {len(filtered_df)} 条")
+    st.caption(t(f"显示前 {min(len(show), top_n)} 行 / 共 {len(filtered_df)} 条"))
 
 
 with tabs[0]:
-    st.markdown("**周转低 × 毛利高 — 降价加速周转 / 库存价值降序**")
+    st.markdown(t("**周转低 × 毛利高 — 降价加速周转 / 库存价值降序**"))
     _show(df[df["advice"] == "🔥 重点降价"])
 
 with tabs[1]:
-    st.markdown("**周转高 × 毛利低 — 提价不影响销量 / 即时增毛利**")
+    st.markdown(t("**周转高 × 毛利低 — 提价不影响销量 / 即时增毛利**"))
     _show(df[df["advice"] == "🔥 重点提价"])
 
 with tabs[2]:
-    st.markdown("**周转低 × 毛利低 — 双低 · 等级下调候选（B→C / C→停售）**")
-    st.caption("注：与改廃情報（page 13）不同 · 改廃 = 品牌方迭代外部信号 · 此处为内部数据驱动的渐变降级")
+    st.markdown(t("**周转低 × 毛利低 — 双低 · 等级下调候选（B→C / C→停售）**"))
+    st.caption(t("注：与改廃情報（page 13）不同 · 改廃 = 品牌方迭代外部信号 · 此处为内部数据驱动的渐变降级"))
     _show(df[df["advice"] == "⬇️ 降级候选"])
 
 with tabs[3]:
-    st.markdown("**全部 1,681 条建议**")
+    st.markdown(t("**全部 1,681 条建议**"))
     advice_filter = st.multiselect(
-        "建议筛选",
+        t("建议筛选"),
         options=df["advice"].unique().tolist(),
         default=df["advice"].unique().tolist(),
     )
     rank_filter = st.multiselect(
-        "等级筛选",
+        t("等级筛选"),
         options=df["rank"].unique().tolist(),
         default=df["rank"].unique().tolist(),
     )

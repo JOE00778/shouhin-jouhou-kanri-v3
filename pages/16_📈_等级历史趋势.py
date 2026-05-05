@@ -12,7 +12,7 @@ DB = DB_PATH
 conn = get_connection()
 
 st.title(t("📈 等级历史趋势"))
-st.caption("跨季度等级变化跟踪 · 升级/降级/稳定 SKU 分析")
+st.caption(t("跨季度等级变化跟踪 · 升级/降级/稳定 SKU 分析"))
 
 # 季度选择
 quarters = pd.read_sql_query(
@@ -20,13 +20,13 @@ quarters = pd.read_sql_query(
 )['quarter'].tolist()
 
 if not quarters:
-    st.info("暂无历史数据。请先在「🏷️ 商品等级判定」page 确认变更。")
+    st.info(t("暂无历史数据。请先在「🏷️ 商品等级判定」page 确认变更。"))
     st.stop()
 
-sel_q = st.multiselect("季度筛选", quarters, default=quarters[:3] if len(quarters) >= 3 else quarters)
+sel_q = st.multiselect(t("季度筛选"), quarters, default=quarters[:3] if len(quarters) >= 3 else quarters)
 
 if not sel_q:
-    st.warning("请至少选择一个季度。")
+    st.warning(t("请至少选择一个季度。"))
     st.stop()
 
 placeholders = ','.join(['?' for _ in sel_q])
@@ -36,7 +36,7 @@ df = pd.read_sql_query(f"""
 """, conn, params=sel_q)
 
 if df.empty:
-    st.info("选定季度内无变更记录。")
+    st.info(t("选定季度内无变更记录。"))
     st.stop()
 
 # 等级评分映射
@@ -57,15 +57,15 @@ stable_count = (df['new_score'] == df['old_score']).sum()
 
 # KPI 卡片
 c1, c2, c3, c4 = st.columns(4)
-c1.metric("总变化", len(df))
-c2.metric("⬆️ 升级", int(up_count))
-c3.metric("⬇️ 降级", int(down_count))
-c4.metric("➡️ 稳定", int(stable_count))
+c1.metric(t("总变化"), len(df))
+c2.metric(t("⬆️ 升级"), int(up_count))
+c3.metric(t("⬇️ 降级"), int(down_count))
+c4.metric(t("➡️ 稳定"), int(stable_count))
 
 st.divider()
 
 # 桑基图（流向）
-st.subheader("等级流向（Sankey）")
+st.subheader(t("等级流向（Sankey）"))
 flow = df.groupby(['old_rank', 'new_rank']).size().reset_index(name='count')
 
 if not flow.empty:
@@ -86,7 +86,7 @@ if not flow.empty:
 st.divider()
 
 # 历史变化表
-st.subheader("变更明细")
+st.subheader(t("变更明细"))
 display_df = df[['sku', 'quarter', 'old_rank', 'new_rank', 'changed_by', 'changed_at']].copy()
 display_df = display_df.sort_values('changed_at', ascending=False)
 
@@ -96,16 +96,16 @@ st.dataframe(
     height=400,
     hide_index=True
 )
-st.caption(f"显示前 500 / 共 {len(df)} 条记录")
+st.caption(t(f"显示前 500 / 共 {len(df)} 条记录"))
 
 st.divider()
 
 # SKU 详情下钻
-st.subheader("🔍 单 SKU 历史下钻")
+st.subheader(t("🔍 单 SKU 历史下钻"))
 unique_skus = sorted(df['sku'].unique().tolist())
 
 if unique_skus:
-    sel_sku = st.selectbox("选 SKU", unique_skus, key="sku_select")
+    sel_sku = st.selectbox(t("选 SKU"), unique_skus, key="sku_select")
     sku_history = df[df['sku'] == sel_sku].sort_values('changed_at', ascending=False)
 
     st.dataframe(
@@ -116,6 +116,6 @@ if unique_skus:
 
     # 统计信息
     score_changes = sku_history['new_score'].iloc[0] - sku_history['old_score'].iloc[-1] if len(sku_history) > 1 else 0
-    st.caption(f"总体变化：{score_changes:+.1f} 等级分（{sku_history['old_rank'].iloc[-1]} → {sku_history['new_rank'].iloc[0]}）")
+    st.caption(t(f"总体变化：{score_changes:+.1f} 等级分（{sku_history['old_rank'].iloc[-1]} → {sku_history['new_rank'].iloc[0]}）"))
 
 conn.close()

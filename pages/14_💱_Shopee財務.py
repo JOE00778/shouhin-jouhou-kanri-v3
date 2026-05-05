@@ -19,7 +19,7 @@ from pathlib import Path
 
 st.set_page_config(page_title=t("Shopee 財務"), page_icon="💱", layout="wide")
 st.title(t("💱 Shopee 財務"))
-st.caption("Shopee 拨款 → 各项扣费 → 净到账 全链路对账（4 月份数据）")
+st.caption(t("Shopee 拨款 → 各项扣费 → 净到账 全链路对账（4 月份数据）"))
 
 from shared.db import get_connection, DB_PATH
 DB = DB_PATH
@@ -27,12 +27,12 @@ conn = get_connection()
 conn.row_factory = sqlite3.Row
 
 # 月度选择器（默认 2026-04）
-ym = st.selectbox("月度", ['2026-04'], index=0)
+ym = st.selectbox(t("月度"), ['2026-04'], index=0)
 
 # 检查数据
 order_count = conn.execute("SELECT COUNT(*) FROM shopee_orders").fetchone()[0]
 if order_count == 0:
-    st.warning("⚠️ 无数据。请在「⚙️ 数据导入与设置」上传 Shopee 拨款 + 订单 EXCEL。")
+    st.warning(t("⚠️ 无数据。请在「⚙️ 数据导入与设置」上传 Shopee 拨款 + 订单 EXCEL。"))
     st.stop()
 
 # 获取平台列表
@@ -81,18 +81,18 @@ for tab_idx, (tab, plat) in enumerate(zip(tabs, platform_list + [None])):
             f"SELECT COUNT(*) FROM shopee_orders WHERE payment_amount < 0 {plat_filter}"
         ).fetchone()[0]
 
-        c1.metric("总收入", f"¥{gross['s']:,.0f}" if gross['s'] else "¥0")
-        c2.metric("总扣费", f"¥{abs(fees['s']):,.0f}" if fees['s'] else "¥0")
-        c3.metric("净到账", f"¥{net_amount:,.0f}")
-        c4.metric("订单数", int(gross['n']))
-        c5.metric("退款数", int(refund_count))
+        c1.metric(t("总收入"), f"¥{gross['s']:,.0f}" if gross['s'] else "¥0")
+        c2.metric(t("总扣费"), f"¥{abs(fees['s']):,.0f}" if fees['s'] else "¥0")
+        c3.metric(t("净到账"), f"¥{net_amount:,.0f}")
+        c4.metric(t("订单数"), int(gross['n']))
+        c5.metric(t("退款数"), int(refund_count))
 
         # 拨款汇总
-        st.subheader("📥 拨款汇总")
-        st.info("📌 4 月拨款数据已录入系统。详细拨款明细表后续通过 Shopee API 同步。")
+        st.subheader(t("📥 拨款汇总"))
+        st.info(t("📌 4 月拨款数据已录入系统。详细拨款明细表后续通过 Shopee API 同步。"))
 
         # 订单级对账
-        st.subheader("📋 订单级对账")
+        st.subheader(t("📋 订单级对账"))
 
         orders = pd.read_sql_query(
             f"""
@@ -154,13 +154,13 @@ for tab_idx, (tab, plat) in enumerate(zip(tabs, platform_list + [None])):
             else:
                 st.dataframe(orders, use_container_width=True, height=400)
 
-            st.caption(f"显示 {len(orders):,} 条订单")
+            st.caption(t(f"显示 {len(orders):,} 条订单"))
         else:
-            st.info("该平台无订单")
+            st.info(t("该平台无订单"))
 
         # 全平台对比图
         if plat is None:
-            st.subheader("📊 站点对比 · 净到账")
+            st.subheader(t("📊 站点对比 · 净到账"))
             site_data = pd.read_sql_query(
                 """
                 SELECT
@@ -185,6 +185,6 @@ for tab_idx, (tab, plat) in enumerate(zip(tabs, platform_list + [None])):
                 fig.update_traces(textposition='outside', texttemplate='¥%{text:,.0f}')
                 st.plotly_chart(fig, use_container_width=True)
             else:
-                st.info("无多站点数据")
+                st.info(t("无多站点数据"))
 
 conn.close()

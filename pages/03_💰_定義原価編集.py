@@ -48,8 +48,8 @@ st.caption(
 inv_count = conn.execute("SELECT COUNT(*) AS c FROM inventory_snapshot").fetchone()["c"]
 if inv_count == 0:
     st.warning(
-        "⚠️ `inventory_snapshot` 表为空。请先到「⚙️ 数据导入与设置」上传 "
-        "`FB全倉庫通常在庫数残数検索結果.xls`。"
+        t("⚠️ `inventory_snapshot` 表为空。请先到「⚙️ 数据导入与设置」上传 "
+        "`FB全倉庫通常在庫数残数検索結果.xls`。")
     )
     st.stop()
 
@@ -75,7 +75,7 @@ def _reset() -> None:
 # ============================================================
 step = st.session_state.cs_step
 prog_cols = st.columns(3)
-for i, label in enumerate(["1️⃣ 选择数据 + 过滤", "2️⃣ 预览结果", "3️⃣ 下载输出"], 1):
+for i, label in enumerate([t("1️⃣ 选择数据 + 过滤"), t("2️⃣ 预览结果"), t("3️⃣ 下载输出")], 1):
     with prog_cols[i - 1]:
         if i == step:
             st.info(f"**{label}**")
@@ -91,7 +91,7 @@ st.divider()
 # 步骤 1：选择数据范围
 # ============================================================
 if step == 1:
-    st.subheader("📋 步骤 1 / 3：选择数据范围")
+    st.subheader(t("📋 步骤 1 / 3：选择数据范围"))
 
     # 快照选项
     snapshots = conn.execute(
@@ -99,7 +99,7 @@ if step == 1:
     ).fetchall()
     snapshot_choices = [r["snapshot_at"] for r in snapshots]
     sel_snapshot = st.selectbox(
-        "在库数据快照（默认最新）", snapshot_choices, index=0
+        t("在库数据快照（默认最新）"), snapshot_choices, index=0
     )
 
     # 过滤条件（部门固定为含「輸出」的，不在 UI 暴露；仓库限定 JD + 弁天，ingest 时已过滤）
@@ -131,9 +131,9 @@ if step == 1:
 
     c1, c2 = st.columns(2)
     with c1:
-        loc_pick = st.selectbox("場所（仓库）", loc_choices, index=0)
+        loc_pick = st.selectbox(t("場所（仓库）"), loc_choices, index=0)
     with c2:
-        handle_pick = st.selectbox("取扱区分", handle_choices, index=0)
+        handle_pick = st.selectbox(t("取扱区分"), handle_choices, index=0)
 
     sel_locs = loc_all if loc_pick == LOC_BOTH else [loc_pick]
     sel_handle = handle_all if handle_pick == HANDLE_PRESET_ALL else [handle_pick]
@@ -166,13 +166,13 @@ if step == 1:
         params,
     ).fetchone()["c"]
 
-    st.metric("过滤后唯一 SKU 数", f"{sku_count:,}")
+    st.metric(t("过滤后唯一 SKU 数"), f"{sku_count:,}")
 
     if sku_count == 0:
-        st.warning("当前过滤条件下没有 SKU。请调整。")
+        st.warning(t("当前过滤条件下没有 SKU。请调整。"))
         st.stop()
 
-    if st.button("🚀 计算并预览", type="primary"):
+    if st.button(t("🚀 计算并预览"), type="primary"):
         # 按 internal_id 聚合：avg/std 取 MAX（同 SKU 各 location 应一致；MAX 兜底）
         # qty 求和（仅展示用）
         agg_sql = f"""
@@ -218,7 +218,7 @@ if step == 1:
 # 步骤 2：预览
 # ============================================================
 elif step == 2:
-    st.subheader("🔍 步骤 2 / 3：预览结果")
+    st.subheader(t("🔍 步骤 2 / 3：预览结果"))
 
     decisions = st.session_state.cs_decisions or []
     df_all = pd.DataFrame(decisions)
@@ -230,10 +230,10 @@ elif step == 2:
     n_yellow = (df_all.get("severity") == "YELLOW").sum() if total else 0
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("候选 SKU 总数", f"{total:,}")
-    c2.metric("✅ 触发更新", f"{n_update:,}")
-    c3.metric("⏭️ 跳过", f"{n_skip:,}")
-    c4.metric("⚠️ 异常 R+Y", f"{n_red + n_yellow:,}")
+    c1.metric(t("候选 SKU 总数"), f"{total:,}")
+    c2.metric(t("✅ 触发更新"), f"{n_update:,}")
+    c3.metric(t("⏭️ 跳过"), f"{n_skip:,}")
+    c4.metric(t("⚠️ 异常 R+Y"), f"{n_red + n_yellow:,}")
 
     if n_skip > 0:
         skip_breakdown = (
@@ -241,20 +241,20 @@ elif step == 2:
             .value_counts()
             .to_dict()
         )
-        st.caption("跳过原因分布：" + " · ".join(f"{k}: {v}" for k, v in skip_breakdown.items()))
+        st.caption(t("跳过原因分布：") + " · ".join(f"{k}: {v}" for k, v in skip_breakdown.items()))
 
     st.divider()
 
     tab_u, tab_s, tab_a = st.tabs([
-        f"✅ 更新清单 ({n_update})",
-        f"⏭️ 跳过清单 ({n_skip})",
-        f"⚠️ 异常告警 ({n_red + n_yellow})",
+        t(f"✅ 更新清单 ({n_update})"),
+        t(f"⏭️ 跳过清单 ({n_skip})"),
+        t(f"⚠️ 异常告警 ({n_red + n_yellow})"),
     ])
 
     with tab_u:
         df_u = df_all[df_all["action"] == "UPDATE"].copy()
         if df_u.empty:
-            st.info("本次没有 SKU 触发更新。")
+            st.info(t("本次没有 SKU 触发更新。"))
         else:
             df_show = df_u[["internal_id", "item_code", "display_name", "total_qty",
                             "std_cost_old", "std_cost_new", "diff", "diff_pct", "severity"]]
@@ -267,7 +267,7 @@ elif step == 2:
     with tab_s:
         df_s = df_all[df_all["action"] != "UPDATE"].copy()
         if df_s.empty:
-            st.info("没有任何 SKU 被跳过。")
+            st.info(t("没有任何 SKU 被跳过。"))
         else:
             df_show = df_s[["internal_id", "item_code", "display_name", "total_qty",
                             "avg_cost", "std_cost_old", "action", "skip_reason"]]
@@ -276,7 +276,7 @@ elif step == 2:
     with tab_a:
         df_a = df_all[df_all.get("severity").isin(["RED", "YELLOW"])].copy()
         if df_a.empty:
-            st.success("✅ 无异常告警。")
+            st.success(t("✅ 无异常告警。"))
         else:
             df_a = df_a.sort_values(
                 by=["severity", "diff_pct"],
@@ -294,18 +294,18 @@ elif step == 2:
     st.divider()
     btn_back, btn_next = st.columns(2)
     with btn_back:
-        if st.button("← 重新选择数据", use_container_width=True):
+        if st.button(t("← 重新选择数据"), use_container_width=True):
             _reset()
             st.rerun()
     with btn_next:
         if n_update == 0:
             st.button(
-                "确认并生成 CSV →", type="primary", disabled=True, use_container_width=True
+                t("确认并生成 CSV →"), type="primary", disabled=True, use_container_width=True
             )
-            st.caption("没有需要更新的 SKU")
+            st.caption(t("没有需要更新的 SKU"))
         else:
             if st.button(
-                f"确认并生成 CSV ({n_update} 行) →", type="primary", use_container_width=True
+                t(f"确认并生成 CSV ({n_update} 行) →"), type="primary", use_container_width=True
             ):
                 rows = CostUpdateExporter.build_rows(decisions)
                 file_path, _ = CostUpdateExporter().export(
@@ -321,15 +321,15 @@ elif step == 2:
 # 步骤 3：下载
 # ============================================================
 elif step == 3:
-    st.subheader("✅ 步骤 3 / 3：完成")
+    st.subheader(t("✅ 步骤 3 / 3：完成"))
 
     file_path = st.session_state.cs_output_path
     if file_path and file_path.exists():
         with file_path.open("rb") as f:
             data = f.read()
-        st.success(f"已生成更新 CSV：`{file_path.name}`")
+        st.success(t(f"已生成更新 CSV：`{file_path.name}`"))
         st.download_button(
-            "📥 下载更新 CSV",
+            t("📥 下载更新 CSV"),
             data=data,
             file_name=file_path.name,
             mime="text/csv",
@@ -349,8 +349,8 @@ elif step == 3:
             """
         )
     else:
-        st.error("⚠️ 输出文件丢失，重来一次")
+        st.error(t("⚠️ 输出文件丢失，重来一次"))
 
-    if st.button("🔄 再做一次", type="primary"):
+    if st.button(t("🔄 再做一次"), type="primary"):
         _reset()
         st.rerun()

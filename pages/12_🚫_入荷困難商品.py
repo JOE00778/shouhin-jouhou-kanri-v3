@@ -16,7 +16,7 @@ st.set_page_config(page_title=t("入荷困難商品"), page_icon="🚫", layout=
 conn = get_connection()
 
 st.title(t("🚫 入荷困難商品"))
-st.caption("人工录入难以入荷的商品 + 原因 + 备注 · 全量历史保留")
+st.caption(t("人工录入难以入荷的商品 + 原因 + 备注 · 全量历史保留"))
 
 
 def _now():
@@ -26,17 +26,17 @@ def _now():
 # ============================================================
 # 顶部：录入新条目
 # ============================================================
-with st.expander("➕ 新规录入", expanded=False):
+with st.expander(t("➕ 新规录入"), expanded=False):
     with st.form("add_difficult", clear_on_submit=True):
         c1, c2 = st.columns(2)
         with c1:
-            item_key = st.text_input("ブランド / 商品名 / JAN", placeholder="例: ABC ブランド or 4901111310490")
+            item_key = st.text_input(t("ブランド / 商品名 / JAN"), placeholder=t("例: ABC ブランド or 4901111310490"))
         with c2:
-            reason = st.text_input("入荷困難理由", placeholder="例: 廃番 / 在庫無し / 仕入価格高騰")
-        note = st.text_area("备注（可选）", height=80)
-        if st.form_submit_button("登録", type="primary"):
+            reason = st.text_input(t("入荷困難理由"), placeholder=t("例: 廃番 / 在庫無し / 仕入価格高騰"))
+        note = st.text_area(t("备注（可选）"), height=80)
+        if st.form_submit_button(t("登録"), type="primary"):
             if not item_key.strip() or not reason.strip():
-                st.error("ブランド/商品名/JAN 与 理由 都必须填写。")
+                st.error(t("ブランド/商品名/JAN 与 理由 都必须填写。"))
             else:
                 now = _now()
                 cur = conn.execute(
@@ -52,14 +52,14 @@ with st.expander("➕ 新规录入", expanded=False):
                     (new_id, item_key.strip(), reason.strip(), (note or "").strip() or None, now),
                 )
                 conn.commit()
-                st.success(f"✅ 已登录 #{new_id}")
+                st.success(t(f"✅ 已登录 #{new_id}"))
                 st.rerun()
 
 
 # ============================================================
 # 列表 + 删除
 # ============================================================
-st.subheader("📋 现行リスト")
+st.subheader(t("📋 现行リスト"))
 
 rows = conn.execute(
     """
@@ -70,35 +70,35 @@ rows = conn.execute(
 ).fetchall()
 
 if not rows:
-    st.info("还没有任何记录。点上面「➕ 新规录入」开始。")
+    st.info(t("还没有任何记录。点上面「➕ 新规录入」开始。"))
 else:
     df = pd.DataFrame([dict(r) for r in rows])
-    df.insert(0, "选择", False)
+    df.insert(0, t("选择"), False)
 
     edited = st.data_editor(
         df,
         use_container_width=True,
         hide_index=True,
         column_config={
-            "选择": st.column_config.CheckboxColumn("选择"),
+            t("选择"): st.column_config.CheckboxColumn(t("选择")),
             "id": st.column_config.NumberColumn("ID", disabled=True),
-            "item_key": st.column_config.TextColumn("ブランド/商品", disabled=True),
-            "reason": st.column_config.TextColumn("理由", disabled=True),
-            "note": st.column_config.TextColumn("備考", disabled=True),
-            "created_at": st.column_config.TextColumn("作成", disabled=True),
-            "updated_at": st.column_config.TextColumn("更新", disabled=True),
+            "item_key": st.column_config.TextColumn(t("ブランド/商品"), disabled=True),
+            "reason": st.column_config.TextColumn(t("理由"), disabled=True),
+            "note": st.column_config.TextColumn(t("備考"), disabled=True),
+            "created_at": st.column_config.TextColumn(t("作成"), disabled=True),
+            "updated_at": st.column_config.TextColumn(t("更新"), disabled=True),
         },
         disabled=["id", "item_key", "reason", "note", "created_at", "updated_at"],
         key="diff_items_table",
     )
 
-    selected_ids = edited[edited["选择"]]["id"].tolist()
+    selected_ids = edited[edited[t("选择")]]["id"].tolist()
     c1, c2 = st.columns([1, 1])
     with c1:
-        st.metric("已选行数", f"{len(selected_ids)}")
+        st.metric(t("已选行数"), f"{len(selected_ids)}")
     with c2:
         if st.button(
-            f"🗑 删除选中 {len(selected_ids)} 条",
+            t(f"🗑 删除选中 {len(selected_ids)} 条"),
             type="primary" if selected_ids else "secondary",
             disabled=not selected_ids,
             use_container_width=True,
@@ -118,7 +118,7 @@ else:
                     )
                     conn.execute("DELETE FROM difficult_items WHERE id = ?", (_id,))
             conn.commit()
-            st.success(f"✅ 已删除 {len(selected_ids)} 条")
+            st.success(t(f"✅ 已删除 {len(selected_ids)} 条"))
             st.rerun()
 
 
@@ -126,7 +126,7 @@ else:
 # 历史日志（最近 7 天）
 # ============================================================
 st.divider()
-st.subheader("📜 操作历史（最近 7 天）")
+st.subheader(t("📜 操作历史（最近 7 天）"))
 
 hist = conn.execute(
     """
@@ -139,7 +139,7 @@ hist = conn.execute(
 ).fetchall()
 
 if not hist:
-    st.caption("（最近 7 天无操作）")
+    st.caption(t("（最近 7 天无操作）"))
 else:
     st.dataframe(
         [dict(r) for r in hist],

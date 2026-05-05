@@ -25,11 +25,11 @@ st.set_page_config(page_title=t("库存健康监控"), page_icon="📦", layout=
 conn = get_connection()
 
 st.title(t("📦 库存健康监控（JD-千叶仓库）"))
-st.caption(
+st.caption(t(
     "主判定：库存月数（ratio_months）· 健康黄金区 0.7-2.0 月 · "
     "🟢 ≤0.7 / 🟡 0.7-2 / 🟠 2-6 / 🔴 >6 月 · "
     "停售强制 🔴 · A/B 档 + qty=0 + 销>0 → 优秀（断货畅销）"
-)
+))
 
 # ============================================================
 # 月度选择器 + 重算按钮
@@ -37,13 +37,13 @@ st.caption(
 col_ym, col_recalc = st.columns([2, 1])
 
 with col_ym:
-    ym = st.selectbox("月度", ["2026-04"], index=0)
+    ym = st.selectbox(t("月度"), ["2026-04"], index=0)
 
 with col_recalc:
-    if st.button("🔄 重新计算"):
-        with st.spinner("计算中..."):
+    if st.button(t("🔄 重新计算")):
+        with st.spinner(t("计算中...")):
             records = batch_calc(ym)
-        st.success(f"✅ 已计算 {len(records)} 个 SKU")
+        st.success(t(f"✅ 已计算 {len(records)} 个 SKU"))
 
 # ============================================================
 # 数据加载
@@ -54,7 +54,7 @@ df = pd.DataFrame([dict(r) for r in conn.execute(
 ).fetchall()])
 
 if df.empty:
-    st.warning("⚠️ 该月无数据。请先点【🔄 重新计算】或在「⚙️ 数据导入与设置」上传上游数据。")
+    st.warning(t("⚠️ 该月无数据。请先点【🔄 重新计算】或在「⚙️ 数据导入与设置」上传上游数据。"))
     st.stop()
 
 # ============================================================
@@ -64,18 +64,18 @@ g_counts = df["grade"].value_counts()
 dead_total = df[df["grade"] == "🔴 死钱"]["dead_money_jpy"].fillna(0).sum()
 
 c1, c2, c3, c4, c5 = st.columns(5)
-c1.metric("🟢 优秀", g_counts.get("🟢 优秀", 0))
-c2.metric("🟡 健康", g_counts.get("🟡 健康", 0))
-c3.metric("🟠 注意", g_counts.get("🟠 注意", 0))
-c4.metric("🔴 死钱", g_counts.get("🔴 死钱", 0))
-c5.metric("死钱总额", f"¥{dead_total:,.0f}")
+c1.metric(t("🟢 优秀"), g_counts.get("🟢 优秀", 0))
+c2.metric(t("🟡 健康"), g_counts.get("🟡 健康", 0))
+c3.metric(t("🟠 注意"), g_counts.get("🟠 注意", 0))
+c4.metric(t("🔴 死钱"), g_counts.get("🔴 死钱", 0))
+c5.metric(t("死钱总额"), f"¥{dead_total:,.0f}")
 
 st.divider()
 
 # ============================================================
 # 4×4 联动矩阵（行：等级 A/B/C/停售，列：4 健康度）
 # ============================================================
-st.subheader("等级 × 健康度 联动矩阵")
+st.subheader(t("等级 × 健康度 联动矩阵"))
 
 # 从 item_master_netsuite 读等级，做 SKU 维度 join
 rank_df = pd.DataFrame([dict(r) for r in conn.execute(
@@ -129,10 +129,10 @@ st.dataframe(matrix, use_container_width=True)
 # ============================================================
 # 进货周期桶分布饼图
 # ============================================================
-st.subheader("进货周期桶分布")
+st.subheader(t("进货周期桶分布"))
 bucket_dist = df["bucket"].value_counts().reset_index()
 bucket_dist.columns = ["bucket", "count"]
-bucket_order = {"short": "短（≤12月）", "normal": "正常（6-12月）", "long": "长（>12月）"}
+bucket_order = {"short": t("短（≤12月）"), "normal": t("正常（6-12月）"), "long": t("长（>12月）")}
 bucket_dist["bucket_label"] = bucket_dist["bucket"].map(bucket_order)
 
 fig = px.pie(
@@ -141,9 +141,9 @@ fig = px.pie(
     names="bucket_label",
     hole=0.4,
     color_discrete_map={
-        "短（≤12月）": "#4361ee",
-        "正常（6-12月）": "#2d6a4f",
-        "长（>12月）": "#f77f00",
+        t("短（≤12月）"): "#4361ee",
+        t("正常（6-12月）"): "#2d6a4f",
+        t("长（>12月）"): "#f77f00",
     },
 )
 fig.update_traces(textposition="inside", textinfo="percent+label")
@@ -152,12 +152,12 @@ st.plotly_chart(fig, use_container_width=True)
 # ============================================================
 # 死钱清单（🔴 SKU 按金额降序）
 # ============================================================
-st.subheader("🔴 死钱清单（按金额降序）")
+st.subheader(t("🔴 死钱清单（按金额降序）"))
 
 dead = df[df["grade"] == "🔴 死钱"].sort_values("dead_money_jpy", ascending=False, na_position="last")
 
 if len(dead) == 0:
-    st.info("暂无 🔴 死钱 SKU")
+    st.info(t("暂无 🔴 死钱 SKU"))
 else:
     # 从 nst_inventory_snapshot 读库存信息
     inv = pd.DataFrame([dict(r) for r in conn.execute(
@@ -174,7 +174,7 @@ else:
     display_cols = [c for c in display_cols if c in dead_full.columns]
 
     dead_full_display = dead_full[display_cols].copy()
-    dead_full_display.columns = ["SKU", "商品名", "等级", "进货周期", "跨比", "库存数", "定价原価", "死钱(¥)"]
+    dead_full_display.columns = [t("SKU"), t("商品名"), t("等级"), t("进货周期"), t("跨比"), t("库存数"), t("定价原価"), t("死钱(¥)")]
 
     st.dataframe(dead_full_display.head(100), use_container_width=True, height=400)
-    st.caption(f"显示前 100 行 / 共 {len(dead)} 条 🔴 死钱")
+    st.caption(t(f"显示前 100 行 / 共 {len(dead)} 条 🔴 死钱"))

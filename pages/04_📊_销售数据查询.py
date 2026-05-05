@@ -19,13 +19,13 @@ st.set_page_config(page_title=t("销售数据查询"), page_icon="📊", layout=
 conn = get_connection()
 
 st.title(t("📊 销售数据查询"))
-st.caption("基于 NetSuite 销售导出 · 多维筛选 · 明细 + 聚合")
+st.caption(t("基于 NetSuite 销售导出 · 多维筛选 · 明细 + 聚合"))
 
 
 sales_count = conn.execute("SELECT COUNT(*) AS c FROM sales_line").fetchone()["c"]
 if sales_count == 0:
     st.warning(
-        "⚠️ `sales_line` 表为空。请到「⚙️ 数据导入与设置」上传 ASEAN/輸出 销售 .xls。"
+        t("⚠️ `sales_line` 表为空。请到「⚙️ 数据导入与设置」上传 ASEAN/輸出 销售 .xls。")
     )
     st.stop()
 
@@ -47,8 +47,8 @@ c1, c2, c3 = st.columns(3)
 with c1:
     src_choices = [ALL_LABEL] + src_opts
     src_pick = st.selectbox(
-        "数据源", src_choices,
-        format_func=lambda s: src_label.get(s, s) if s != ALL_LABEL else "全部",
+        t("数据源"), src_choices,
+        format_func=lambda s: src_label.get(s, s) if s != ALL_LABEL else t("全部"),
     )
     sel_srcs = src_opts if src_pick == ALL_LABEL else [src_pick]
 
@@ -58,8 +58,8 @@ with c2:
     ).fetchall()
     period_choices = [(r["period_start"], r["period_end"]) for r in period_opts]
     sel_period = st.selectbox(
-        "期间", period_choices,
-        format_func=lambda p: f"{p[0]} ~ {p[1]}" if p[0] else "(无期间)",
+        t("期间"), period_choices,
+        format_func=lambda p: f"{p[0]} ~ {p[1]}" if p[0] else t("(无期间)"),
     )
 
 with c3:
@@ -69,16 +69,16 @@ with c3:
         ).fetchall()
     ]
     rank_choices = [ALL_LABEL] + rank_opts
-    rank_pick = st.selectbox("商品ランク（如有）", rank_choices)
+    rank_pick = st.selectbox(t("商品ランク（如有）"), rank_choices)
     sel_ranks = rank_opts if rank_pick == ALL_LABEL else [rank_pick]
 
 
 c4, c5, c6 = st.columns(3)
 with c4:
-    keyword = st.text_input("搜索 アイテム / 商品名", "")
+    keyword = st.text_input(t("搜索 アイテム / 商品名"), "")
 with c5:
     market_choices = [ALL_LABEL] + ALL_MARKETS
-    market_pick = st.selectbox("市场", market_choices)
+    market_pick = st.selectbox(t("市场"), market_choices)
 with c6:
     store_opts = [
         r["store"] for r in conn.execute(
@@ -86,7 +86,7 @@ with c6:
         ).fetchall()
     ]
     store_choices = [ALL_LABEL] + store_opts
-    store_pick = st.selectbox("店铺（如有）", store_choices)
+    store_pick = st.selectbox(t("店铺（如有）"), store_choices)
     sel_stores = store_opts if store_pick == ALL_LABEL else [store_pick]
 
 
@@ -132,7 +132,7 @@ df = pd.DataFrame([dict(r) for r in conn.execute(
 # KPI + 视图
 # ============================================================
 if df.empty:
-    st.info("当前条件下无数据。")
+    st.info(t("当前条件下无数据。"))
     st.stop()
 
 # 加 market 列 + 市场过滤
@@ -140,29 +140,29 @@ df = add_market_column(df, store_col="store")
 if market_pick != ALL_LABEL:
     df = df[df["market"] == market_pick]
 if df.empty:
-    st.info("此市场下无数据。")
+    st.info(t("此市场下无数据。"))
     st.stop()
 
 c1, c2, c3, c4, c5 = st.columns(5)
-c1.metric("行数", f"{len(df):,}")
-c2.metric("总销量", f"{int(df['qty_sold'].fillna(0).sum()):,}")
-c3.metric("总売上 ¥", f"{df['revenue'].fillna(0).sum():,.0f}")
-c4.metric("毛利 ¥", f"{df['gross_profit'].fillna(0).sum():,.0f}")
+c1.metric(t("行数"), f"{len(df):,}")
+c2.metric(t("总销量"), f"{int(df['qty_sold'].fillna(0).sum()):,}")
+c3.metric(t("总売上 ¥"), f"{df['revenue'].fillna(0).sum():,.0f}")
+c4.metric(t("毛利 ¥"), f"{df['gross_profit'].fillna(0).sum():,.0f}")
 total_rev = df["revenue"].fillna(0).sum()
 total_gp = df["gross_profit"].fillna(0).sum()
-c5.metric("毛利率", f"{(total_gp/total_rev*100 if total_rev else 0):.2f}%")
+c5.metric(t("毛利率"), f"{(total_gp/total_rev*100 if total_rev else 0):.2f}%")
 
 st.divider()
 
 tab_detail, tab_by_market, tab_by_sku, tab_by_store = st.tabs(
-    ["📋 明细", "🌐 按市场聚合", "🏆 按 SKU 聚合", "🏪 按店铺聚合"]
+    [t("📋 明细"), t("🌐 按市场聚合"), t("🏆 按 SKU 聚合"), t("🏪 按店铺聚合")]
 )
 
 with tab_detail:
     st.dataframe(df, use_container_width=True, hide_index=True)
     csv = df.to_csv(index=False).encode("utf-8-sig")
     st.download_button(
-        "📥 明细 CSV", data=csv, file_name=f"sales_detail_{len(df)}.csv", mime="text/csv"
+        t("📥 明细 CSV"), data=csv, file_name=f"sales_detail_{len(df)}.csv", mime="text/csv"
     )
 
 with tab_by_market:
@@ -192,7 +192,7 @@ with tab_by_sku:
 with tab_by_store:
     df_with_store = df[df["store"].notna()]
     if df_with_store.empty:
-        st.info("当前数据无店铺维度。")
+        st.info(t("当前数据无店铺维度。"))
     else:
         g = df_with_store.groupby("store", as_index=False).agg(
             销量=("qty_sold", lambda s: int(s.fillna(0).sum())),
