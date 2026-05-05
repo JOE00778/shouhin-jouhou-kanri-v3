@@ -86,7 +86,9 @@ def generate_proposal(quarter: str = '2026-Q1', db_path: str = 'data_warehouse/w
         if not jd_skus:
             return []
 
-        # 1. 聚合销售数据（nst_store_sales · 仅 JD 千叶 SKU · 含 0 销售）
+        # 1. 聚合销售数据 (sales_line · ASEAN 集計専用源 · 仅 JD 千叶 SKU · 含 0 销售)
+        # 注: 改为 sales_line (跟 page 04/05 数据源对齐),
+        #    nst_store_sales 是 XML ingester 写的旧表,实际数据走 xls_ingest.py
         placeholders = ','.join('?' * len(jd_skus))
         sales_data = conn.execute(f"""
             SELECT
@@ -95,8 +97,9 @@ def generate_proposal(quarter: str = '2026-Q1', db_path: str = 'data_warehouse/w
                 COALESCE(SUM(revenue), 0) as total_revenue,
                 COALESCE(AVG(gross_margin), 0) as avg_margin,
                 COALESCE(SUM(qty_sold), 0) as total_qty
-            FROM nst_store_sales
-            WHERE item_code IN ({placeholders})
+            FROM sales_line
+            WHERE source = 'asean_monthly'
+              AND item_code IN ({placeholders})
             GROUP BY item_code
         """, list(jd_skus)).fetchall()
 
