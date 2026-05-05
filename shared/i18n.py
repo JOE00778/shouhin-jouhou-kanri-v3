@@ -723,6 +723,8 @@ for _zh, _ja in [
     ("(销售表无 period_label, 默认显示全部)", "(sales 表に period_label なし、全件表示)"),
     ("数据源:【ASEAN】店舗別売上 集計専用 .xls (12 列源表) → sales_line → SKU 聚合 + JD库存 join · 对齐 SKU 一元管理表格 3月 22 列",
      "データソース:【ASEAN】店舗別売上 集計専用 .xls (12 列原表) → sales_line → SKU 集計 + JD在庫 join · SKU 一元管理表 3月 22 列に準拠"),
+    ("数据源 3 张源表: sales_line(销售/毛利) + nst_inventory_snapshot(库存数/金额) + nst_turnover(回転率/平均在庫日数) · 对齐 SKU 一元管理表格 22 列",
+     "データソース 3 表: sales_line(売上/粗利) + nst_inventory_snapshot(在庫数/金額) + nst_turnover(回転率/平均在庫日数) · SKU 一元管理表 22 列に準拠"),
     ("⚠️ `sales_line` 表为空。请到「⚙️ 数据导入与设置」上传 `【ASEAN】店舗別売上　集計専用.xls`。",
      "⚠️ `sales_line` テーブルが空です。「⚙️ データインポート」で `【ASEAN】店舗別売上　集計専用.xls` をアップロードしてください。"),
     ("搜索: 商品代码 / 商品名 / JAN / 品牌", "商品コード / 商品名 / JAN / メーカー 検索"),

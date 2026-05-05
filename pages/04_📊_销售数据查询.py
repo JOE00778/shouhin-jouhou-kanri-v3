@@ -1,21 +1,22 @@
-"""模块 #4 销售数据查询 · 数据源严格对齐【ASEAN】店舗別売上 集計専用.xls 12 列原表.
+"""模块 #4 销售数据查询 · 三个 NetSuite 源表 join,直接拉取基础字段.
 
-源表 12 列 (R7):
-A=FB_店舗 / B=アイテム / C=UPCコード / D=取扱区分 / E=表示名
-F=販売数量 / G=総収益 / H=定義原価 / I=粗利 / J=粗利率
-K=メーカー名 / L=商品ランク
+数据源（严格对齐 NetSuite 导出原始数据,不自己算）:
+1. 销售/毛利/品牌/等级 ← `sales_line`
+   ← 来自【ASEAN】店舗別売上 集計専用.xls 12 列 (A-L)
+2. 库存数量/库存金额/定義原価 ← `nst_inventory_snapshot`
+   ← 来自 輸出通常在庫数残数検索結果.xls 16 列 (qty_on_hand=I 列「手持合計」)
+3. 库存周转率/平均在庫日数 ← `nst_turnover`
+   ← 来自【ASEAN】在庫回転率.xls 8 列 (turnover_rate=G 列「回転率」)
 
 目标输出: SKU 一元管理表格 3月 sheet 22 列格式.
 
 业务流程:
-1. 加载 sales_line (本身就是从 ASEAN 集計専用.xls ingest 来的, 12 列原始数据齐全)
-2. 按 SKU(item_code) 聚合: 多店铺多行 → 单 SKU 1 行
-   - qty_sold / revenue / defined_cost / gross_profit 求和
-   - gross_margin = sum(gp) / sum(rev) 重算
-   - maker / rank / handling_status / display_name 取最新非空
-3. join warehouse_stock (JD 在庫) 取 stock_available
-4. 计算衍生指标: 单价 / 库存金额 / 月周转 / 平均在庫日数 / 交叉比率(月/年)
-   / 动销率 / 月售罄率 / 在庫販売比率 / 利益貢献度 / 等级评价
+1. 加载 sales_line + nst_inventory_snapshot + nst_turnover
+2. 按 SKU 聚合 sales_line（多店铺 → 单 SKU）
+3. join 库存表 (按 item_code SUM qty_on_hand / total_amount)
+4. join 周转表 (按 item_code 取 turnover_rate / avg_days_on_hand)
+5. 仅做必要的衍生计算: 单价 / 交叉比率(月/年) / 月周转(年) / 月售罄率
+   / 在庫販売比率 / 利益貢献度 / 等级评价
 """
 from __future__ import annotations
 
@@ -31,8 +32,8 @@ conn = get_connection()
 
 st.title(t("📊 销售数据查询"))
 st.caption(t(
-    "数据源:【ASEAN】店舗別売上 集計専用 .xls (12 列源表) → sales_line → SKU 聚合 + JD库存 join · "
-    "对齐 SKU 一元管理表格 3月 22 列"
+    "数据源 3 张源表: sales_line(销售/毛利) + nst_inventory_snapshot(库存数/金额) "
+    "+ nst_turnover(回転率/平均在庫日数) · 对齐 SKU 一元管理表格 22 列"
 ))
 
 
@@ -124,31 +125,48 @@ agg["gross_margin"] = (
 ).where(agg["revenue"] > 0).fillna(0)
 
 # ============================================================
-# JD 库存 join
+# 库存 join · nst_inventory_snapshot (来自 輸出通常在庫数残数検索結果.xls)
+# 直接拉取 qty_on_hand (I 列 手持合計) + total_amount (M 列 合計金額)
+# 按 item_code SUM 多 location
 # ============================================================
-df_warehouse = _df("SELECT product_code, jan, stock_available FROM warehouse_stock")
-if not df_warehouse.empty:
-    df_warehouse["product_code"] = df_warehouse["product_code"].astype(str).str.strip()
-    df_warehouse["stock_available"] = pd.to_numeric(
-        df_warehouse["stock_available"], errors="coerce"
-    ).fillna(0).astype(int)
-    jd_by_code = (
-        df_warehouse.groupby("product_code", as_index=False)["stock_available"]
-        .sum().rename(columns={"product_code": "item_code", "stock_available": "qty_on_hand"})
+df_inv = _df(
+    "SELECT item_code, qty_on_hand, total_amount, location, department "
+    "FROM nst_inventory_snapshot"
+)
+if not df_inv.empty:
+    df_inv["qty_on_hand"] = pd.to_numeric(df_inv["qty_on_hand"], errors="coerce").fillna(0)
+    df_inv["total_amount"] = pd.to_numeric(df_inv["total_amount"], errors="coerce").fillna(0)
+    inv_agg = df_inv.groupby("item_code", as_index=False).agg(
+        qty_on_hand=("qty_on_hand", "sum"),
+        inv_value=("total_amount", "sum"),
     )
-    agg = agg.merge(jd_by_code, on="item_code", how="left")
-    # 若按 item_code 找不到, 试 jan(=upc)
-    miss = agg[agg["qty_on_hand"].isna()].copy()
-    if not miss.empty and "upc" in agg.columns:
-        jd_by_jan = (
-            df_warehouse.groupby("jan", as_index=False)["stock_available"]
-            .sum().rename(columns={"jan": "upc", "stock_available": "qty_on_hand_jan"})
-        )
-        agg = agg.merge(jd_by_jan, on="upc", how="left")
-        agg["qty_on_hand"] = agg["qty_on_hand"].fillna(agg["qty_on_hand_jan"])
-        agg = agg.drop(columns=["qty_on_hand_jan"])
-agg["qty_on_hand"] = agg.get("qty_on_hand", 0).fillna(0).astype(int) \
-    if "qty_on_hand" in agg.columns else 0
+    agg = agg.merge(inv_agg, on="item_code", how="left")
+agg["qty_on_hand"] = pd.to_numeric(agg.get("qty_on_hand"), errors="coerce").fillna(0).astype(int)
+agg["inv_value"] = pd.to_numeric(agg.get("inv_value"), errors="coerce").fillna(0)
+
+# ============================================================
+# 库存周转率 join · nst_turnover (来自【ASEAN】在庫回転率.xls)
+# 直接拉取 turnover_rate (G 列 回転率) + avg_days_on_hand (H 列 平均在庫日数)
+# ============================================================
+df_turn = _df(
+    "SELECT item_code, turnover_rate, avg_days_on_hand, department "
+    "FROM nst_turnover"
+)
+if not df_turn.empty:
+    # 仅取 輸出事業 部门（如有 department 字段）
+    if "department" in df_turn.columns:
+        mask = df_turn["department"].astype(str).str.contains("輸出", na=False)
+        if mask.any():
+            df_turn = df_turn[mask | df_turn["department"].isna()]
+    df_turn["turnover_rate"] = pd.to_numeric(df_turn["turnover_rate"], errors="coerce")
+    df_turn["avg_days_on_hand"] = pd.to_numeric(df_turn["avg_days_on_hand"], errors="coerce")
+    turn_agg = df_turn.groupby("item_code", as_index=False).agg(
+        turnover_rate=("turnover_rate", "max"),       # 同 SKU 多行取最大
+        avg_days_on_hand=("avg_days_on_hand", "max"),
+    )
+    agg = agg.merge(turn_agg, on="item_code", how="left")
+agg["turnover_rate"] = pd.to_numeric(agg.get("turnover_rate"), errors="coerce").fillna(0)
+agg["avg_days_on_hand"] = pd.to_numeric(agg.get("avg_days_on_hand"), errors="coerce").fillna(0)
 
 # 关键词过滤
 if keyword.strip():
@@ -186,18 +204,15 @@ c5.metric(t("毛利率"), f"{total_mgn:.2f}%")
 st.divider()
 
 # ============================================================
-# 衍生指标 + 22 列输出
+# 衍生指标 + 22 列输出（库存数/库存金额/回転率/平均在庫日数 已直接拉取，不再算）
 # ============================================================
 agg["unit_price"] = (
     agg["revenue"] / agg["qty_sold"]
 ).where(agg["qty_sold"] > 0).fillna(0)
-agg["inv_value"] = agg["qty_on_hand"] * (
-    agg["defined_cost"] / agg["qty_sold"]
-).where(agg["qty_sold"] > 0).fillna(0)
-agg["turnover_m"] = (
-    agg["qty_sold"] / agg["qty_on_hand"]
-).where(agg["qty_on_hand"] > 0).fillna(0)
-agg["doh"] = (30.0 / agg["turnover_m"]).where(agg["turnover_m"] > 0).fillna(0)
+# 月周转率直接来自 nst_turnover.turnover_rate
+agg["turnover_m"] = agg["turnover_rate"]
+# 平均在庫日数直接来自 nst_turnover.avg_days_on_hand
+agg["doh"] = agg["avg_days_on_hand"]
 agg["cross_ratio_m"] = agg["turnover_m"] * agg["gross_margin"] * 100
 agg["turnover_y"] = agg["turnover_m"] * 12
 agg["cross_ratio_y"] = agg["cross_ratio_m"] * 12
