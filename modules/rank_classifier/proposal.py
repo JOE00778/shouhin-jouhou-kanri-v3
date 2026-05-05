@@ -154,6 +154,44 @@ def generate_proposal(
         lead_time_map = {row['jan']: row['lead_time_days']
                          for row in conn.execute("SELECT jan, lead_time_days FROM supply_cycle").fetchall()}
 
+        # 5b. 3 个月无动销标记 (Boss 新增规则)
+        # 窗口 = period_end 前推 3 个月; 若没传 period_end, 默认用 sales_line 中最大 period_end
+        no_sales_3m_set: set[str] = set()
+        try:
+            from datetime import date as _date
+            if period_end:
+                _ref_end = _date.fromisoformat(period_end)
+            else:
+                _row = conn.execute(
+                    "SELECT MAX(period_end) AS m FROM sales_line WHERE source='asean_monthly'"
+                ).fetchone()
+                _ref_end = _date.fromisoformat(_row['m']) if _row and _row['m'] else None
+
+            if _ref_end:
+                # 前推约 3 个月 (90 天) 起点
+                from datetime import timedelta as _td
+                _ref_start = (_ref_end - _td(days=90)).isoformat()
+                _ref_end_iso = _ref_end.isoformat()
+                # 该窗口内有过销售的 SKU
+                _active_skus = {
+                    r['item_code']
+                    for r in conn.execute(
+                        """
+                        SELECT item_code
+                        FROM sales_line
+                        WHERE source='asean_monthly'
+                          AND period_start >= ? AND period_end <= ?
+                        GROUP BY item_code
+                        HAVING COALESCE(SUM(qty_sold), 0) > 0
+                        """,
+                        (_ref_start, _ref_end_iso),
+                    ).fetchall()
+                }
+                # 全 SKU 减去窗口活跃集 = 3 个月无动销
+                no_sales_3m_set = {row['item_code'] for row in sales_data} - _active_skus
+        except Exception:
+            no_sales_3m_set = set()
+
         # 6. 生成 proposal（含订货建议）
         proposals = []
         for row in sales_data:
@@ -166,18 +204,21 @@ def generate_proposal(
 
             netsuite_status = status_map.get(item_code, '取扱中')
             rank_pct = rank_pcts.get(item_code, 1.0)
+            no_sales_3m = item_code in no_sales_3m_set
 
             new_rank = classify_rank({
                 'netsuite_status': netsuite_status,
                 'acknowledged_action': None,
                 'sales_amount_rank_pct': rank_pct,
                 'gross_margin_rate': margin,
+                'no_sales_3m': no_sales_3m,
             })
             old_rank = old_rank_map.get(item_code, 'NEW')
 
             # 等级波动标记（升 / 降 / 维持）
             rank_order = {'A': 4, 'Aランク': 4, 'Bランク': 3, 'B': 3,
-                          'Cランク': 2, 'C': 2, 'NEW': 1, '停售': 0,
+                          'Cランク': 2, 'C': 2, 'NEW': 1,
+                          '停售/处理': 0, '停售': 0,
                           '取扱中止': 0, 'メーカー取扱中止': 0}
             old_score = rank_order.get(str(old_rank), 1)
             new_score = rank_order.get(new_rank, 2)
@@ -202,6 +243,7 @@ def generate_proposal(
                 'margin': margin,
                 'rank_pct': rank_pct,
                 'netsuite_status': netsuite_status,
+                'no_sales_3m': no_sales_3m,
                 'monthly_qty_sold': monthly_qty_sold,
                 'qty_on_hand': qty_on_hand,
                 'reorder_point': reorder['reorder_point'],
