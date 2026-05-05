@@ -1,6 +1,9 @@
-"""模块 #18 每日销售 · 店舗別前日売上(最新日).
+"""模块 #18 前日销售数据 · 店舗別前日売上(最新日).
 
 数据源: store_profit_daily_lines
+  ← 来自【ASEAN】店舗別売上（前日）.xls (7 列源表)
+     A=アイテム/店舗 / B=表示名 / C=販売数量 / D=総収益
+     E=定義原価 / F=粗利 / G=粗利率
 显示:
 - 全店合计 KPI（数量/売上/定義原価/粗利/粗利率）
 - 店铺别明细排序表
@@ -16,12 +19,15 @@ import streamlit as st
 from shared.db import get_connection
 from shared.i18n import lang_selector, t
 
-st.set_page_config(page_title=t("每日销售"), page_icon="📆", layout="wide")
+st.set_page_config(page_title=t("前日销售数据"), page_icon="📆", layout="wide")
 lang_selector()
 conn = get_connection()
 
-st.title(t("📆 店铺别前日销售（最新日）"))
-st.caption(t("基于 store_profit_daily_lines · 仅 detail 行去重聚合"))
+st.title(t("📆 前日销售数据"))
+st.caption(t(
+    "数据源:【ASEAN】店舗別売上（前日）.xls → store_profit_daily_lines · "
+    "仅 detail 行去重聚合"
+))
 
 df = pd.DataFrame([dict(r) for r in conn.execute("SELECT * FROM store_profit_daily_lines").fetchall()])
 if df.empty:
