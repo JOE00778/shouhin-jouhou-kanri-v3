@@ -146,17 +146,13 @@ TRANSLATIONS_JA = {
 
 
 def lang_selector():
-    """主入口侧边栏调用一次。"""
-    options = list(LANGS.keys())
-    current = st.session_state.get("lang_label", "中文")
-    idx = options.index(current) if current in options else 0
+    """每个 page 调用一次，侧边栏顶部显示 🌐 切换器。"""
     selected = st.sidebar.selectbox(
         "🌐 Language / 言語",
-        options,
-        index=idx,
-        key="lang_selector_widget",
+        list(LANGS.keys()),
+        key="lang_label",  # widget 自管 session_state
     )
-    st.session_state["lang_label"] = selected
+    # 同步 lang code 到 session_state（t() 用）
     st.session_state["lang"] = LANGS[selected]
     return selected
 
