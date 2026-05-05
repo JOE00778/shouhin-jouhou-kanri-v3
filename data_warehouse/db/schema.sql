@@ -726,3 +726,23 @@ CREATE TABLE IF NOT EXISTS store_profit_daily_lines (
 CREATE INDEX IF NOT EXISTS idx_spdl_date  ON store_profit_daily_lines(report_date);
 CREATE INDEX IF NOT EXISTS idx_spdl_store ON store_profit_daily_lines(store);
 CREATE INDEX IF NOT EXISTS idx_spdl_type  ON store_profit_daily_lines(line_type);
+
+-- ============================================================
+-- 定义原价变更历史 · 用于 SKU 级波动图
+-- ============================================================
+CREATE TABLE IF NOT EXISTS std_cost_history (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  internal_id     TEXT NOT NULL,
+  item_code       TEXT,
+  display_name    TEXT,
+  std_cost_old    REAL,
+  std_cost_new    REAL NOT NULL,
+  diff            REAL,
+  diff_pct        REAL,
+  changed_at      TEXT NOT NULL,
+  changed_by      TEXT,
+  source          TEXT,    -- avg-driven / manual-override / batch
+  notes           TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_stdcost_hist_iid     ON std_cost_history(internal_id);
+CREATE INDEX IF NOT EXISTS idx_stdcost_hist_changed ON std_cost_history(changed_at);

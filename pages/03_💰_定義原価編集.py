@@ -313,6 +313,33 @@ elif step == 2:
                     rows, OUTPUTS_DIR, conn,
                     notes=f"snapshot={st.session_state.cs_decisions[0].get('snapshot_at', '?') if decisions else '?'}",
                 )
+
+                # 写入 std_cost_history（驱动 page 03b 波动图）
+                from datetime import datetime
+                changed_at = datetime.utcnow().isoformat()
+                hist_rows = []
+                for d in decisions:
+                    if d.get("action") != "UPDATE":
+                        continue
+                    old = d.get("std_cost_old")
+                    new = d.get("std_cost_new")
+                    diff = (new - old) if (old is not None and new is not None) else None
+                    diff_pct = (diff / old) if (diff is not None and old) else None
+                    src = "manual-override" if d.get("manual_override") else "avg-driven"
+                    hist_rows.append((
+                        d.get("internal_id"), d.get("item_code"), d.get("display_name"),
+                        old, new, diff, diff_pct, changed_at, "BOSS", src,
+                        f"snapshot={d.get('snapshot_at', '?')}",
+                    ))
+                if hist_rows:
+                    conn.executemany(
+                        "INSERT INTO std_cost_history(internal_id,item_code,display_name,"
+                        "std_cost_old,std_cost_new,diff,diff_pct,changed_at,changed_by,source,notes) "
+                        "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                        hist_rows,
+                    )
+                    conn.commit()
+
                 st.session_state.cs_output_path = file_path
                 st.session_state.cs_step = 3
                 st.rerun()
