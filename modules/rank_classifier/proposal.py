@@ -41,33 +41,28 @@ def calc_reorder(monthly_sales: float, lead_time_days: int, rank: str) -> dict:
     }
 
 
-def generate_proposal(quarter: str = '2026-Q1', db_path: str = 'data_warehouse/warehouse.db') -> List[dict]:
+def generate_proposal(
+    quarter: str = '2026-Q1',
+    db_path: str = 'data_warehouse/warehouse.db',
+    *,
+    period_start: str | None = None,
+    period_end: str | None = None,
+) -> List[dict]:
     """
     生成等级判定建议清单（proposal）
 
-    流程：
-    1. 读 nst_store_sales 按 SKU 聚合（販売数量 × 単価 = 売上、平均粗利率）
-    2. 读 nst_inventory_snapshot 取 取扱区分（handling_status）
-    3. 跑 calc_sales_rank → 拿 rank_pct
-    4. 每 SKU 调 classify_rank 拿 new_rank
-    5. 跟现有 item_master_netsuite.rank（旧档）对比 → 输出建议清单
-
     Args:
-        quarter: e.g. '2026-Q1'
+        quarter: 仅作为 metadata 标识 (e.g. 'FY2026-Q1' / '2026-04')
         db_path: SQLite DB path
+        period_start / period_end: 'YYYY-MM-DD' 期间过滤
+            - 月度: 都传单期间 (例 '2026-04-01' ~ '2026-04-30')
+              SQL 用 = 精确匹配 sales_line.period_start/period_end
+            - 季度: 传 Q 范围 (例 '2026-03-01' ~ '2026-05-31')
+              SQL 用 >= / <= 范围,聚合 3 个月度报表
+            - 都不传: 聚合全部 asean_monthly (不分期间, 兼容旧调用)
 
     Returns:
-        [{
-            'sku': str,
-            'name': str,
-            'old_rank': str,
-            'new_rank': Rank,
-            'sales': float,
-            'margin': float,
-            'rank_pct': float,
-            'netsuite_status': str,
-            'acknowledged_action': str | None
-        }, ...]
+        list of dicts (含 sku/old_rank/new_rank/sales/margin/rank_pct 等)
     """
     db_path = Path(db_path)
     if not db_path.exists():
@@ -80,8 +75,35 @@ def generate_proposal(quarter: str = '2026-Q1', db_path: str = 'data_warehouse/w
         # ========================================================
         # SKU 集合 + 销售聚合 + 取扱区分 全部从 sales_line 拉
         # Boss 决定: 商品等级判定 与库存无关, 完全基于销售数据
+        # 期间过滤:
+        #   - 月度: period_start = X AND period_end = Y (精确匹配单月)
+        #   - 季度: period_start >= Q_start AND period_end <= Q_end (3 个月聚合)
+        #   - 不传: 聚合所有 asean_monthly (旧行为)
         # ========================================================
-        sales_data = conn.execute("""
+        if period_start and period_end:
+            # 自动判断单月度 vs 季度: 期间跨度 ≤ 35 天 → 单月精确匹配; 否则范围
+            from datetime import date as _date
+            try:
+                _ds = _date.fromisoformat(period_start)
+                _de = _date.fromisoformat(period_end)
+                _delta_days = (_de - _ds).days
+            except Exception:
+                _delta_days = 999
+            if _delta_days <= 35:
+                # 单月度精确匹配
+                where_clause = "WHERE source = 'asean_monthly' AND period_start = ? AND period_end = ?"
+                params = (period_start, period_end)
+            else:
+                # 季度范围 (3 个月聚合)
+                where_clause = (
+                    "WHERE source = 'asean_monthly' "
+                    "AND period_start >= ? AND period_end <= ?"
+                )
+                params = (period_start, period_end)
+        else:
+            where_clause = "WHERE source = 'asean_monthly'"
+            params = ()
+        sales_data = conn.execute(f"""
             SELECT
                 item_code,
                 MIN(display_name) as display_name,
@@ -90,9 +112,9 @@ def generate_proposal(quarter: str = '2026-Q1', db_path: str = 'data_warehouse/w
                 COALESCE(AVG(gross_margin), 0) as avg_margin,
                 COALESCE(SUM(qty_sold), 0) as total_qty
             FROM sales_line
-            WHERE source = 'asean_monthly'
+            {where_clause}
             GROUP BY item_code
-        """).fetchall()
+        """, params).fetchall()
 
         if not sales_data:
             return []

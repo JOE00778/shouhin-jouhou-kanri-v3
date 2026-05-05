@@ -94,9 +94,29 @@ with tab1:
     if 'proposal_period_label' not in st.session_state:
         st.session_state.proposal_period_label = None
 
+    # 月度 → 期间 (start/end) 映射: 当月 1 号 ~ 月末
+    def _month_range(ym: str) -> tuple[str, str]:
+        """'2026-04' → ('2026-04-01', '2026-04-30')"""
+        from datetime import date as _date, timedelta as _td
+        y, m = map(int, ym.split("-"))
+        first = _date(y, m, 1)
+        if m == 12:
+            next_first = _date(y + 1, 1, 1)
+        else:
+            next_first = _date(y, m + 1, 1)
+        last = next_first - _td(days=1)
+        return first.isoformat(), last.isoformat()
+
+    # 季度 → 期间 (start/end) 范围
+    Q_RANGES_DATE = {
+        'FY2026-Q1': ('2026-03-01', '2026-05-31'),
+        'FY2026-Q2': ('2026-06-01', '2026-08-31'),
+        'FY2026-Q3': ('2026-09-01', '2026-11-30'),
+        'FY2026-Q4': ('2026-12-01', '2027-02-28'),
+        'FY2025-Q4': ('2025-12-01', '2026-02-28'),
+    }
+
     # 两个粒度并排:
-    # 左侧: 月度 selector + 月度按钮
-    # 右侧: 季度 selector + 季度按钮
     g1, g2 = st.columns(2)
     with g1:
         st.markdown(f"**{t('📅 按月度')}**")
@@ -104,11 +124,14 @@ with tab1:
             t("月度"), MONTH_OPTIONS, index=0, key="rank_month_sel",
         )
         if st.button(t("🔄 按月度 生成等级建议"), use_container_width=True, key="btn_rank_month"):
+            ms, me = _month_range(sel_month)
             with st.spinner(t("跑 generate_proposal...")):
-                # generate_proposal 当前用 quarter 参数,这里复用为 period 标识
-                data = generate_proposal(sel_month, str(DB))
+                data = generate_proposal(
+                    sel_month, str(DB),
+                    period_start=ms, period_end=me,
+                )
                 st.session_state.proposal_data = data
-                st.session_state.proposal_period_label = f"月度 {sel_month}"
+                st.session_state.proposal_period_label = f"月度 {sel_month} ({ms} ~ {me})"
             st.success(t(f"✓ [月度 {sel_month}] 已生成 {len(data)} 条建议"))
 
     with g2:
@@ -121,8 +144,12 @@ with tab1:
             key="rank_q_sel",
         )
         if st.button(t("🔄 按季度 生成等级建议"), use_container_width=True, type="primary", key="btn_rank_q"):
+            qs, qe = Q_RANGES_DATE.get(q, (None, None))
             with st.spinner(t("跑 generate_proposal...")):
-                data = generate_proposal(q, str(DB))
+                data = generate_proposal(
+                    q, str(DB),
+                    period_start=qs, period_end=qe,
+                )
                 st.session_state.proposal_data = data
                 st.session_state.proposal_period_label = f"季度 {q} ({QUARTER_RANGES.get(q,'?')})"
             st.success(t(f"✓ [季度 {q}] 已生成 {len(data)} 条建议"))
