@@ -770,3 +770,84 @@ CREATE TABLE IF NOT EXISTS store_profit_lines (
 );
 CREATE INDEX IF NOT EXISTS idx_spl_period ON store_profit_lines(report_period);
 CREATE INDEX IF NOT EXISTS idx_spl_store  ON store_profit_lines(store);
+
+-- ============================================================
+-- Shopee 财务 v2 · 数据源对齐 Boss 提供的两份原表
+-- ============================================================
+
+-- 订单导出 (订单导出-*.xlsx Sheet0, 8 列)
+-- A=支付币种 B=单价 C=发货数量 D=本地SKU E=支付金额 F=平台 G=订单号 H=店铺
+CREATE TABLE IF NOT EXISTS shopee_orders_raw (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  currency        TEXT,                  -- 支付币种
+  unit_price      TEXT,                  -- 单价 (多 SKU 时 \n 分隔)
+  ship_qty        TEXT,                  -- 发货数量 (多 SKU 时 \n 分隔)
+  local_sku       TEXT,                  -- 本地SKU = jan (多 SKU 时 \n 分隔)
+  payment_amount  REAL,                  -- 支付金额
+  platform        TEXT,                  -- 平台 (Shopee 等)
+  order_no        TEXT NOT NULL,         -- 订单号
+  shop_name       TEXT,                  -- 店铺
+  source_file     TEXT,
+  imported_at     TEXT NOT NULL,
+  UNIQUE(order_no)
+);
+CREATE INDEX IF NOT EXISTS idx_shopee_orders_raw_orderno ON shopee_orders_raw(order_no);
+CREATE INDEX IF NOT EXISTS idx_shopee_orders_raw_shop    ON shopee_orders_raw(shop_name);
+
+-- 拨款明细 (ph.mtkshop.ph.income.*.xlsx Income sheet, R6 表头, 46 列)
+CREATE TABLE IF NOT EXISTS shopee_income_lines (
+  id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+  seq                      INTEGER,
+  order_no                 TEXT NOT NULL,
+  refund_id                TEXT,
+  buyer_account            TEXT,
+  order_created_at         TEXT,
+  payment_method           TEXT,
+  hot_listing              TEXT,
+  payment_method_detail    TEXT,
+  installment_plan         TEXT,
+  installment_rate         TEXT,
+  payout_completed_at      TEXT,
+  gross_price              REAL,
+  product_discount         REAL,
+  refund_amount            REAL,
+  shopee_rebate            REAL,
+  seller_voucher           REAL,
+  seller_voucher_jv        REAL,
+  seller_shopee_coin       REAL,
+  seller_shopee_coin_jv    REAL,
+  buyer_shipping           REAL,
+  shopee_shipping_subsidy  REAL,
+  seller_shipping          REAL,
+  return_shipping          REAL,
+  return_to_seller_ship    REAL,
+  shipping_insurance_save  REAL,
+  affiliate_commission     REAL,
+  commission               REAL,
+  fbs_overseas_fail        REAL,
+  fbs_overseas_return      REAL,
+  service_fee              REAL,
+  shipping_insurance_fee   REAL,
+  transaction_fee          REAL,
+  fbs_fee                  REAL,
+  payout_amount            REAL,
+  promo_code               TEXT,
+  loss_compensation        REAL,
+  actual_weight            REAL,
+  seller_shipping_promo    REAL,
+  logistics_carrier        TEXT,
+  logistics_name           TEXT,
+  refund_cash              REAL,
+  prorated_shopee_coin     REAL,
+  prorated_shopee_voucher  REAL,
+  prorated_bank_promo      REAL,
+  prorated_payment_promo   REAL,
+  seller_account           TEXT,
+  payout_date              TEXT,
+  source_file              TEXT,
+  imported_at              TEXT NOT NULL,
+  UNIQUE(order_no, refund_id)
+);
+CREATE INDEX IF NOT EXISTS idx_shopee_income_orderno     ON shopee_income_lines(order_no);
+CREATE INDEX IF NOT EXISTS idx_shopee_income_payoutdate  ON shopee_income_lines(payout_date);
+CREATE INDEX IF NOT EXISTS idx_shopee_income_seller      ON shopee_income_lines(seller_account);

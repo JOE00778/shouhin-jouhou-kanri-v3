@@ -1,191 +1,219 @@
-"""模块 ④ Shopee 財務 · 静态版（API 后置）。
+"""模块 ④ Shopee 財務 v2 · 数据源对齐 Boss 提供的两份原表.
 
-支持：
-- 月度选择器（2026-04 有数据）
-- 站点切换 tab（PH / 全平台）
-- KPI 卡片：总收入 / 总扣费 / 净到账 / 订单数 / 退款数
-- 拨款汇总
-- 订单级对账（含 fee 分列）
-- 站点对比图表
+数据源:
+1. `shopee_orders_raw`
+   ← 来自 订单导出-*.xlsx Sheet0 (8 列)
+   A=支付币种 B=单价 C=发货数量 D=本地SKU E=支付金额 F=平台 G=订单号 H=店铺
+   订单维度，提供 订单号 + SKU + 售价 + 平台/店铺
+
+2. `shopee_income_lines`
+   ← 来自 ph.mtkshop.ph.income.已拨款.*.xlsx Income sheet (R6 表头, 46 列)
+   拨款维度，提供各项扣费 + 拨款金额
+
+业务: 按 订单号 join → 订单级对账（商品原价 → 各项扣费 → 净拨款）
 """
 from __future__ import annotations
 
 import pandas as pd
-import sqlite3
 import streamlit as st
-from shared.i18n import t, lang_selector
-import plotly.express as px
-from pathlib import Path
+
+from shared.db import get_connection
+from shared.i18n import lang_selector, t
 
 st.set_page_config(page_title=t("Shopee 財務"), page_icon="💱", layout="wide")
 lang_selector()
-st.title(t("💱 Shopee 財務"))
-st.caption(t("Shopee 拨款 → 各项扣费 → 净到账 全链路对账（4 月份数据）"))
-
-from shared.db import get_connection, DB_PATH
-DB = DB_PATH
 conn = get_connection()
-conn.row_factory = sqlite3.Row
 
-# 月度选择器（默认 2026-04）
-ym = st.selectbox(t("月度"), ['2026-04'], index=0)
+st.title(t("💱 Shopee 財務"))
+st.caption(t(
+    "数据源: 订单导出.xlsx (订单+SKU) + ph.mtkshop.ph.income.已拨款.xlsx (拨款扣费) · "
+    "按订单号对账"
+))
 
-# 检查数据
-order_count = conn.execute("SELECT COUNT(*) FROM shopee_orders").fetchone()[0]
-if order_count == 0:
-    st.warning(t("⚠️ 无数据。请在「⚙️ 数据导入与设置」上传 Shopee 拨款 + 订单 EXCEL。"))
+
+def _df(sql: str, params=None) -> pd.DataFrame:
+    rs = conn.execute(sql, params or {}).fetchall()
+    return pd.DataFrame([dict(r) for r in rs])
+
+
+# ============================================================
+# 数据加载
+# ============================================================
+df_orders = _df("SELECT * FROM shopee_orders_raw")
+df_income = _df("SELECT * FROM shopee_income_lines")
+
+if df_orders.empty and df_income.empty:
+    st.warning(t(
+        "⚠️ 数据为空。请到「⚙️ 数据导入与设置」上传:\n"
+        "1) 订单导出-*.xlsx (订单 ID + SKU)\n"
+        "2) ph.mtkshop.ph.income.已拨款.*.xlsx (拨款扣费)"
+    ))
     st.stop()
 
-# 获取平台列表
-platforms = pd.read_sql_query(
-    "SELECT DISTINCT platform FROM shopee_orders WHERE platform IS NOT NULL",
-    conn
-)
-platform_list = sorted(platforms['platform'].tolist()) if not platforms.empty else ['Shopee']
+# ============================================================
+# 期间筛选 (按拨款时间)
+# ============================================================
+periods = []
+if not df_income.empty and "payout_date" in df_income.columns:
+    periods = sorted(df_income["payout_date"].dropna().unique().tolist(), reverse=True)
 
-# 站点切换 tab
-tab_labels = platform_list + ['全平台']
-tabs = st.tabs(tab_labels)
+c1, c2, c3 = st.columns([1.5, 1.5, 1])
+with c1:
+    if periods:
+        sel_period = st.selectbox(t("拨款日期"), [t("全部")] + periods)
+        if sel_period != t("全部"):
+            df_income = df_income[df_income["payout_date"] == sel_period]
+    else:
+        sel_period = t("全部")
+with c2:
+    keyword = st.text_input(t("订单号搜索"), "")
+with c3:
+    shops = []
+    if not df_orders.empty and "shop_name" in df_orders.columns:
+        shops = sorted(df_orders["shop_name"].dropna().unique().tolist())
+    if shops:
+        sel_shop = st.selectbox(t("店铺"), [t("全部")] + shops)
+        if sel_shop != t("全部"):
+            df_orders = df_orders[df_orders["shop_name"] == sel_shop]
 
-for tab_idx, (tab, plat) in enumerate(zip(tabs, platform_list + [None])):
-    with tab:
-        # SQL 过滤条件
-        if plat is None:
-            plat_filter = ""
-            plat_where = ""
-        else:
-            plat_filter = f"AND platform = '{plat}'"
-            plat_where = f"WHERE platform = '{plat}'"
+if keyword.strip():
+    kw = keyword.strip()
+    if not df_orders.empty:
+        df_orders = df_orders[df_orders["order_no"].astype(str).str.contains(kw, na=False)]
+    if not df_income.empty:
+        df_income = df_income[df_income["order_no"].astype(str).str.contains(kw, na=False)]
 
-        # KPI 卡片
-        c1, c2, c3, c4, c5 = st.columns(5)
+# ============================================================
+# 数值化
+# ============================================================
+fee_cols = [
+    "gross_price", "product_discount", "refund_amount", "shopee_rebate",
+    "seller_voucher", "seller_voucher_jv", "seller_shopee_coin", "seller_shopee_coin_jv",
+    "buyer_shipping", "shopee_shipping_subsidy", "seller_shipping",
+    "return_shipping", "return_to_seller_ship", "shipping_insurance_save",
+    "affiliate_commission", "commission",
+    "fbs_overseas_fail", "fbs_overseas_return", "service_fee",
+    "shipping_insurance_fee", "transaction_fee", "fbs_fee",
+    "payout_amount",
+]
+if not df_income.empty:
+    for c in fee_cols:
+        if c in df_income.columns:
+            df_income[c] = pd.to_numeric(df_income[c], errors="coerce").fillna(0)
 
-        # 总收入（payment_amount > 0）
-        gross = pd.read_sql_query(
-            f"SELECT COALESCE(SUM(payment_amount), 0) AS s, COUNT(*) AS n FROM shopee_orders WHERE payment_amount > 0 {plat_filter}",
-            conn
-        ).iloc[0]
+# ============================================================
+# KPI
+# ============================================================
+n_orders = len(df_orders) if not df_orders.empty else 0
+n_income = len(df_income) if not df_income.empty else 0
 
-        # 总扣费（费用表中的金额）
-        fees_query = f"""
-            SELECT COALESCE(SUM(f.amount), 0) AS s FROM shopee_fees f
-            JOIN shopee_orders o ON f.order_no = o.order_no
-            WHERE f.amount < 0 {plat_filter}
-        """
-        fees = pd.read_sql_query(fees_query, conn).iloc[0]
+if not df_income.empty:
+    total_gross = float(df_income["gross_price"].sum()) if "gross_price" in df_income else 0.0
+    total_payout = float(df_income["payout_amount"].sum()) if "payout_amount" in df_income else 0.0
+    # 总扣费 = 商品原价 - 拨款金额 (粗略口径)
+    total_deduct = total_gross - total_payout
+    n_refund = int((df_income["refund_amount"] < 0).sum()) if "refund_amount" in df_income else 0
+else:
+    total_gross = total_payout = total_deduct = 0.0
+    n_refund = 0
 
-        # 净到账
-        net_amount = gross['s'] + fees['s']
+c1, c2, c3, c4, c5 = st.columns(5)
+c1.metric(t("订单数"), f"{n_orders:,}")
+c2.metric(t("拨款行数"), f"{n_income:,}")
+c3.metric(t("商品原价合计"), f"₱{total_gross:,.0f}")
+c4.metric(t("总扣费"), f"₱{total_deduct:,.0f}")
+c5.metric(t("拨款金额合计"), f"₱{total_payout:,.0f}")
 
-        # 退款数
-        refund_count = conn.execute(
-            f"SELECT COUNT(*) FROM shopee_orders WHERE payment_amount < 0 {plat_filter}"
-        ).fetchone()[0]
+st.divider()
 
-        c1.metric(t("总收入"), f"¥{gross['s']:,.0f}" if gross['s'] else "¥0")
-        c2.metric(t("总扣费"), f"¥{abs(fees['s']):,.0f}" if fees['s'] else "¥0")
-        c3.metric(t("净到账"), f"¥{net_amount:,.0f}")
-        c4.metric(t("订单数"), int(gross['n']))
-        c5.metric(t("退款数"), int(refund_count))
+# ============================================================
+# Tab 视图
+# ============================================================
+tab_recon, tab_orders, tab_income = st.tabs([
+    t("📋 订单级对账（join）"),
+    t("📦 订单导出（原始）"),
+    t("💰 拨款明细（原始）"),
+])
 
-        # 拨款汇总
-        st.subheader(t("📥 拨款汇总"))
-        st.info(t("📌 4 月拨款数据已录入系统。详细拨款明细表后续通过 Shopee API 同步。"))
+with tab_recon:
+    if df_orders.empty or df_income.empty:
+        st.info(t("订单导出 + 拨款明细 都需上传后才能对账。"))
+    else:
+        # 按订单号 join
+        merged = df_orders.merge(
+            df_income[[
+                "order_no", "buyer_account", "order_created_at", "payout_completed_at",
+                "gross_price", "product_discount", "refund_amount",
+                "commission", "service_fee", "transaction_fee",
+                "buyer_shipping", "seller_shipping",
+                "payout_amount", "payout_date",
+            ]],
+            on="order_no",
+            how="outer",
+            suffixes=("_o", "_i"),
+        )
+        # 计算净到账（= 拨款金额 if 有, 否则 = payment_amount - 各项扣费）
+        merged["净到账"] = pd.to_numeric(merged.get("payout_amount"), errors="coerce").fillna(0)
 
-        # 订单级对账
-        st.subheader(t("📋 订单级对账"))
-
-        orders = pd.read_sql_query(
-            f"""
-            SELECT o.order_no, o.sku_or_jan, o.unit_price, o.qty, o.payment_amount,
-                   o.currency, o.platform, o.shop_name
-            FROM shopee_orders o
-            {plat_where}
-            ORDER BY o.order_no
-            """,
-            conn
+        show_cols = [
+            "order_no", "platform", "shop_name", "local_sku",
+            "currency", "payment_amount",
+            "buyer_account", "order_created_at",
+            "gross_price", "product_discount", "refund_amount",
+            "commission", "service_fee", "transaction_fee",
+            "buyer_shipping", "seller_shipping",
+            "payout_amount", "payout_date", "净到账",
+        ]
+        show_cols = [c for c in show_cols if c in merged.columns]
+        merged = merged[show_cols].sort_values("order_no")
+        st.dataframe(merged, use_container_width=True, hide_index=True, height=500)
+        st.caption(t(f"共 {len(merged):,} 行 (订单 ⊕ 拨款 outer join)"))
+        csv = merged.to_csv(index=False).encode("utf-8-sig")
+        st.download_button(
+            t("📥 对账明细 CSV"),
+            data=csv,
+            file_name=f"shopee_recon_{sel_period}.csv",
+            mime="text/csv",
         )
 
-        if not orders.empty:
-            # 关联费用表，按 fee_type 分列
-            order_nos_list = orders['order_no'].astype(str).tolist()
-            if order_nos_list:
-                placeholders = ','.join(f"'{no}'" for no in order_nos_list)
-                fees_pivot = pd.read_sql_query(
-                    f"""
-                    SELECT order_no, fee_type, SUM(amount) as amount
-                    FROM shopee_fees
-                    WHERE order_no IN ({placeholders})
-                    GROUP BY order_no, fee_type
-                    """,
-                    conn
-                )
+with tab_orders:
+    if df_orders.empty:
+        st.info(t("订单导出.xlsx 未上传。"))
+    else:
+        cols = ["order_no", "platform", "shop_name", "currency",
+                "local_sku", "unit_price", "ship_qty", "payment_amount"]
+        cols = [c for c in cols if c in df_orders.columns]
+        st.dataframe(df_orders[cols], use_container_width=True, hide_index=True, height=500)
+        st.caption(t(f"共 {len(df_orders):,} 条订单"))
+        csv = df_orders[cols].to_csv(index=False).encode("utf-8-sig")
+        st.download_button(
+            t("📥 订单导出 CSV"),
+            data=csv,
+            file_name="shopee_orders_raw.csv",
+            mime="text/csv",
+            key="dl_orders",
+        )
 
-                if not fees_pivot.empty:
-                    # 创建费用分列表
-                    fees_wide = fees_pivot.pivot_table(
-                        index='order_no',
-                        columns='fee_type',
-                        values='amount',
-                        aggfunc='sum',
-                        fill_value=0
-                    ).reset_index()
-
-                    # 合并订单和费用
-                    merged = orders.merge(fees_wide, on='order_no', how='left').fillna(0)
-
-                    # 计算净金额
-                    fee_cols = [col for col in merged.columns if col not in
-                               ['order_no', 'sku_or_jan', 'unit_price', 'qty', 'payment_amount', 'currency', 'platform', 'shop_name']]
-                    if fee_cols:
-                        merged['净金额'] = merged['payment_amount'] + merged[fee_cols].sum(axis=1)
-                    else:
-                        merged['净金额'] = merged['payment_amount']
-
-                    # 重新排列列
-                    display_cols = ['order_no', 'sku_or_jan', 'unit_price', 'qty', 'payment_amount']
-                    display_cols.extend(sorted(fee_cols))
-                    display_cols.extend(['currency', 'platform', 'shop_name', '净金额'])
-                    display_cols = [col for col in display_cols if col in merged.columns]
-                    merged_display = merged[display_cols]
-
-                    st.dataframe(merged_display, use_container_width=True, height=400)
-                else:
-                    st.dataframe(orders, use_container_width=True, height=400)
-            else:
-                st.dataframe(orders, use_container_width=True, height=400)
-
-            st.caption(t(f"显示 {len(orders):,} 条订单"))
-        else:
-            st.info(t("该平台无订单"))
-
-        # 全平台对比图
-        if plat is None:
-            st.subheader(t("📊 站点对比 · 净到账"))
-            site_data = pd.read_sql_query(
-                """
-                SELECT
-                    o.platform AS 站点,
-                    COALESCE(SUM(o.payment_amount), 0) + COALESCE(SUM(f.amount), 0) AS 净到账
-                FROM shopee_orders o
-                LEFT JOIN shopee_fees f ON f.order_no = o.order_no
-                GROUP BY o.platform
-                ORDER BY 净到账 DESC
-                """,
-                conn
-            )
-            if not site_data.empty:
-                fig = px.bar(
-                    site_data,
-                    x='站点',
-                    y='净到账',
-                    color='站点',
-                    text='净到账',
-                    title="各站点净到账金额"
-                )
-                fig.update_traces(textposition='outside', texttemplate='¥%{text:,.0f}')
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info(t("无多站点数据"))
-
-conn.close()
+with tab_income:
+    if df_income.empty:
+        st.info(t("拨款明细.xlsx 未上传。"))
+    else:
+        cols = [
+            "seq", "order_no", "buyer_account", "order_created_at",
+            "payout_completed_at", "payout_date",
+            "gross_price", "product_discount", "refund_amount",
+            "commission", "service_fee", "transaction_fee",
+            "buyer_shipping", "shopee_shipping_subsidy", "seller_shipping",
+            "payout_amount",
+        ]
+        cols = [c for c in cols if c in df_income.columns]
+        st.dataframe(df_income[cols], use_container_width=True, hide_index=True, height=500)
+        st.caption(t(f"共 {len(df_income):,} 行拨款"))
+        csv = df_income[cols].to_csv(index=False).encode("utf-8-sig")
+        st.download_button(
+            t("📥 拨款明细 CSV"),
+            data=csv,
+            file_name="shopee_income_lines.csv",
+            mime="text/csv",
+            key="dl_income",
+        )
