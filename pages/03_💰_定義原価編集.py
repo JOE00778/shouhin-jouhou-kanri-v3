@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import pandas as pd
 import streamlit as st
+from shared.i18n import t
 
 from data_warehouse.exports.cost_update import CostUpdateExporter
 from modules.cost_sync.rules import (
@@ -31,10 +32,10 @@ from modules.cost_sync.rules import (
 )
 from shared.db import OUTPUTS_DIR, get_connection
 
-st.set_page_config(page_title="定義原価編集", page_icon="💰", layout="wide")
+st.set_page_config(page_title=t("定義原価編集"), page_icon="💰", layout="wide")
 conn = get_connection()
 
-st.title("💰 定義原価編集")
+st.title(t("💰 定義原価編集"))
 st.caption(
     f"NetSuite Standard Cost（定義原価）統一編集口 · "
     f"自動判定阈值 |Δ|≥{THRESHOLD_YEN:.0f}¥ 或 |Δ%|≥{THRESHOLD_PCT:.0%} · "

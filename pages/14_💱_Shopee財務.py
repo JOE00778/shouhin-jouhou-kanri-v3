@@ -13,11 +13,12 @@ from __future__ import annotations
 import pandas as pd
 import sqlite3
 import streamlit as st
+from shared.i18n import t
 import plotly.express as px
 from pathlib import Path
 
-st.set_page_config(page_title="Shopee 財務", page_icon="💱", layout="wide")
-st.title("💱 Shopee 財務")
+st.set_page_config(page_title=t("Shopee 財務"), page_icon="💱", layout="wide")
+st.title(t("💱 Shopee 財務"))
 st.caption("Shopee 拨款 → 各项扣费 → 净到账 全链路对账（4 月份数据）")
 
 from shared.db import get_connection, DB_PATH

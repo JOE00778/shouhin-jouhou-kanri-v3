@@ -15,15 +15,16 @@ from __future__ import annotations
 
 import pandas as pd
 import streamlit as st
+from shared.i18n import t
 import plotly.express as px
 
 from modules.inventory_health.metrics import THRESHOLD, batch_calc
 from shared.db import get_connection
 
-st.set_page_config(page_title="库存健康监控", page_icon="📦", layout="wide")
+st.set_page_config(page_title=t("库存健康监控"), page_icon="📦", layout="wide")
 conn = get_connection()
 
-st.title("📦 库存健康监控（JD-千叶仓库）")
+st.title(t("📦 库存健康监控（JD-千叶仓库）"))
 st.caption(
     "主判定：库存月数（ratio_months）· 健康黄金区 0.7-2.0 月 · "
     "🟢 ≤0.7 / 🟡 0.7-2 / 🟠 2-6 / 🔴 >6 月 · "

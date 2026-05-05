@@ -10,6 +10,7 @@ from __future__ import annotations
 import streamlit as st
 
 from shared.db import get_connection
+from shared.i18n import lang_selector, t
 from shared.supabase_client import is_configured
 
 # ============================================================
@@ -22,12 +23,15 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# 全局语言切换器（侧边栏顶部）
+lang_selector()
+
 conn = get_connection()
 
 # ============================================================
 # 首页内容
 # ============================================================
-st.title("📊 商品信息管理平台")
+st.title(f"📊 {t('商品信息管理')}")
 st.caption("SmikieJapan 综合商品分析与运营工具集 · Supabase 真源 + 本地缓存")
 
 # Supabase 连接状态

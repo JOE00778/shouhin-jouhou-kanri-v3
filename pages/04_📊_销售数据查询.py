@@ -10,14 +10,15 @@ from __future__ import annotations
 
 import pandas as pd
 import streamlit as st
+from shared.i18n import t
 
 from shared.db import get_connection
 from shared.markets import ALL_MARKETS, add_market_column
 
-st.set_page_config(page_title="销售数据查询", page_icon="📊", layout="wide")
+st.set_page_config(page_title=t("销售数据查询"), page_icon="📊", layout="wide")
 conn = get_connection()
 
-st.title("📊 销售数据查询")
+st.title(t("📊 销售数据查询"))
 st.caption("基于 NetSuite 销售导出 · 多维筛选 · 明细 + 聚合")
 
 

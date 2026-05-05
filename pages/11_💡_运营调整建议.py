@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 import streamlit as st
+from shared.i18n import t
 import pandas as pd
 import sqlite3
 from pathlib import Path
@@ -13,12 +14,12 @@ from modules.operation_advice.rules import (
     MARGIN_LOW, MARGIN_HIGH, TURNOVER_LOW, TURNOVER_HIGH
 )
 
-st.set_page_config(page_title="运营调整建议", page_icon="💡", layout="wide")
+st.set_page_config(page_title=t("运营调整建议"), page_icon="💡", layout="wide")
 
 from shared.db import DB_PATH, get_connection
 DB = DB_PATH
 
-st.title("💡 运营调整建议（B/C 档）")
+st.title(t("💡 运营调整建议（B/C 档）"))
 st.caption(
     f"双轴矩阵：毛利率 × 月周转率 → 5 档建议 · "
     f"阈值 毛利{MARGIN_LOW}/{MARGIN_HIGH}% · 周转{TURNOVER_LOW}/{TURNOVER_HIGH}"

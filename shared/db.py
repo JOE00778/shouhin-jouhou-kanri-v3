@@ -29,5 +29,7 @@ def get_connection() -> sqlite3.Connection:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     # 用 init_db 确保 schema 存在（首次启动）
     init_db(DB_PATH).close()
-    # 每次返回新连接（线程安全）
-    return sqlite3.connect(str(DB_PATH), check_same_thread=False)
+    # 每次返回新连接（线程安全）+ Row factory（让 row["col"] 索引访问可用）
+    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    return conn

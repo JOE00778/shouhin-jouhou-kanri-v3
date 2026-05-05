@@ -13,6 +13,7 @@ from datetime import datetime
 from pathlib import Path
 
 import streamlit as st
+from shared.i18n import t
 
 from data_warehouse.ingest.items import LocalItemMasterIngestor
 from data_warehouse.ingest.xls_ingest import (
@@ -21,10 +22,10 @@ from data_warehouse.ingest.xls_ingest import (
 )
 from shared.db import INPUTS_DIR, get_connection
 
-st.set_page_config(page_title="数据导入与设置", page_icon="⚙️", layout="wide")
+st.set_page_config(page_title=t("数据导入与设置"), page_icon="⚙️", layout="wide")
 conn = get_connection()
 
-st.title("⚙️ 数据导入与设置")
+st.title(t("⚙️ 数据导入与设置"))
 st.caption("把 NetSuite 标准导出 .xls 拖到这里，工具自动识别类型并入库")
 
 tab_import, tab_status, tab_logs, tab_legacy = st.tabs(

@@ -15,14 +15,15 @@ from __future__ import annotations
 
 import pandas as pd
 import streamlit as st
+from shared.i18n import t
 
 from shared.db import get_connection
 from shared.markets import ALL_MARKETS, add_market_column
 
-st.set_page_config(page_title="店铺别毛利", page_icon="🏪", layout="wide")
+st.set_page_config(page_title=t("店铺别毛利"), page_icon="🏪", layout="wide")
 conn = get_connection()
 
-st.title("🏪 店铺别毛利")
+st.title(t("🏪 店铺别毛利"))
 st.caption("基于 NetSuite 销售报表 · 自带毛利+毛利率，零计算直接展示")
 
 

@@ -8,13 +8,14 @@ from datetime import datetime, timezone
 
 import pandas as pd
 import streamlit as st
+from shared.i18n import t
 
 from shared.db import get_connection
 
-st.set_page_config(page_title="入荷困難商品", page_icon="🚫", layout="wide")
+st.set_page_config(page_title=t("入荷困難商品"), page_icon="🚫", layout="wide")
 conn = get_connection()
 
-st.title("🚫 入荷困難商品")
+st.title(t("🚫 入荷困難商品"))
 st.caption("人工录入难以入荷的商品 + 原因 + 备注 · 全量历史保留")
 
 

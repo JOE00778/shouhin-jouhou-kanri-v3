@@ -1,11 +1,12 @@
 import streamlit as st
+from shared.i18n import t
 import pandas as pd
 import sqlite3
 import subprocess
 from pathlib import Path
 from datetime import datetime
 
-st.set_page_config(page_title="改廃確認", page_icon="⚠️", layout="wide")
+st.set_page_config(page_title=t("改廃確認"), page_icon="⚠️", layout="wide")
 
 # ============================================================================
 # 函数定义（必须在使用前）
@@ -43,7 +44,7 @@ def handle_action(conn, row, action):
 # 页面布局
 # ============================================================================
 
-st.title("⚠️ 改廃確認（Boss-only）")
+st.title(t("⚠️ 改廃確認（Boss-only）"))
 st.caption("月度改廃信号审核 · 三按钮：取扱中止 / 継続 / 代替品調査 · 取扱中止自动联动等级=停売")
 
 from shared.db import get_connection, DB_PATH
