@@ -75,6 +75,30 @@ for i in range(0, len(modules), 2):
 
 st.divider()
 
+# ============================================================
+# 固定汇率表（公司对日元，Boss 维护，非市场实时）
+# ============================================================
+import pandas as pd
+from shared.forex import FX_TO_JPY, FX_SYMBOLS
+
+st.subheader(t("💱 公司对日元固定汇率"))
+st.caption(t("用于跨市场结算金额换算到 JPY 视角 · 非市场实时汇率 · 修改在 shared/forex.py"))
+
+fx_df = pd.DataFrame([
+    {
+        t("货币代码"): code,
+        t("符号"): FX_SYMBOLS.get(code, ""),
+        t("1 单位 → JPY"): rate,
+        t("示例 (1000 单位 → JPY)"): f"¥{rate * 1000:,.0f}",
+    }
+    for code, rate in FX_TO_JPY.items()
+    if code != "JPY"
+])
+st.dataframe(fx_df, use_container_width=True, hide_index=True)
+st.caption(t("📌 PHP = 2.4 (Boss 2026-05 确认) · 其他货币为占位值,请财务确认后修改"))
+
+st.divider()
+
 # 最近导入
 st.subheader(t("最近数据导入"))
 
