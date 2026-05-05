@@ -207,8 +207,8 @@ c5.metric(t("拨款金额合计 (¥)"), f"¥{total_payout:,.0f}")
 # 市场提示 (当前唯一)
 st.info(t(
     "📍 市场: 东南亚（Shopee + Lazada）· Coupang 等其他市场后置 · "
-    "💴 KPI 与聚合 tab 已按公司固定汇率换算为日元 (PHP=2.4 / USD=145) · "
-    "原始拨款明细 tab 保留 PHP 原值"
+    "💴 所有 tab (KPI / 聚合 / 原始) 都按 country × 公司固定汇率换算为日元 · "
+    "PHP=2.4 / TWD=4.57 / MYR=36.48 / SGD=113.44 / USD=145 等 (详见首页折叠区)"
 ))
 st.divider()
 
@@ -399,22 +399,27 @@ with tab_raw_o:
         )
 
 with tab_raw_i:
-    if df_income.empty:
+    if df_income_jpy.empty:
         st.info(t("拨款明细.xlsx 未上传。"))
     else:
+        st.caption(t(
+            "💴 所有金额已按 country (国家货币) × 公司固定汇率换算为日元 · "
+            "country=PHP×2.4 / TWD×4.57 / MYR×36.48 / SGD×113.44 / USD×145 等"
+        ))
         cols = [
-            "week", "month", "market", "seller_account", "payout_date",
+            "week", "month", "market", "country", "_jpy_rate",
+            "seller_account", "payout_date",
             "order_no", "buyer_account", "order_created_at",
             "gross_price", "product_discount", "refund_amount",
             "commission", "service_fee", "transaction_fee",
             "buyer_shipping", "seller_shipping",
             "payout_amount",
         ]
-        cols = [c for c in cols if c in df_income.columns]
-        st.dataframe(df_income[cols], use_container_width=True, hide_index=True, height=460)
-        st.caption(t(f"共 {len(df_income):,} 行拨款"))
-        csv = df_income[cols].to_csv(index=False).encode("utf-8-sig")
+        cols = [c for c in cols if c in df_income_jpy.columns]
+        st.dataframe(df_income_jpy[cols], use_container_width=True, hide_index=True, height=460)
+        st.caption(t(f"共 {len(df_income_jpy):,} 行拨款 (金额已换为 JPY)"))
+        csv = df_income_jpy[cols].to_csv(index=False).encode("utf-8-sig")
         st.download_button(
-            t("📥 拨款明细 CSV"), data=csv,
-            file_name="shopee_income_lines.csv", mime="text/csv", key="dl_i",
+            t("📥 拨款明细 CSV (JPY)"), data=csv,
+            file_name="shopee_income_lines_jpy.csv", mime="text/csv", key="dl_i",
         )
