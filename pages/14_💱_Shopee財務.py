@@ -20,6 +20,7 @@ import pandas as pd
 import streamlit as st
 
 from shared.db import get_connection
+from shared.forex import FX_TO_JPY
 from shared.i18n import lang_selector, t
 
 st.set_page_config(page_title=t("Shopee 財務"), page_icon="💱", layout="wide")
@@ -117,6 +118,15 @@ if not df_income.empty:
     if "platform" not in df_income.columns:
         df_income["platform"] = "Shopee"  # 拨款表都来自 Shopee 平台
 
+    # ============================================================
+    # 货币换算 → JPY (公司固定汇率, country code 即 currency code)
+    # 把所有金额字段乘以汇率,后续 sum/groupby 出来的就是 JPY 视角
+    # ============================================================
+    df_income["_jpy_rate"] = df_income["country"].map(FX_TO_JPY).fillna(1.0)
+    for c in fee_cols:
+        if c in df_income.columns:
+            df_income[c] = df_income[c] * df_income["_jpy_rate"]
+
 # 订单导出: 给每个订单算周(用 payout_date 不可得 → 用 income 表 join)
 # 简化: 仅做 shop_name → market 映射
 if not df_orders.empty:
@@ -185,12 +195,15 @@ else:
 c1, c2, c3, c4, c5 = st.columns(5)
 c1.metric(t("覆盖期数"), f"{n_periods:,}")
 c2.metric(t("订单数"), f"{n_orders:,}")
-c3.metric(t("商品原价合计"), f"₱{total_gross:,.0f}")
-c4.metric(t("总扣费"), f"₱{total_deduct:,.0f}")
-c5.metric(t("拨款金额合计"), f"₱{total_payout:,.0f}")
+c3.metric(t("商品原价合计 (¥)"), f"¥{total_gross:,.0f}")
+c4.metric(t("总扣费 (¥)"), f"¥{total_deduct:,.0f}")
+c5.metric(t("拨款金额合计 (¥)"), f"¥{total_payout:,.0f}")
 
 # 市场提示 (当前唯一)
-st.info(t("📍 市场: 东南亚（Shopee + Lazada）· Coupang 等其他市场后置"))
+st.info(t(
+    "📍 市场: 东南亚（Shopee + Lazada）· Coupang 等其他市场后置 · "
+    "💴 所有合计金额已按公司固定汇率换算为日元 (PHP=2.4 / USD=145 等,详见首页)"
+))
 st.divider()
 
 # ============================================================
