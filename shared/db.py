@@ -16,13 +16,18 @@ OUTPUTS_DIR = DATA_DIR / "outputs"
 DB_PATH = PROJECT_ROOT / "data_warehouse" / "warehouse.db"
 
 
-@st.cache_resource
 def get_connection() -> sqlite3.Connection:
-    """整个 Streamlit 进程共享一个连接（cache_resource 跨 rerun 持久）。
-    自动 init schema（幂等），生产首次启动会自动建 16 张表。
+    """每次新建连接 + check_same_thread=False（Streamlit Cloud 多线程安全）。
+    schema 自动 init（幂等），生产首次启动会自动建 16 张表。
+
+    注：不用 @st.cache_resource —— SQLite Connection 不能跨线程共享，
+    Streamlit 多 session 渲染时会报 ProgrammingError。
     """
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     INPUTS_DIR.mkdir(parents=True, exist_ok=True)
     OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    return init_db(DB_PATH)
+    # 用 init_db 确保 schema 存在（首次启动）
+    init_db(DB_PATH).close()
+    # 每次返回新连接（线程安全）
+    return sqlite3.connect(str(DB_PATH), check_same_thread=False)
