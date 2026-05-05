@@ -13,6 +13,7 @@ from shared.i18n import t, lang_selector
 from shared.db import get_connection
 
 st.set_page_config(page_title=t("入荷困難商品"), page_icon="🚫", layout="wide")
+lang_selector()
 conn = get_connection()
 
 st.title(t("🚫 入荷困難商品"))

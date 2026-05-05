@@ -23,6 +23,7 @@ from data_warehouse.ingest.xls_ingest import (
 from shared.db import INPUTS_DIR, get_connection
 
 st.set_page_config(page_title=t("数据导入与设置"), page_icon="⚙️", layout="wide")
+lang_selector()
 conn = get_connection()
 
 st.title(t("⚙️ 数据导入与设置"))

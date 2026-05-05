@@ -7,6 +7,7 @@ from pathlib import Path
 from datetime import datetime
 
 st.set_page_config(page_title=t("改廃確認"), page_icon="⚠️", layout="wide")
+lang_selector()
 
 # ============================================================================
 # 函数定义（必须在使用前）

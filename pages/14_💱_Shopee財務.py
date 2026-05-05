@@ -18,6 +18,7 @@ import plotly.express as px
 from pathlib import Path
 
 st.set_page_config(page_title=t("Shopee 財務"), page_icon="💱", layout="wide")
+lang_selector()
 st.title(t("💱 Shopee 財務"))
 st.caption(t("Shopee 拨款 → 各项扣费 → 净到账 全链路对账（4 月份数据）"))
 

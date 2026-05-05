@@ -4,6 +4,7 @@ import streamlit.components.v1 as components
 from pathlib import Path
 
 st.set_page_config(page_title=t("商品登录"), page_icon="📝", layout="wide")
+lang_selector()
 
 st.title(t("📝 商品登录"))
 st.caption(t("现有商品登録ツール（HTML 版）· 输出 NetSuite/JD/BM CSV · 第 2 步将加 Supabase 同步（T-022）"))

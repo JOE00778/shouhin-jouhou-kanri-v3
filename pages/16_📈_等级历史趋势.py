@@ -6,6 +6,7 @@ from pathlib import Path
 import plotly.graph_objects as go
 
 st.set_page_config(page_title=t("等级历史趋势"), page_icon="📈", layout="wide")
+lang_selector()
 
 from shared.db import get_connection, DB_PATH
 DB = DB_PATH

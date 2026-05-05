@@ -7,6 +7,7 @@ from datetime import datetime
 from modules.rank_classifier.proposal import generate_proposal, export_csv
 
 st.set_page_config(page_title=t("商品等级判定"), page_icon="🏷️", layout="wide")
+lang_selector()
 st.title(t("🏷️ 商品等级判定（季度·Boss-only）"))
 st.caption(t("基于销售前 80% × 利润率 ≥59% 的 4 档判定 (A/B/C/停售) · 仅 Boss 可确认变更"))
 

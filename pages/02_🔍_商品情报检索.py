@@ -23,6 +23,7 @@ from shared.i18n import t, lang_selector
 from shared.db import get_connection
 
 st.set_page_config(page_title=t("商品情报检索"), page_icon="🔍", layout="wide")
+lang_selector()
 conn = get_connection()
 
 st.title(t("🔍 商品情报检索"))

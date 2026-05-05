@@ -15,6 +15,7 @@ from modules.operation_advice.rules import (
 )
 
 st.set_page_config(page_title=t("运营调整建议"), page_icon="💡", layout="wide")
+lang_selector()
 
 from shared.db import DB_PATH, get_connection
 DB = DB_PATH

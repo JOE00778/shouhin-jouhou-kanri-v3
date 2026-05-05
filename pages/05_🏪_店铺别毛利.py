@@ -21,6 +21,7 @@ from shared.db import get_connection
 from shared.markets import ALL_MARKETS, add_market_column
 
 st.set_page_config(page_title=t("店铺别毛利"), page_icon="🏪", layout="wide")
+lang_selector()
 conn = get_connection()
 
 st.title(t("🏪 店铺别毛利"))
