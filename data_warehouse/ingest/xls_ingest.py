@@ -258,6 +258,12 @@ def _ingest_sales(
             if not item_code:
                 continue
 
+            # UPC (= JAN) 是销售数据基准 (Boss 决定)
+            # UPC 为空 → 跳过该行 (不落库)
+            upc = _to_str(raw.get("UPCコード"))
+            if not upc:
+                continue
+
             # 决定 store 值
             if has_store_column:
                 store = _to_str(raw.get("FB_店舗"))
@@ -269,7 +275,7 @@ def _ingest_sales(
             payload = {
                 "store": store,
                 "item_code": item_code,
-                "upc": _to_str(raw.get("UPCコード")) or item_code,
+                "upc": upc,
                 "display_name": display_name,
                 "handling_status": _to_str(
                     raw.get("取扱区分") or raw.get("取扱区分: 名前") or raw.get("商品取扱区分: 名前")

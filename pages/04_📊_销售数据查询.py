@@ -33,7 +33,8 @@ conn = get_connection()
 st.title(t("📊 销售数据查询"))
 st.caption(t(
     "数据源 3 张源表: sales_line(销售/毛利) + nst_inventory_snapshot(库存数/金额) "
-    "+ nst_turnover(回転率/平均在庫日数) · 对齐 SKU 一元管理表格 22 列"
+    "+ nst_turnover(回転率/平均在庫日数) · 对齐 SKU 一元管理表格 22 列 · "
+    "🔑 聚合基准: UPC (=JAN), UPC 空白行已在 ingest 时跳过"
 ))
 
 
@@ -107,10 +108,13 @@ for c in ("qty_sold", "revenue", "defined_cost", "gross_profit", "gross_margin")
     df_raw[c] = pd.to_numeric(df_raw[c], errors="coerce").fillna(0)
 
 # ============================================================
-# 按 SKU 聚合（多店铺 → 单 SKU）
+# 按 UPC (JAN) 聚合 — Boss 决定 UPC 是销售数据基准
+# UPC 空的行已在 ingester 跳过 (xls_ingest.py)
+# 多店铺 × 同 UPC → 1 行
 # ============================================================
-agg = df_raw.groupby("item_code", as_index=False).agg(
-    upc=("upc", "first"),
+df_raw = df_raw[df_raw["upc"].notna() & (df_raw["upc"].astype(str).str.strip() != "")]
+agg = df_raw.groupby("upc", as_index=False).agg(
+    item_code=("item_code", "first"),
     display_name=("display_name", "last"),
     handling_status=("handling_status", "last"),
     maker=("maker", lambda s: s.dropna().iloc[-1] if s.dropna().size else ""),
@@ -125,22 +129,21 @@ agg["gross_margin"] = (
 ).where(agg["revenue"] > 0).fillna(0)
 
 # ============================================================
-# 库存 join · nst_inventory_snapshot (来自 輸出通常在庫数残数検索結果.xls)
-# 直接拉取 qty_on_hand (I 列 手持合計) + total_amount (M 列 合計金額)
-# 按 item_code SUM 多 location
+# 库存 join · nst_inventory_snapshot (按 upc 聚合)
 # ============================================================
 df_inv = _df(
-    "SELECT item_code, qty_on_hand, total_amount, location, department "
+    "SELECT item_code, upc, qty_on_hand, total_amount, location, department "
     "FROM nst_inventory_snapshot"
 )
 if not df_inv.empty:
     df_inv["qty_on_hand"] = pd.to_numeric(df_inv["qty_on_hand"], errors="coerce").fillna(0)
     df_inv["total_amount"] = pd.to_numeric(df_inv["total_amount"], errors="coerce").fillna(0)
-    inv_agg = df_inv.groupby("item_code", as_index=False).agg(
+    df_inv["upc"] = df_inv["upc"].astype(str).str.strip()
+    inv_agg = df_inv[df_inv["upc"] != ""].groupby("upc", as_index=False).agg(
         qty_on_hand=("qty_on_hand", "sum"),
         inv_value=("total_amount", "sum"),
     )
-    agg = agg.merge(inv_agg, on="item_code", how="left")
+    agg = agg.merge(inv_agg, on="upc", how="left")
 # 确保两列存在(空表/未 join 上时填 0)
 if "qty_on_hand" not in agg.columns:
     agg["qty_on_hand"] = 0
@@ -150,8 +153,8 @@ agg["qty_on_hand"] = pd.to_numeric(agg["qty_on_hand"], errors="coerce").fillna(0
 agg["inv_value"] = pd.to_numeric(agg["inv_value"], errors="coerce").fillna(0)
 
 # ============================================================
-# 库存周转率 join · nst_turnover (来自【ASEAN】在庫回転率.xls)
-# 直接拉取 turnover_rate (G 列 回転率) + avg_days_on_hand (H 列 平均在庫日数)
+# 库存周转率 join · nst_turnover (item_code → upc 映射后再 join)
+# 因 nst_turnover 没 upc 列, 通过 inventory_snapshot 拿 item_code↔upc 映射
 # ============================================================
 df_turn = _df(
     "SELECT item_code, turnover_rate, avg_days_on_hand, department "
@@ -165,11 +168,21 @@ if not df_turn.empty:
             df_turn = df_turn[mask | df_turn["department"].isna()]
     df_turn["turnover_rate"] = pd.to_numeric(df_turn["turnover_rate"], errors="coerce")
     df_turn["avg_days_on_hand"] = pd.to_numeric(df_turn["avg_days_on_hand"], errors="coerce")
-    turn_agg = df_turn.groupby("item_code", as_index=False).agg(
+    # 通过 inventory_snapshot 把 item_code 映射到 upc
+    if not df_inv.empty:
+        code_to_upc = (
+            df_inv[df_inv["upc"] != ""][["item_code", "upc"]]
+            .drop_duplicates("item_code")
+        )
+        df_turn = df_turn.merge(code_to_upc, on="item_code", how="left")
+    else:
+        df_turn["upc"] = None
+    df_turn = df_turn[df_turn["upc"].notna() & (df_turn["upc"].astype(str).str.strip() != "")]
+    turn_agg = df_turn.groupby("upc", as_index=False).agg(
         turnover_rate=("turnover_rate", "max"),       # 同 SKU 多行取最大
         avg_days_on_hand=("avg_days_on_hand", "max"),
     )
-    agg = agg.merge(turn_agg, on="item_code", how="left")
+    agg = agg.merge(turn_agg, on="upc", how="left")
 if "turnover_rate" not in agg.columns:
     agg["turnover_rate"] = 0
 if "avg_days_on_hand" not in agg.columns:
