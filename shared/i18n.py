@@ -588,7 +588,7 @@ _NAV_GROUPS: list[tuple[str | None, list[tuple[str, str]]]] = [
         ("pages/03_💰_定義原価編集.py", "💰 定义原价编辑"),
         ("pages/20_📈_定义原价波动图.py", "📈 定义原价波动图"),
         ("pages/15_📝_商品登录.py", "📝 商品登录"),
-        ("pages/19_🧊_保质期管理.py", "🧊 保质期管理"),
+        ("pages/19_🧊_保质期管理.py", "🧊 保质期管理 (后置)"),
         ("pages/07_🏷️_商品等级判定.py", "🏷️ 商品等级判定"),
         ("pages/16_📈_等级历史趋势.py", "📈 等级历史趋势"),
     ]),
@@ -615,6 +615,13 @@ for _zh, _ja in [
     ("数据源:【ASEAN】店舗別売上（前日）.xls → store_profit_daily_lines · 仅 detail 行去重聚合",
      "データソース:【ASEAN】店舗別売上（前日）.xls → store_profit_daily_lines · detail 行のみ集計"),
     ("🧊 保质期管理", "🧊 賞味期限管理"),
+    ("🧊 保质期管理 (后置)", "🧊 賞味期限管理 (後置)"),
+    ("⏸ **本模块暂时后置** · Lark 同步需要飞书 internal app 凭据 (LARK_APP_ID / LARK_APP_SECRET),目前无法访问 1.0 Streamlit Cloud secrets。拿到凭据后填入 v3 secrets.toml 即可解锁。",
+     "⏸ **本モジュール一時後置** · Lark 同期は Lark internal app 凭据 (LARK_APP_ID / LARK_APP_SECRET) が必要、現在 1.0 Streamlit Cloud secrets にアクセス不可。凭据取得後 v3 secrets.toml に記入で解放。"),
+    ("📤 备用方案: 直接上传 CSV (绕过 Lark 同步)", "📤 代替案: CSV 直接アップロード (Lark 同期スキップ)"),
+    ("Lark 表导出 CSV (列: jan / name / expiry_1~5) 上传到 item_expiry 表",
+     "Lark 表 CSV エクスポート (列: jan / name / expiry_1~5) → item_expiry テーブル"),
+    ("上传 item_expiry CSV", "item_expiry CSV アップロード"),
 
     # ===== Page 14 Shopee 財務 v2 =====
     ("数据源: 订单导出.xlsx (订单+SKU) + ph.mtkshop.ph.income.已拨款.xlsx (拨款扣费) · 按订单号对账",

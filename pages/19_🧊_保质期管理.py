@@ -23,6 +23,58 @@ conn = get_connection()
 st.title(t("🧊 保质期管理"))
 st.caption(t("Lark 多维表手动同步 · 4 状态分级 · 库存联动"))
 
+# ============================================================
+# ⏸ 模块后置标识 (Boss 2026-05 决定)
+# 原因: 1.0 Streamlit Cloud 后台无访问权限,LARK_APP_ID/SECRET 暂不可得
+# 解锁条件: 拿到飞书 internal app 凭据后填入 v3 secrets.toml
+# ============================================================
+st.warning(t(
+    "⏸ **本模块暂时后置** · Lark 同步需要飞书 internal app 凭据 "
+    "(LARK_APP_ID / LARK_APP_SECRET),目前无法访问 1.0 Streamlit Cloud secrets。"
+    "拿到凭据后填入 v3 secrets.toml 即可解锁。"
+))
+with st.expander(t("📤 备用方案: 直接上传 CSV (绕过 Lark 同步)"), expanded=False):
+    st.caption(t(
+        "Lark 表导出 CSV (列: jan / name / expiry_1~5) 上传到 item_expiry 表"
+    ))
+    csv_file = st.file_uploader(
+        t("上传 item_expiry CSV"), type=["csv"], key="expiry_csv_upload"
+    )
+    if csv_file is not None:
+        try:
+            import pandas as _pd
+            df_up = _pd.read_csv(csv_file, encoding="utf-8-sig")
+            cur = conn.cursor()
+            cur.execute("DELETE FROM item_expiry")
+            now_iso = datetime.datetime.utcnow().isoformat()
+            n_in = 0
+            for _, row in df_up.iterrows():
+                jan = _normalize_jan_cell(row.get("jan")) if "_normalize_jan_cell" in dir() else str(row.get("jan", "")).strip()
+                if not jan:
+                    continue
+                cur.execute(
+                    "INSERT INTO item_expiry(jan,name,expiry_1,expiry_2,expiry_3,expiry_4,expiry_5,expiry_min,updated_at) "
+                    "VALUES(?,?,?,?,?,?,?,?,?)",
+                    (
+                        jan,
+                        str(row.get("name", "")) if row.get("name") is not None else None,
+                        row.get("expiry_1") or None,
+                        row.get("expiry_2") or None,
+                        row.get("expiry_3") or None,
+                        row.get("expiry_4") or None,
+                        row.get("expiry_5") or None,
+                        row.get("expiry_min") or row.get("expiry_1") or None,
+                        now_iso,
+                    ),
+                )
+                n_in += 1
+            conn.commit()
+            st.success(t(f"✅ CSV 上传成功: {n_in} 条"))
+        except Exception as e:
+            st.error(t(f"❌ CSV 解析失败: {e}"))
+
+st.divider()
+
 # 状态文本（沿用日文版关键字以兼容数据库）
 ST_EXPIRED = t("期限切れ")
 ST_WITHIN = t("60日以内")
