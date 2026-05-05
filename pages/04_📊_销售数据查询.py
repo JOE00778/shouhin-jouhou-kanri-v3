@@ -204,30 +204,56 @@ c5.metric(t("毛利率"), f"{total_mgn:.2f}%")
 st.divider()
 
 # ============================================================
-# 衍生指标 + 22 列输出（库存数/库存金额/回転率/平均在庫日数 已直接拉取，不再算）
+# 衍生指标 (公式严格对齐 SKU 一元管理表格.xlsx)
+# - 月周转率 / 平均在庫日数 / 库存数量 / 库存金额 直接从源表读
+# - 交叉比率(月) O = M*J  → turnover_m * gross_margin (不×100)
+# - 动销率 R     = IF(E="取扱中止"|空, "中止", IF(K空|≤0, "", IF(F>0, "", "不動")))
+# - 月售罄率 S    = 空白 (Boss 决定先空着)
+# - 库存销售比 T = IFERROR(L/G) → inv_value / revenue
+# - 利益貢献度 U = IFERROR(I/$I$2) → gross_profit / 整体总毛利
 # ============================================================
 agg["unit_price"] = (
     agg["revenue"] / agg["qty_sold"]
 ).where(agg["qty_sold"] > 0).fillna(0)
-# 月周转率直接来自 nst_turnover.turnover_rate
 agg["turnover_m"] = agg["turnover_rate"]
-# 平均在庫日数直接来自 nst_turnover.avg_days_on_hand
 agg["doh"] = agg["avg_days_on_hand"]
-agg["cross_ratio_m"] = agg["turnover_m"] * agg["gross_margin"] * 100
+# O = M*J （Excel 公式严格对齐, 不再 ×100）
+agg["cross_ratio_m"] = agg["turnover_m"] * agg["gross_margin"]
 agg["turnover_y"] = agg["turnover_m"] * 12
 agg["cross_ratio_y"] = agg["cross_ratio_m"] * 12
-agg["sku_active"] = agg["qty_sold"].apply(
-    lambda q: t("动销") if q > 0 else t("不动")
-)
-denom = agg["qty_sold"] + agg["qty_on_hand"]
-agg["sellout_rate"] = (agg["qty_sold"] / denom).where(denom > 0).fillna(0)
+
+
+def _sku_active(row) -> str:
+    """R 列动销率: IF(OR(E5="取扱中止",E5=""), "中止",
+                     IF(OR(K5="",K5<=0), "",
+                        IF(F5>0, "", "不動")))"""
+    rank = str(row.get("rank", "")).strip()
+    if rank in ("取扱中止", "メーカー取扱中止", ""):
+        return t("中止")
+    qty_inv = row.get("qty_on_hand", 0)
+    if qty_inv is None or qty_inv <= 0:
+        return ""
+    if row.get("qty_sold", 0) > 0:
+        return ""
+    return t("不動")
+
+
+agg["sku_active"] = agg.apply(_sku_active, axis=1)
+
+# 月售罄率: 留空（按 Boss 决定）
+agg["sellout_rate_str"] = ""
+
+# 库存销售比 T = L/G = 库存金额 / 总营业额
 agg["inv_sales_ratio"] = (
-    agg["qty_on_hand"] / agg["qty_sold"]
-).where(agg["qty_sold"] > 0).fillna(0)
-total_gp_f = float(agg["gross_profit"].sum())
+    agg["inv_value"] / agg["revenue"]
+).where(agg["revenue"] > 0).fillna(0)
+
+# 利益貢献度 U = I/$I$2 = 毛利 / 整体总毛利
+# (用 ASEAN 集計専用源表全部 SKU 的总毛利, 不是过滤视图后的)
+total_gp_grand = float(df_raw["gross_profit"].sum())
 agg["profit_contribution"] = (
-    agg["gross_profit"] / total_gp_f * 100
-) if total_gp_f else 0
+    agg["gross_profit"] / total_gp_grand
+) if total_gp_grand else 0
 
 
 def _grade(row):
@@ -235,12 +261,13 @@ def _grade(row):
         return t("⚫ 中止")
     if row["qty_sold"] <= 0:
         return t("⚪ 不动")
+    # 等级评价用月交叉比率 (无 ×100 后, 阈值缩小 100 倍)
     cr = row["cross_ratio_m"]
-    if cr >= 100:
+    if cr >= 1.0:
         return t("🟢 A")
-    if cr >= 50:
+    if cr >= 0.5:
         return t("🟡 B")
-    if cr >= 20:
+    if cr >= 0.2:
         return t("🟠 C")
     return t("🔴 D")
 
@@ -271,13 +298,13 @@ with tab_unified:
         t("库存金额"): agg["inv_value"].round(0).astype(int),
         t("库存周转率"): agg["turnover_m"].round(2),
         t("平均在庫日数"): agg["doh"].round(0).astype(int),
-        t("交叉比率"): agg["cross_ratio_m"].round(1),
+        t("交叉比率"): agg["cross_ratio_m"].round(2),
         t("库存周转率(年)"): agg["turnover_y"].round(1),
-        t("交叉比率(年)"): agg["cross_ratio_y"].round(0).astype(int),
+        t("交叉比率(年)"): agg["cross_ratio_y"].round(2),
         t("动销率"): agg["sku_active"],
-        t("月售罄率"): agg["sellout_rate"].apply(lambda x: f"{x*100:.1f}%"),
+        t("月售罄率"): agg["sellout_rate_str"],   # 留空
         t("在庫販売比率"): agg["inv_sales_ratio"].round(2),
-        t("利益貢献度"): agg["profit_contribution"].apply(lambda x: f"{x:.2f}%"),
+        t("利益貢献度"): agg["profit_contribution"].apply(lambda x: f"{x*100:.2f}%"),
         t("等级评价"): agg[t("等级评价")],
     })
     out = out.sort_values(t("总营业额"), ascending=False)
