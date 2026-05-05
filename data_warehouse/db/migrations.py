@@ -8,8 +8,14 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 SCHEMA_FILE = Path(__file__).parent / "schema.sql"
+
+# 增量 ALTER（旧 db 已建过表,补充缺失列）
+# 格式: (table, column_def_in_ALTER) — 如果列已存在会被 try/except 吞掉
+ALTERS: list[tuple[str, str]] = [
+    ("sales_line", "maker TEXT"),
+]
 
 
 def init_db(db_path: Path) -> sqlite3.Connection:
@@ -17,6 +23,7 @@ def init_db(db_path: Path) -> sqlite3.Connection:
 
     - 自动创建父目录
     - 执行 schema.sql 中所有 CREATE TABLE/INDEX IF NOT EXISTS
+    - 应用 ALTERS 增量补列（已存在则忽略）
     - 写入 schema 版本号
     - 返回打开的 connection（调用方负责关闭）
     """
@@ -32,6 +39,13 @@ def init_db(db_path: Path) -> sqlite3.Connection:
 
     sql = SCHEMA_FILE.read_text(encoding="utf-8")
     conn.executescript(sql)
+
+    # 增量列补丁（旧 db 已建过 sales_line 等表,通过 ALTER 补列）
+    for table, col_def in ALTERS:
+        try:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col_def}")
+        except sqlite3.OperationalError:
+            pass  # 列已存在
 
     # 写入版本号（幂等）
     conn.execute(

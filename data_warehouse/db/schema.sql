@@ -203,7 +203,8 @@ CREATE TABLE IF NOT EXISTS sales_line (
   upc                 TEXT,              -- UPCコード（如有）
   display_name        TEXT,
   handling_status     TEXT,              -- 取扱区分
-  rank                TEXT,              -- 商品ランク（仅 輸出 系列带）
+  maker               TEXT,              -- メーカー名（来源 ASEAN 集計専用 R7 第11列）
+  rank                TEXT,              -- 商品ランク
   qty_sold            REAL,              -- 販売数量
   unit_purchase_price REAL,              -- 購入価格（単価）（仅 輸出アイテム別 带）
   revenue             REAL,              -- 総収益

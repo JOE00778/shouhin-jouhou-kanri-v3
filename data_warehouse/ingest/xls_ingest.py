@@ -223,11 +223,11 @@ def _ingest_sales(
     rows = parse_to_dicts(path, header_row=6)
     sql = """
         INSERT INTO sales_line (
-            store, item_code, upc, display_name, handling_status, rank,
+            store, item_code, upc, display_name, handling_status, maker, rank,
             qty_sold, unit_purchase_price, revenue, defined_cost, gross_profit, gross_margin,
             period_start, period_end, source, source_file, imported_at
         ) VALUES (
-            :store, :item_code, :upc, :display_name, :handling_status, :rank,
+            :store, :item_code, :upc, :display_name, :handling_status, :maker, :rank,
             :qty_sold, :unit_purchase_price, :revenue, :defined_cost, :gross_profit, :gross_margin,
             :period_start, :period_end, :source, :source_file, :imported_at
         )
@@ -265,6 +265,7 @@ def _ingest_sales(
                 "handling_status": _to_str(
                     raw.get("取扱区分") or raw.get("取扱区分: 名前") or raw.get("商品取扱区分: 名前")
                 ),
+                "maker": _to_str(raw.get("メーカー名")),  # K 列（ASEAN 集計専用 R7 第 11 列）
                 "rank": _to_str(raw.get("商品ランク")) if has_rank else None,
                 "qty_sold": _to_float(raw.get("販売数量")),
                 "unit_purchase_price": _to_float(raw.get("購入価格（単価）")) if has_purchase_price else None,
