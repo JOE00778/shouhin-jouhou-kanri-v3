@@ -570,7 +570,6 @@ _NAV_GROUPS: list[tuple[str | None, list[tuple[str, str]]]] = [
     ]),
     ("📊 销售数据", [
         ("pages/04_📊_销售数据查询.py", "📊 销售数据查询"),
-        ("pages/18_📆_前日销售数据.py", "📆 前日销售数据"),
         ("pages/05_🏪_店铺别毛利.py", "🏪 店铺别毛利"),
         ("pages/14_💱_Shopee財務.py", "💱 Shopee 财务"),
         ("pages/11_💡_运营调整建议.py", "💡 运营调整建议"),
