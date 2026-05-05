@@ -77,58 +77,52 @@ def generate_proposal(quarter: str = '2026-Q1', db_path: str = 'data_warehouse/w
     conn.row_factory = sqlite3.Row
 
     try:
-        # 0. 限定参与等级判定的 SKU 集合 = JD 千叶仓库的 SKU
-        jd_skus = {row['item_code'] for row in conn.execute(
-            "SELECT DISTINCT item_code FROM nst_inventory_snapshot WHERE location = ?",
-            (WAREHOUSE_FILTER,),
-        ).fetchall()}
-
-        if not jd_skus:
-            return []
-
-        # 1. 聚合销售数据 (sales_line · ASEAN 集計専用源 · 仅 JD 千叶 SKU · 含 0 销售)
-        # 注: 改为 sales_line (跟 page 04/05 数据源对齐),
-        #    nst_store_sales 是 XML ingester 写的旧表,实际数据走 xls_ingest.py
-        placeholders = ','.join('?' * len(jd_skus))
-        sales_data = conn.execute(f"""
+        # ========================================================
+        # SKU 集合 + 销售聚合 + 取扱区分 全部从 sales_line 拉
+        # Boss 决定: 商品等级判定 与库存无关, 完全基于销售数据
+        # ========================================================
+        sales_data = conn.execute("""
             SELECT
                 item_code,
                 MIN(display_name) as display_name,
+                MIN(handling_status) as handling_status,
                 COALESCE(SUM(revenue), 0) as total_revenue,
                 COALESCE(AVG(gross_margin), 0) as avg_margin,
                 COALESCE(SUM(qty_sold), 0) as total_qty
             FROM sales_line
             WHERE source = 'asean_monthly'
-              AND item_code IN ({placeholders})
             GROUP BY item_code
-        """, list(jd_skus)).fetchall()
-
-        # 补全：JD 千叶里有但 nst_store_sales 没有的 SKU（0 销售）
-        sales_skus = {row['item_code'] for row in sales_data}
-        no_sales_skus = jd_skus - sales_skus
-        sales_data_list = [dict(r) for r in sales_data]
-        for sku in no_sales_skus:
-            sales_data_list.append({
-                'item_code': sku, 'display_name': sku,
-                'total_revenue': 0.0, 'avg_margin': 0.0, 'total_qty': 0.0,
-            })
-        sales_data = sales_data_list
+        """).fetchall()
 
         if not sales_data:
             return []
+        sales_data = [dict(r) for r in sales_data]
 
         # 2. 构建 SKU -> 销售额映射 + 计算 rank_pct
         sku_to_sales = {row['item_code']: row['total_revenue'] for row in sales_data}
         rank_pcts = calc_sales_rank(sku_to_sales)
 
-        # 3. NetSuite status（仅 JD 千叶仓库）+ 库存量
-        inv_data = conn.execute("""
-            SELECT item_code, handling_status, SUM(qty_on_hand) as qty
-            FROM nst_inventory_snapshot WHERE location = ?
-            GROUP BY item_code
-        """, (WAREHOUSE_FILTER,)).fetchall()
-        status_map = {row['item_code']: row['handling_status'] or '取扱中' for row in inv_data}
-        qty_map = {row['item_code']: row['qty'] or 0 for row in inv_data}
+        # 3. status_map 直接来自销售表 handling_status (不再读库存表)
+        status_map = {row['item_code']: row['handling_status'] or '取扱中' for row in sales_data}
+
+        # 4. qty_map 库存量 (仅用于 reorder 订货建议字段, 等级判定不依赖)
+        # 库存表可空 → qty 默认 0, 不影响等级判定
+        qty_map = {}
+        try:
+            inv_data = conn.execute("""
+                SELECT item_code, SUM(qty_on_hand) as qty
+                FROM inventory_snapshot WHERE location = ?
+                GROUP BY item_code
+            """, (WAREHOUSE_FILTER,)).fetchall()
+            if not inv_data:
+                inv_data = conn.execute("""
+                    SELECT item_code, SUM(qty_on_hand) as qty
+                    FROM nst_inventory_snapshot WHERE location = ?
+                    GROUP BY item_code
+                """, (WAREHOUSE_FILTER,)).fetchall()
+            qty_map = {row['item_code']: row['qty'] or 0 for row in inv_data}
+        except Exception:
+            pass
 
         # 4. 现有 rank（item_master_netsuite）
         old_rank_map = {row['item_code']: row['rank']

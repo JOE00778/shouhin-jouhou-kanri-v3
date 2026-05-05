@@ -55,37 +55,103 @@ if sales_count == 0:
     st.stop()
 
 # ============================================================
-# 期间筛选
+# 粒度切换 + 期间筛选
 # ============================================================
-period_opts = conn.execute(
-    "SELECT DISTINCT period_start, period_end FROM sales_line "
-    "ORDER BY period_start DESC"
-).fetchall()
-periods = [(r["period_start"], r["period_end"]) for r in period_opts]
+# 三维度: 前日 (asean_daily) / 月度 (asean_monthly) / 季度 (3 个月聚合)
+GRAN_LABELS = {
+    t("前日"): "daily",
+    t("月度"): "monthly",
+    t("季度"): "quarterly",
+}
 
-c1, c2, c3 = st.columns([1.5, 1.5, 1])
-with c1:
-    sel_period = st.selectbox(
-        t("期间"), periods,
-        format_func=lambda p: f"{p[0]} ~ {p[1]}" if p[0] else t("(无期间)"),
+# 财年 3 月开始的季度定义
+FY_QUARTER_RANGES = {
+    "FY2026-Q1": ("2026-03-01", "2026-05-31"),
+    "FY2026-Q2": ("2026-06-01", "2026-08-31"),
+    "FY2026-Q3": ("2026-09-01", "2026-11-30"),
+    "FY2026-Q4": ("2026-12-01", "2027-02-28"),
+    "FY2025-Q4": ("2025-12-01", "2026-02-28"),
+}
+
+c0, c1, c2, c3 = st.columns([1, 1.5, 1.5, 1])
+with c0:
+    gran_label = st.radio(
+        t("粒度"), list(GRAN_LABELS.keys()), horizontal=False, key="sales_gran",
     )
+    gran = GRAN_LABELS[gran_label]
+
+# 根据粒度选不同的源 + 不同的期间 selector
+if gran == "daily":
+    period_opts = conn.execute(
+        "SELECT DISTINCT period_start, period_end FROM sales_line "
+        "WHERE source = 'asean_daily' ORDER BY period_start DESC"
+    ).fetchall()
+    periods = [(r["period_start"], r["period_end"]) for r in period_opts]
+    with c1:
+        sel_period = st.selectbox(
+            t("前日期间"), periods,
+            format_func=lambda p: f"{p[0]} ~ {p[1]}" if p[0] else t("(无期间)"),
+        )
+elif gran == "monthly":
+    period_opts = conn.execute(
+        "SELECT DISTINCT period_start, period_end FROM sales_line "
+        "WHERE source = 'asean_monthly' ORDER BY period_start DESC"
+    ).fetchall()
+    periods = [(r["period_start"], r["period_end"]) for r in period_opts]
+    with c1:
+        sel_period = st.selectbox(
+            t("月度期间"), periods,
+            format_func=lambda p: f"{p[0]} ~ {p[1]}" if p[0] else t("(无期间)"),
+        )
+else:  # quarterly
+    with c1:
+        sel_q = st.selectbox(
+            t("财年季度"),
+            list(FY_QUARTER_RANGES.keys()),
+            index=0,
+            format_func=lambda x: f"{x} ({FY_QUARTER_RANGES[x][0][:7]} ~ {FY_QUARTER_RANGES[x][1][:7]})",
+        )
+        sel_period = FY_QUARTER_RANGES[sel_q]
+
 with c2:
     keyword = st.text_input(t("搜索: 商品代码 / 商品名 / JAN / 品牌"), "")
 with c3:
     show_zero_sales = st.checkbox(t("含销量为 0 的 SKU"), value=False)
 
-# 仅取 ASEAN/輸出 月度源（按店铺×SKU 拆行的版本）
-df_raw = _df(
-    """
-    SELECT store, item_code, upc, display_name, handling_status, maker, rank,
-           qty_sold, revenue, defined_cost, gross_profit, gross_margin,
-           source
-    FROM sales_line
-    WHERE period_start = :p_start AND period_end = :p_end
-      AND source IN ('asean_monthly', 'export_store')
-    """,
-    {"p_start": sel_period[0], "p_end": sel_period[1]},
-)
+# 根据粒度构 SQL
+if gran == "daily":
+    df_raw = _df(
+        """
+        SELECT store, item_code, upc, display_name, handling_status, maker, rank,
+               qty_sold, revenue, defined_cost, gross_profit, gross_margin, source
+        FROM sales_line
+        WHERE period_start = :p_start AND period_end = :p_end
+          AND source = 'asean_daily'
+        """,
+        {"p_start": sel_period[0], "p_end": sel_period[1]},
+    )
+elif gran == "monthly":
+    df_raw = _df(
+        """
+        SELECT store, item_code, upc, display_name, handling_status, maker, rank,
+               qty_sold, revenue, defined_cost, gross_profit, gross_margin, source
+        FROM sales_line
+        WHERE period_start = :p_start AND period_end = :p_end
+          AND source IN ('asean_monthly', 'export_store')
+        """,
+        {"p_start": sel_period[0], "p_end": sel_period[1]},
+    )
+else:  # quarterly: period_start 落在 [Q_start, Q_end] 之间
+    df_raw = _df(
+        """
+        SELECT store, item_code, upc, display_name, handling_status, maker, rank,
+               qty_sold, revenue, defined_cost, gross_profit, gross_margin, source
+        FROM sales_line
+        WHERE period_start >= :q_start AND period_end <= :q_end
+          AND source = 'asean_monthly'
+        """,
+        {"q_start": sel_period[0], "q_end": sel_period[1]},
+    )
 if df_raw.empty:
     # fallback: 任何 source
     df_raw = _df(
