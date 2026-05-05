@@ -141,8 +141,13 @@ if not df_inv.empty:
         inv_value=("total_amount", "sum"),
     )
     agg = agg.merge(inv_agg, on="item_code", how="left")
-agg["qty_on_hand"] = pd.to_numeric(agg.get("qty_on_hand"), errors="coerce").fillna(0).astype(int)
-agg["inv_value"] = pd.to_numeric(agg.get("inv_value"), errors="coerce").fillna(0)
+# 确保两列存在(空表/未 join 上时填 0)
+if "qty_on_hand" not in agg.columns:
+    agg["qty_on_hand"] = 0
+if "inv_value" not in agg.columns:
+    agg["inv_value"] = 0
+agg["qty_on_hand"] = pd.to_numeric(agg["qty_on_hand"], errors="coerce").fillna(0).astype(int)
+agg["inv_value"] = pd.to_numeric(agg["inv_value"], errors="coerce").fillna(0)
 
 # ============================================================
 # 库存周转率 join · nst_turnover (来自【ASEAN】在庫回転率.xls)
@@ -165,8 +170,12 @@ if not df_turn.empty:
         avg_days_on_hand=("avg_days_on_hand", "max"),
     )
     agg = agg.merge(turn_agg, on="item_code", how="left")
-agg["turnover_rate"] = pd.to_numeric(agg.get("turnover_rate"), errors="coerce").fillna(0)
-agg["avg_days_on_hand"] = pd.to_numeric(agg.get("avg_days_on_hand"), errors="coerce").fillna(0)
+if "turnover_rate" not in agg.columns:
+    agg["turnover_rate"] = 0
+if "avg_days_on_hand" not in agg.columns:
+    agg["avg_days_on_hand"] = 0
+agg["turnover_rate"] = pd.to_numeric(agg["turnover_rate"], errors="coerce").fillna(0)
+agg["avg_days_on_hand"] = pd.to_numeric(agg["avg_days_on_hand"], errors="coerce").fillna(0)
 
 # 关键词过滤
 if keyword.strip():
