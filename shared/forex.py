@@ -1,7 +1,9 @@
 """公司对日元固定汇率表 · 严格对齐 NetSuite 通貨マスタ.
 
 来源: NetSuite「為替レート」管理画面 截图 (発効日: 2026-04-30)
-PHP 由 Boss 修正为 2.4 (NetSuite 系统值 2.36)
+Boss 修正:
+  - PHP: 2.36 → 2.4
+  - USD: 160  → 145
 
 汇率口径: 1 单位外币 = X 日元
 基準通貨: 日本円 (JPY)
@@ -13,10 +15,10 @@ from __future__ import annotations
 FX_TO_JPY: dict[str, float] = {
     "JPY": 1.0,        # 日本円 (基準)
     "PHP": 2.4,        # フィリピン (Boss 修正,NetSuite 默认 2.36)
+    "USD": 145.0,      # 米ドル (Boss 修正,NetSuite 默认 160)
     "TWD": 4.57,       # 台湾ドル
     "MYR": 36.48,      # マレーシア
     "SGD": 113.44,     # シンガポール
-    "USD": 160.0,      # 米ドル
     "VND": 0.0055,     # ベトナム
     "THB": 4.44,       # 泰銖
     "CNY": 23.28,      # 人民元

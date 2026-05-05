@@ -82,7 +82,7 @@ import pandas as pd
 from shared.forex import FX_TO_JPY, FX_SYMBOLS, FX_NAMES_JA
 
 st.subheader(t("💱 公司对日元固定汇率"))
-st.caption(t("数据源 NetSuite 為替レート (発効日 2026-04-30) · PHP 由 Boss 修正为 2.4 · 修改在 shared/forex.py"))
+st.caption(t("数据源 NetSuite 為替レート (発効日 2026-04-30) · Boss 修正: PHP=2.4 / USD=145 · 修改在 shared/forex.py"))
 
 fx_df = pd.DataFrame([
     {
@@ -96,7 +96,7 @@ fx_df = pd.DataFrame([
     if code != "JPY"
 ])
 st.dataframe(fx_df, use_container_width=True, hide_index=True)
-st.caption(t("📌 基準通貨: 日本円 · PHP=2.4 (Boss 修正) · 其他严格按 NetSuite 為替レート"))
+st.caption(t("📌 基準通貨: 日本円 · Boss 修正: PHP=2.4 / USD=145 · 其他严格按 NetSuite 為替レート"))
 
 st.divider()
 
