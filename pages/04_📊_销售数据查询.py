@@ -1,9 +1,15 @@
 """模块 #8 销售数据查询。
 
+输出格式对齐 SKU 一元管理表格 3月 sheet 22 列结构（含库存联动指标）：
+SKU / 品牌 / 产品名 / RANK / 总销售数量 / 总营业额 / 单价 / 毛利 / 毛利率
+/ 库存数量 / 库存金额 / 库存周转率 / 平均在庫日数 / 交叉比率
+/ 库存周转率(年间) / 交叉比率(年间) / 动销率 / 月售罄率
+/ 在庫販売比率 / 利益貢献度 / 等级评价
+
 支持：
 - 多源（asean_monthly / asean_daily / export_item / export_store）
-- 多维筛选（期间 / 店铺 / SKU / メーカー / ランク）
-- 明细 / 聚合两个视图
+- 多维筛选（期间 / 店铺 / SKU / メーカー / ランク / 市场）
+- 4 视图: 📋 SKU 一元一览 / 🌐 按市场 / 🏆 按 SKU / 🏪 按店铺
 - CSV 导出
 """
 from __future__ import annotations
@@ -20,7 +26,7 @@ lang_selector()
 conn = get_connection()
 
 st.title(t("📊 销售数据查询"))
-st.caption(t("基于 NetSuite 销售导出 · 多维筛选 · 明细 + 聚合"))
+st.caption(t("对齐 SKU 一元管理表格 22 列格式 · 销售 + 库存 + 周转 + 交叉比率 + 等级评价"))
 
 
 sales_count = conn.execute("SELECT COUNT(*) AS c FROM sales_line").fetchone()["c"]
@@ -155,15 +161,139 @@ c5.metric(t("毛利率"), f"{(total_gp/total_rev*100 if total_rev else 0):.2f}%"
 
 st.divider()
 
-tab_detail, tab_by_market, tab_by_sku, tab_by_store = st.tabs(
-    [t("📋 明细"), t("🌐 按市场聚合"), t("🏆 按 SKU 聚合"), t("🏪 按店铺聚合")]
-)
+tab_unified, tab_by_market, tab_by_sku, tab_by_store, tab_raw = st.tabs([
+    t("📋 SKU 一元一览（22 列）"),
+    t("🌐 按市场聚合"),
+    t("🏆 按 SKU 聚合"),
+    t("🏪 按店铺聚合"),
+    t("📋 原始明细"),
+])
 
-with tab_detail:
+with tab_unified:
+    # 按 SKU 聚合销售
+    sku_sales = df.groupby(["item_code", "display_name"], as_index=False).agg(
+        qty_sold=("qty_sold", lambda s: float(s.fillna(0).sum())),
+        revenue=("revenue", lambda s: float(s.fillna(0).sum())),
+        gross_profit=("gross_profit", lambda s: float(s.fillna(0).sum())),
+        rank=("rank", "last"),
+        handling_status=("handling_status", "last"),
+    )
+
+    # 库存 join
+    inv = pd.DataFrame([dict(r) for r in conn.execute(
+        """
+        SELECT item_code,
+               SUM(COALESCE(qty_on_hand,0)) AS qty_on_hand,
+               MAX(std_cost) AS std_cost
+        FROM inventory_snapshot
+        GROUP BY item_code
+        """
+    ).fetchall()])
+    if not inv.empty:
+        sku_sales = sku_sales.merge(inv, on="item_code", how="left")
+    else:
+        sku_sales["qty_on_hand"] = 0
+        sku_sales["std_cost"] = 0
+    sku_sales["qty_on_hand"] = sku_sales["qty_on_hand"].fillna(0)
+    sku_sales["std_cost"] = sku_sales["std_cost"].fillna(0)
+
+    # 品牌 join (item_master.maker)
+    mk = pd.DataFrame([dict(r) for r in conn.execute(
+        "SELECT item_code, maker FROM item_master WHERE item_code IS NOT NULL"
+    ).fetchall()])
+    if not mk.empty:
+        mk = mk.drop_duplicates(subset=["item_code"], keep="last")
+        sku_sales = sku_sales.merge(mk, on="item_code", how="left")
+    else:
+        sku_sales["maker"] = ""
+    sku_sales["maker"] = sku_sales["maker"].fillna("")
+
+    # 计算指标
+    sku_sales["unit_price"] = (
+        sku_sales["revenue"] / sku_sales["qty_sold"]
+    ).where(sku_sales["qty_sold"] > 0).fillna(0)
+    sku_sales["gross_margin"] = (
+        sku_sales["gross_profit"] / sku_sales["revenue"]
+    ).where(sku_sales["revenue"] > 0).fillna(0)
+    sku_sales["inv_value"] = sku_sales["qty_on_hand"] * sku_sales["std_cost"]
+    sku_sales["turnover_m"] = (
+        sku_sales["qty_sold"] / sku_sales["qty_on_hand"]
+    ).where(sku_sales["qty_on_hand"] > 0).fillna(0)
+    sku_sales["doh"] = (30.0 / sku_sales["turnover_m"]).where(sku_sales["turnover_m"] > 0).fillna(0)
+    sku_sales["cross_ratio_m"] = sku_sales["turnover_m"] * sku_sales["gross_margin"] * 100
+    sku_sales["turnover_y"] = sku_sales["turnover_m"] * 12
+    sku_sales["cross_ratio_y"] = sku_sales["cross_ratio_m"] * 12
+    sku_sales["sku_active"] = sku_sales["qty_sold"].apply(
+        lambda q: t("动销") if q > 0 else t("不动")
+    )
+    denom = sku_sales["qty_sold"] + sku_sales["qty_on_hand"]
+    sku_sales["sellout_rate"] = (sku_sales["qty_sold"] / denom).where(denom > 0).fillna(0)
+    sku_sales["inv_sales_ratio"] = (
+        sku_sales["qty_on_hand"] / sku_sales["qty_sold"]
+    ).where(sku_sales["qty_sold"] > 0).fillna(0)
+    total_gp = float(sku_sales["gross_profit"].sum())
+    sku_sales["profit_contribution"] = (
+        sku_sales["gross_profit"] / total_gp * 100
+    ) if total_gp else 0
+
+    # 等级评价：按月交叉比率分档（参考 12 回転优秀基线）
+    def _grade(row):
+        if str(row.get("handling_status", "")).strip() in ("取扱中止", "メーカー取扱中止"):
+            return t("⚫ 中止")
+        cr = row["cross_ratio_m"]
+        if row["qty_sold"] <= 0:
+            return t("⚪ 不动")
+        if cr >= 100:  # 月交叉 ≥100 → 年化 ≥1200
+            return t("🟢 A")
+        if cr >= 50:
+            return t("🟡 B")
+        if cr >= 20:
+            return t("🟠 C")
+        return t("🔴 D")
+    sku_sales[t("等级评价")] = sku_sales.apply(_grade, axis=1)
+
+    # 重排 + 重命名为 22 列展示
+    out = pd.DataFrame({
+        t("SKU"): sku_sales["item_code"],
+        t("品牌"): sku_sales["maker"],
+        t("产品名"): sku_sales["display_name"],
+        t("RANK"): sku_sales["rank"].fillna(""),
+        t("总销售数量"): sku_sales["qty_sold"].astype(int),
+        t("总营业额"): sku_sales["revenue"].round(0).astype(int),
+        t("单价"): sku_sales["unit_price"].round(0).astype(int),
+        t("毛利"): sku_sales["gross_profit"].round(0).astype(int),
+        t("毛利率"): sku_sales["gross_margin"].apply(lambda x: f"{x*100:.1f}%"),
+        t("库存数量"): sku_sales["qty_on_hand"].astype(int),
+        t("库存金额"): sku_sales["inv_value"].round(0).astype(int),
+        t("库存周转率"): sku_sales["turnover_m"].round(2),
+        t("平均在庫日数"): sku_sales["doh"].round(0).astype(int),
+        t("交叉比率"): sku_sales["cross_ratio_m"].round(1),
+        t("库存周转率(年)"): sku_sales["turnover_y"].round(1),
+        t("交叉比率(年)"): sku_sales["cross_ratio_y"].round(0).astype(int),
+        t("动销率"): sku_sales["sku_active"],
+        t("月售罄率"): sku_sales["sellout_rate"].apply(lambda x: f"{x*100:.1f}%"),
+        t("在庫販売比率"): sku_sales["inv_sales_ratio"].round(2),
+        t("利益貢献度"): sku_sales["profit_contribution"].apply(
+            lambda x: f"{x:.2f}%" if total_gp else "0.00%"
+        ),
+        t("等级评价"): sku_sales[t("等级评价")],
+    })
+    out = out.sort_values(t("总营业额"), ascending=False)
+    st.dataframe(out, use_container_width=True, hide_index=True, height=560)
+    st.caption(t(f"共 {len(out):,} 条 SKU · 按总营业额降序"))
+    csv = out.to_csv(index=False).encode("utf-8-sig")
+    st.download_button(
+        t("📥 SKU 一元 CSV 下载"),
+        data=csv,
+        file_name=f"sku_unified_{sel_period[0]}_{sel_period[1]}.csv",
+        mime="text/csv",
+    )
+
+with tab_raw:
     st.dataframe(df, use_container_width=True, hide_index=True)
     csv = df.to_csv(index=False).encode("utf-8-sig")
     st.download_button(
-        t("📥 明细 CSV"), data=csv, file_name=f"sales_detail_{len(df)}.csv", mime="text/csv"
+        t("📥 原始明细 CSV"), data=csv, file_name=f"sales_detail_{len(df)}.csv", mime="text/csv"
     )
 
 with tab_by_market:
