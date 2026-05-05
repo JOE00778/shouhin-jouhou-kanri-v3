@@ -17,6 +17,9 @@ class XMLIngestor:
     def run(self, path: str, conn: sqlite3.Connection, *, source_name: str) -> dict:
         rows = self.parse_rows(path)
         run_id = self._create_run(conn, source_name)
+        # 整表 truncate 再插 (避免累积 — 销售/库存/周转都是覆盖性快照)
+        if self.target_table:
+            conn.execute(f"DELETE FROM {self.target_table}")
         inserted_or_updated = errors = skipped = 0
         for row_number, row_dict in enumerate(rows, start=1):
             try:

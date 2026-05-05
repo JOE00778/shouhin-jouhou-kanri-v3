@@ -120,6 +120,9 @@ def ingest_inventory_snapshot(
     inserted = 0
     errors = 0
 
+    # 在库快照只关心最新一份 → 整表 truncate 再 INSERT (避免累积)
+    conn.execute("DELETE FROM inventory_snapshot")
+
     rows = parse_to_dicts(path, header_row=0)
     sql = """
         INSERT OR REPLACE INTO inventory_snapshot (
@@ -219,6 +222,12 @@ def _ingest_sales(
     run_id = _start_run(conn, f"sales_line.{source}", source_name)
     inserted = 0
     errors = 0
+
+    # 先删除同 (source, period) 的旧数据 → 重新上传只更新不累计
+    conn.execute(
+        "DELETE FROM sales_line WHERE source = ? AND period_start = ? AND period_end = ?",
+        (source, period_start, period_end),
+    )
 
     rows = parse_to_dicts(path, header_row=6)
     sql = """
@@ -347,6 +356,12 @@ def ingest_inventory_turnover(
     inserted = 0
     errors = 0
 
+    # 同期间重新上传 → 先删旧再插,避免累计
+    conn.execute(
+        "DELETE FROM inventory_turnover WHERE period_start = ? AND period_end = ?",
+        (period_start, period_end),
+    )
+
     rows = parse_to_dicts(path, header_row=6)
     sql = """
         INSERT OR REPLACE INTO inventory_turnover (
@@ -403,6 +418,9 @@ def ingest_shopee_orders_raw(
     path = Path(path)
     source_name = source_name or path.name
     run_id = _start_run(conn, "shopee_orders_raw", source_name)
+
+    # 整表 truncate 再插(只更新不累积)
+    conn.execute("DELETE FROM shopee_orders_raw")
 
     wb = openpyxl.load_workbook(str(path), data_only=True)
     ws = wb[wb.sheetnames[0]]
@@ -480,6 +498,20 @@ def ingest_shopee_income(
         return {"run_id": run_id, "total": 0, "inserted": 0, "errors": 0,
                 "period_start": None, "period_end": None}
     ws = wb["Income"]
+
+    # 同 (seller_account, payout_date) 重新上传 → 先删旧再插,避免累计
+    # 注: 提前读 R2 D 列拿 payout_date,再 DELETE
+    rows_pre = list(ws.iter_rows(min_row=2, max_row=2, values_only=True))
+    seller_pre = str(rows_pre[0][0]).strip() if rows_pre and rows_pre[0][0] else None
+    payout_pre = (
+        str(rows_pre[0][3]).strip().split(" ")[0].split("T")[0]
+        if rows_pre and len(rows_pre[0]) > 3 and rows_pre[0][3] else None
+    )
+    if seller_pre and payout_pre:
+        conn.execute(
+            "DELETE FROM shopee_income_lines WHERE seller_account = ? AND payout_date = ?",
+            (seller_pre, payout_pre),
+        )
 
     # R1: 卖家帐号/付款ID/收款渠道/拨款时间 (header)
     # R2: 值 (mtkshop.ph / 2026-04-01 等)
