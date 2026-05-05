@@ -1,0 +1,2104 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>商品登録・组合品 統合ツール / 商品登録・セット品 統合ツール</title>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+<style>
+/* 样式保持不变 */
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans JP',sans-serif;background:#f5f7fa;min-height:100vh;padding:20px}
+.container{max-width:960px;margin:0 auto}
+h1{text-align:center;color:#1a1a2e;margin-bottom:4px;font-size:22px}
+.subtitle{text-align:center;color:#666;margin-bottom:16px;font-size:13px}
+.tab-bar{display:flex;gap:8px;margin-bottom:20px;background:#fff;border-radius:12px;padding:6px;box-shadow:0 2px 8px rgba(0,0,0,.06)}
+.tab-btn{flex:1;padding:14px 20px;border:none;border-radius:8px;font-size:14px;cursor:pointer;transition:all .2s;background:#f5f7fa;color:#666;font-weight:500}
+.tab-btn:hover{background:#e9ecef}
+.tab-btn.active{background:linear-gradient(135deg,#4361ee,#3a0ca3);color:#fff;box-shadow:0 2px 8px rgba(67,97,238,.3)}
+.tool-panel{display:none}
+.tool-panel.active{display:block}
+.panel{background:#fff;border-radius:12px;padding:20px;margin-bottom:16px;box-shadow:0 2px 8px rgba(0,0,0,.06)}
+.panel h3{margin-bottom:12px;color:#333;font-size:15px}
+.input-group{margin-bottom:12px}
+.input-group label{display:block;margin-bottom:6px;color:#555;font-size:13px;font-weight:500}
+.input-group textarea{width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;font-family:inherit;min-height:100px;resize:vertical}
+.row{display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap}
+.row .input-group{flex:1;min-width:200px}
+.row input{width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px}
+.drop-zone{border:2px dashed #ccc;border-radius:12px;padding:40px 20px;text-align:center;background:#f8f9fa;cursor:pointer;transition:all .3s;margin-bottom:16px}
+.drop-zone:hover,.drop-zone.drag-over{border-color:#4361ee;background:#f0f4ff}
+.drop-zone .icon{font-size:48px;margin-bottom:12px}
+.drop-zone p{color:#666;font-size:15px;margin-bottom:4px}
+.drop-zone .hint{color:#999;font-size:12px}
+.btn-group{display:flex;gap:12px;margin-top:16px;flex-wrap:wrap}
+.btn{flex:1;min-width:140px;padding:14px;border:none;border-radius:10px;font-size:14px;cursor:pointer;transition:all .2s;color:#fff;text-align:center}
+.btn:hover{transform:scale(1.02);box-shadow:0 4px 12px rgba(0,0,0,.15)}
+.btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.btn-primary{background:linear-gradient(135deg,#4361ee,#3a0ca3)}
+.btn-secondary{background:linear-gradient(135deg,#2d6a4f,#40916c)}
+.btn-warning{background:linear-gradient(135deg,#f77f00,#e36414)}
+.btn-all{background:linear-gradient(135deg,#333,#555)}
+.db-status{background:#e8f5e9;border-radius:8px;padding:12px 16px;font-size:13px;color:#1b5e20;margin-bottom:16px}
+.db-status.empty{background:#fff3e0;color:#e65100}
+.result{background:#f8f9fa;border-radius:8px;padding:14px;margin-top:16px;font-family:monospace;font-size:12px;line-height:1.6;white-space:pre-wrap;max-height:300px;overflow-y:auto;border:1px solid #e9ecef}
+.hint{color:#888;font-size:12px;margin-top:4px}
+.jp{color:inherit;font-size:0.9em;opacity:0.85}
+::placeholder{color:#ddd;font-size:13px}
+.note{background:#e8f5e9;border-radius:8px;padding:12px 16px;font-size:13px;color:#1b5e20;margin-bottom:16px;line-height:1.8}
+.note.blue{background:#f0f4ff;color:#1a237e}
+.stats{display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+.stat-card{flex:1;min-width:100px;background:#f8f9fa;border-radius:8px;padding:10px 14px;text-align:center}
+.stat-card .num{font-size:22px;font-weight:bold;color:#4361ee}
+.stat-card .label{font-size:11px;color:#666;margin-top:2px}
+.log-panel{background:#f8f9fa;border-radius:8px;padding:14px;max-height:300px;overflow-y:auto;font-family:monospace;font-size:12px;line-height:1.7;color:#333}
+.log-panel .ok{color:#2d6a4f}.log-panel .err{color:#d00}.log-panel .info{color:#4361ee}.log-panel .warn{color:#e36414}
+input[type=file]{display:none}
+.note.orange{background:#fff3e0;color:#e65100;border-radius:8px;padding:12px 16px;font-size:13px;line-height:1.8;margin-bottom:16px}
+.key-row{display:flex;gap:8px;align-items:center}
+.key-row input{flex:1;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:monospace}
+.col-picker{display:flex;gap:10px;align-items:center;padding:12px;background:#fff3e0;border-radius:8px;margin-bottom:12px;flex-wrap:wrap}
+.col-picker select{padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;min-width:180px}
+.col-picker span{color:#e65100;font-size:13px}
+.btn-small{padding:8px 14px;font-size:13px}
+table.results{width:100%;border-collapse:collapse;font-size:13px}
+table.results thead{background:#f0f4ff;position:sticky;top:0;z-index:1}
+table.results th,table.results td{padding:8px 6px;border-bottom:1px solid #e9ecef;text-align:left;vertical-align:middle}
+table.results th{font-weight:600;color:#1a237e;font-size:12px;white-space:nowrap}
+table.results td.num{color:#888;font-size:12px;width:40px;text-align:center}
+table.results td.jan{font-family:monospace;font-size:13px;white-space:nowrap}
+table.results td.thumb{width:80px;text-align:center}
+table.results td.thumb img{max-width:64px;max-height:64px;border-radius:4px;border:1px solid #e9ecef;cursor:pointer;transition:transform .2s}
+table.results td.thumb img:hover{transform:scale(1.05)}
+table.results td.name{max-width:280px;font-size:12px;line-height:1.4;color:#333}
+table.results a.search-link{display:inline-block;padding:5px 8px;background:#e9ecef;color:#333;border-radius:6px;text-decoration:none;font-size:12px;white-space:nowrap}
+table.results a.search-link:hover{background:#4361ee;color:#fff}
+table.results input.url-input{width:100%;min-width:220px;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:11px;font-family:monospace}
+table.results input.url-input:focus{outline:none;border-color:#4361ee}
+table.results button.copy-btn{padding:5px 8px;background:#e9ecef;border:none;border-radius:6px;cursor:pointer;font-size:12px}
+table.results button.copy-btn:hover{background:#dee2e6}
+table.results button.copy-btn.copied{background:#2d6a4f;color:#fff}
+table.results tr.status-ok{background:#f0fff4}
+table.results tr.status-fail{background:#fff5f5}
+table.results tr.status-loading{background:#fffbea}
+.table-wrap{max-height:600px;overflow-y:auto;border:1px solid #e9ecef;border-radius:8px}
+.empty-state{text-align:center;padding:40px 20px;color:#999;font-size:14px}
+.progress{height:4px;background:#e9ecef;border-radius:2px;overflow:hidden;margin-top:8px;display:none}
+.progress.active{display:block}
+.progress-bar{height:100%;background:linear-gradient(90deg,#4361ee,#3a0ca3);transition:width .2s;width:0%}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>📦 商品登録・组合品 統合ツール / 商品登録・セット品 統合ツール</h1>
+  <p class="subtitle">商品登録分割导出 / 组合品生成 — 一键切换<br>商品登録の分割エクスポート / セット品作成 — ワンクリック切替</p>
+
+  <div class="tab-bar">
+    <button class="tab-btn active" data-tool="product">📋 商品登録 / 商品登録</button>
+    <button class="tab-btn" data-tool="bundle">📦 组合品登録 / セット品登録</button>
+    <button class="tab-btn" data-tool="jansearch">🔍 JAN 画像検索・ダウンロード</button>
+  </div>
+
+  <!-- 工具1: 商品登録分割 -->
+  <div id="tool-product" class="tool-panel active">
+    <div class="note blue">
+      <div>📌 NST CSV：自动删除Row1,3,4 + A列空行 / 1・3・4 行目とA列空白行を自動削除</div>
+      <div>📌 翻译 / 翻訳：NST B列 → JD C列 & AG列 & BM AE列</div>
+      <div>📌 HSCode：产品类别 → AI列 (131类别数据库) / 商品カテゴリ → AI列（131カテゴリ）</div>
+      <div>📌 画像URL（任意）：NST D列 UPC → jancode.xyz → Amazon → Rakuten → JD G 列「https://kari」を上書き</div>
+    </div>
+
+    <div class="drop-zone" id="productDropZone">
+      <div class="icon">📁</div>
+      <p>拖拽統合版 Excel 文件到这里 / 統合版 Excel ファイルをここにドラッグ</p>
+      <p class="hint">支持 .xlsx（含 NetSuiteマスタ登録 / JD商品登録 / BM商品登録）／ .xlsx 対応</p>
+    </div>
+    <input type="file" id="productFileInput" accept=".xlsx,.xls">
+
+    <div class="panel" id="productInfoPanel" style="display:none">
+      <h3>📊 文件信息 & 校验 / ファイル情報＆チェック</h3>
+      <div class="stats" id="productStats"></div>
+      <div id="productCheckResult" style="background:#f8f9fa;border-radius:10px;padding:16px;font-size:13px;line-height:1.8;"></div>
+    </div>
+
+    <div class="panel" id="productActionPanel" style="display:none">
+      <h3>🔧 操作 / 操作</h3>
+      <div class="btn-group">
+        <button class="btn btn-all" id="btnProductAll" disabled>📦 一键导出（翻译 + HSCode + 画像URL） / 一括書き出し</button>
+        <button class="btn btn-secondary" id="btn-submit-supabase">📤 同步到 Supabase</button>
+      </div>
+      <div class="hint" style="color:#888;font-size:11px;margin-top:8px">※ JD G 列は自動で画像URLに上書きされます（未命中の JAN は仮 URL を保持）</div>
+      <div id="productLog" class="log-panel" style="margin-top:16px;display:none"></div>
+    </div>
+  </div>
+
+  <!-- 工具2: 组合品生成 -->
+  <div id="tool-bundle" class="tool-panel">
+    <div class="row" style="align-items:stretch;">
+      <div class="panel" style="flex:1;min-width:300px;margin-bottom:0;">
+        <h3>📊 单品数据库 / 単品データベース</h3>
+        <div id="dbStatus" class="db-status empty">⚠️ 数据库为空 / データベースが空です</div>
+        <div class="note blue" style="font-size:12px;line-height:1.5;padding:8px 12px;margin-bottom:12px;">
+          📥 斑马ERP → 产品列表 → 导出数据 → 导出全部 → 导出类型：产品（按SKU） → 选择模版：报关信息数据导出 → 导出数据<br>
+          斑馬ERP → 商品リスト → データエクスポート → 全件 → 種別: 商品（SKU別） → テンプレート: 通関情報データエクスポート → 実行
+        </div>
+        <div class="drop-zone" id="dbDropZone" style="padding:20px 15px;margin-bottom:12px;">
+          <div class="icon" style="font-size:32px;margin-bottom:8px;">📁</div>
+          <p style="font-size:13px;">拖拽单品数据表 / 単品データ表をドラッグ</p>
+          <p class="hint" style="font-size:11px;">斑马ERP导出 .xlsx / 斑馬ERP エクスポート .xlsx</p>
+        </div>
+        <input type="file" id="dbFileInput" accept=".xlsx">
+        <button class="btn btn-warning" id="btnClearDB" style="padding:10px;font-size:12px;width:100%;">🗑️ 清空 / クリア</button>
+      </div>
+
+      <div class="panel" style="flex:1;min-width:300px;margin-bottom:0;">
+        <h3>📋 NST 内部 ID 数据表 / NST 内部ID データ表</h3>
+        <div id="nstStatus" class="db-status empty">⚠️ 数据表未加载 / データ表未読込</div>
+        <div class="note blue" style="font-size:12px;line-height:1.5;padding:8px 12px;margin-bottom:12px;">
+          📥 NST → item
+        </div>
+        <div class="drop-zone" id="nstDropZone" style="padding:20px 15px;margin-bottom:12px;">
+          <div class="icon" style="font-size:32px;margin-bottom:8px;">📄</div>
+          <p style="font-size:13px;">拖拽 NST「アイテム」/ NST「アイテム」をドラッグ</p>
+          <p class="hint" style="font-size:11px;">.xls 格式（B列内部ID, D列UPC）／ .xls 形式（B列 内部ID, D列 UPC）</p>
+        </div>
+        <input type="file" id="nstFileInput" accept=".xls,.xlsx">
+        <button class="btn btn-warning" id="btnClearNST" style="padding:10px;font-size:12px;width:100%;">🗑️ 清空 / クリア</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>📝 组合品列表 / セット品リスト</h3>
+      <div class="input-group">
+        <label>输入 JAN_数量（每行一个）/ JAN_数量 を入力（1行に1件）</label>
+        <textarea id="inputList" placeholder="4511413404133_10&#10;4511413404134_5"></textarea>
+      </div>
+      <div class="row">
+        <div class="input-group"><label>JD客户编码 / JD顧客コード</label><input type="text" id="jdA" value="KH20000009340"></div>
+        <div class="input-group"><label>JD销售渠道 / JD販売チャネル</label><input type="text" id="jdB" value="sc-三金商事株式会社"></div>
+        <div class="input-group"><label>JD生效开始 / JD有効開始</label><input type="text" id="jdF" value="2025-04-07 00:00:00"></div>
+        <div class="input-group"><label>JD生效结束 / JD有効終了</label><input type="text" id="jdG" value="2045-04-09 00:00:00"></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>🔧 操作 / 操作</h3>
+      <div class="btn-group">
+        <button class="btn btn-all" id="btnBundleAll">📦 一键导出 / 一括書き出し</button>
+      </div>
+    </div>
+
+    <div class="panel" id="bundleResultPanel" style="display:none">
+      <h3>📊 处理结果 / 処理結果</h3>
+      <div class="result" id="bundleResultLog"></div>
+    </div>
+  </div>
+
+  <!-- 工具3: JAN 画像一括ダウンロード -->
+  <div id="tool-jansearch" class="tool-panel">
+    <div class="note orange">
+      <div>📌 JAN リストを貼り付け → 画像を一括ダウンロード（ZIP）</div>
+      <div>📌 抓取顺序：jancode.xyz → Amazon → Rakuten（最初に命中したソースの画像を全て取得）</div>
+      <div>📌 ファイル名：1 枚のみ <code>JAN.jpg</code> / 複数 <code>JAN_1.jpg / JAN_2.jpg ...</code></div>
+    </div>
+
+    <div class="panel">
+      <h3>① JAN を貼り付け</h3>
+      <div class="input-group">
+        <label>各行 1 件（空白・カンマ混在 OK）</label>
+        <textarea id="janTextarea" placeholder="4901085661802&#10;4901305411033&#10;..."></textarea>
+      </div>
+      <div style="margin-bottom:8px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+          <input type="checkbox" id="janChkDetails" style="width:16px;height:16px">
+          詳細画像も取得（Amazon + Rakuten の商品ページから追加取得／処理時間が増えます）
+        </label>
+      </div>
+      <div class="btn-group">
+        <button class="btn btn-primary" id="janBtnDownload">🚀 画像を一括ダウンロード</button>
+        <button class="btn btn-ghost btn-small" id="janBtnStop" style="display:none">⏹️ 停止</button>
+        <button class="btn btn-all" id="janBtnClear">🗑️ 清空 / クリア</button>
+      </div>
+      <div class="hint" style="color:#888;font-size:11px;margin-top:4px">※ 主图：jancode.xyz 優先（無ければ Amazon/Rakuten 検索頁から 1 枚） / 詳細画像（オン時）：商品詳細ページを開いて全画像を追加取得</div>
+      <div class="progress" id="janProgress"><div class="progress-bar" id="janProgressBar"></div></div>
+      <div id="janLogPanel" class="log-panel" style="display:none;margin-top:12px"></div>
+    </div>
+
+    <div class="panel" id="janResultPanel" style="display:none">
+      <h3>② 結果一覧 / 结果</h3>
+      <div class="stats" id="janStats"></div>
+      <div class="table-wrap" style="margin-top:12px">
+        <table class="results" id="janResultsTable">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>JAN</th>
+              <th>状態</th>
+              <th>取得元</th>
+              <th>枚数</th>
+            </tr>
+          </thead>
+          <tbody id="janResultsBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/**
+ * 商品登録・组合品 統合ツール
+ * 重构版本 - 模块化设计
+ */
+
+// ==================== 配置常量 ====================
+// Supabase 配置（占位，Boss 后续填）
+const SUPABASE_CONFIG = {
+  URL: 'https://YOUR_PROJECT.supabase.co',  // 待 Boss 替换
+  ANON_KEY: 'YOUR_SUPABASE_ANON_KEY',      // 待 Boss 替换（仅用 anon 公钥）
+  TABLE: 'item_master'
+};
+
+const CONFIG = {
+  STORAGE_KEYS: {
+    PRODUCT_DB: 'productDB_v1',
+    NST_DB: 'nstDB_v1'
+  },
+  SHEET_NAMES: {
+    NST: 'NetSuiteマスタ登録',
+    JD: 'JD商品登録',
+    BM: 'BM商品登録'
+  },
+  ROW_OFFSETS: {
+    NST_DATA_START: 4,  // NST 数据从第4行开始
+    JD_BM_DATA_START: 2 // JD/BM 数据从第2行开始
+  },
+  COLUMN_MAP: {
+    JD_NAME_C: 2,       // JD C 列
+    JD_NAME_AG: 32,     // JD AG 列
+    BM_NAME_AE: 30,     // BM AE 列
+    NST_HSCODE_AI: 34   // NST AI 列
+  },
+  SHEET_KEYWORDS: {
+    NST: 'NetSuite',
+    JD: 'JD',
+    BM: 'BM'
+  }
+};
+
+// ==================== HSCode 数据库 ====================
+const HSCodeDB = {
+  "保健食品": "2106909090", "健康食品": "2106909090", "サプリメント": "2106909090",
+  "营养补充剂": "2106909090", "化妆品": "3304990090", "化粧品": "3304990090",
+  "护肤品": "3304990090", "スキンケア": "3304990090", "日用品": "3402200000",
+  "雑貨": "3402200000", "食品": "2106909090", "飲料": "2202990099",
+  "お茶": "2101200000", "紅茶": "0902301000", "緑茶": "0902101000",
+  "コーヒー": "0901210000", "ココア": "1806100000", "菓子": "1905900000",
+  "お菓子": "1905900000", "キャンディ": "1704900000", "チョコレート": "1806310000",
+  "クッキー": "1905900000", "ビスケット": "1905900000", "パン": "1905900000",
+  "麺類": "1902190000", "ラーメン": "1902190000", "うどん": "1902190000",
+  "そば": "1902190000", "調味料": "2103909000", "醤油": "2103100000",
+  "味噌": "2103909000", "ソース": "2103909000", "ドレッシング": "2103909000",
+  "食用油": "1509900000", "オリーブオイル": "1509900000", "お米": "1006308000",
+  "雑穀": "1008909000", "パスタ": "1902190000", "シリアル": "1904100000",
+  "スナック": "1905900000", "ナッツ": "2008199900", "ドライフルーツ": "0813409090",
+  "ジャム": "2007991000", "はちみつ": "0409000000", "調理済み食品": "2106909090",
+  "レトルト": "2106909090", "缶詰": "2106909090", "冷凍食品": "2106909090",
+  "アイスクリーム": "2105000000", "シャンプー": "3305100000", "リンス": "3305100000",
+  "ボディソープ": "3307300000", "ハンドソープ": "3401110000", "洗顔料": "3304990090",
+  "歯磨き粉": "3306101090", "歯ブラシ": "9603210000", "化粧水": "3304990090",
+  "乳液": "3304990090", "美容液": "3304990090", "クリーム": "3304990090",
+  "パック": "3304990090", "マスク": "3304990090", "日焼け止め": "3304990090",
+  "ファンデーション": "3304990090", "口紅": "3304100000", "アイシャドウ": "3304200000",
+  "マスカラ": "3304200000", "アイライナー": "3304200000", "チーク": "3304200000",
+  "香水": "3303000000", "ネイル": "3304300000", "除光液": "3304300000",
+  "ヘアカラー": "3305900000", "ヘアワックス": "3305900000", "スタイリング剤": "3305900000",
+  "入浴剤": "3307300000", "バスソルト": "3307300000", "アロマ": "3301290000",
+  "エッセンシャルオイル": "3301290000", "キャンドル": "3406000000", "お香": "3307410000",
+  "洗剤": "3402200000", "柔軟剤": "3809919090", "漂白剤": "3808941000",
+  "台所洗剤": "3402200000", "スポンジ": "3924900000", "タオル": "6302600000",
+  "ハンカチ": "6217100000", "エプロン": "6217100000", "スリッパ": "6405900000",
+  "バッグ": "4202220000", "ポーチ": "4202220000", "財布": "4202320000",
+  "キーケース": "4202310000", "傘": "6601990000", "日傘": "6601100000",
+  "扇子": "6601910000", "メガネ": "9004100000", "サングラス": "9004100000",
+  "時計": "9102110000", "アクセサリー": "7117190000", "ネックレス": "7117190000",
+  "ピアス": "7117190000", "イヤリング": "7117190000", "ブレスレット": "7117190000",
+  "指輪": "7117190000", "ヘアアクセサリー": "9615190000", "キッチン用品": "3924100000",
+  "食器": "3924100000", "カトラリー": "8215990000", "包丁": "8211910000",
+  "まな板": "4419909000", "鍋": "7323930000", "フライパン": "7323930000",
+  "お皿": "6911101000", "お椀": "3924100000", "コップ": "7013370000",
+  "グラス": "7013370000", "マグカップ": "6911101000", "弁当箱": "3924100000",
+  "水筒": "3924100000", "保温瓶": "3924100000", "ストロー": "3926909090",
+  "ラップ": "3921909090", "アルミホイル": "7607119000", "キッチンペーパー": "4818200000",
+  "ゴミ袋": "3923210000", "掃除用具": "9603909000", "洗濯用品": "3924900000",
+  "ハンガー": "3924900000", "アイロン": "8516400000", "ミシン": "8452100000",
+  "裁縫道具": "9605000000", "文房具": "9608100000", "ペン": "9608100000",
+  "ノート": "4820100000", "付箋": "4820100000", "テープ": "3919100000",
+  "のり": "3506100000", "はさみ": "8213000000", "カッター": "8213000000",
+  "定規": "9017800000", "電池": "8506100000", "電球": "8539100000",
+  "延長コード": "8544429000", "アダプター": "8504409990", "充電器": "8504409990",
+  "ケーブル": "8544429000", "イヤホン": "8518300000", "スピーカー": "8518210000",
+  "マウス": "8471600000", "キーボード": "8471600000", "カメラ": "8525800000",
+  "レンズ": "9002110000", "三脚": "9208100000", "自転車": "8712000000",
+  "ヘルメット": "6506100000", "スポーツ用品": "9506990000", "ヨガマット": "9506919000",
+  "ダンベル": "9506911000", "トレーニング用品": "9506919000", "アウトドア用品": "6306220000",
+  "キャンプ用品": "6306220000", "テント": "6306220000", "寝袋": "9404300000",
+  "クーラーボックス": "3923100000", "ペット用品": "3924900000", "ペットフード": "2309909000",
+  "おもちゃ": "9503000000", "ぬいぐるみ": "9503000000", "パズル": "9503000000",
+  "ゲーム": "9504900000", "トランプ": "9504400000", "楽器": "9207900000",
+  "絵本": "4901990000", "CD": "8523492000", "DVD": "8523492000",
+  "Blu-ray": "8523492000", "本": "4901990000", "雑誌": "4902900000",
+  "カレンダー": "4910000000", "ポスター": "4911910000", "写真": "4911910000",
+  "シール": "3919900000", "ラッピング": "4819200000", "ギフトボックス": "4819200000",
+  "紙袋": "4819400000", "封筒": "4817100000", "ハガキ": "4817200000",
+  "切手": "4907001000"
+};
+
+// ==================== 工具类 ====================
+const Utils = {
+  /**
+   * 获取 HSCode
+   * @param {string} category - 产品类别
+   * @returns {string} HSCode
+   */
+  getHSCode(category) {
+    if (!category) return '';
+    return HSCodeDB[String(category).trim()] || '';
+  },
+
+  /**
+   * 获取日期字符串
+   * @returns {string} YYYYMMDD 格式
+   */
+  getDateStr() {
+    const d = new Date();
+    return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+  },
+
+  /**
+   * 创建 CSV 内容
+   * @param {Array} rows - 数据行
+   * @returns {string} CSV 字符串
+   */
+  createCSV(rows) {
+    return '\uFEFF' + rows.map(r => r.map(v => {
+      const s = String(v ?? '');
+      return (s.includes(',') || s.includes('"')) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    }).join(',')).join('\n');
+  },
+
+  /**
+   * 下载文件
+   * @param {Blob} blob - 文件内容
+   * @param {string} filename - 文件名
+   */
+  downloadFile(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 1000);
+  },
+
+  sleep(ms) { return new Promise(r => setTimeout(r, ms)); },
+
+  // 极简 ZIP 编码器（store 模式，零依赖，UTF-8 文件名）
+  _crc32Table: (() => {
+    const t = new Uint32Array(256);
+    for (let i = 0; i < 256; i++) {
+      let c = i;
+      for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      t[i] = c >>> 0;
+    }
+    return t;
+  })(),
+  crc32(data) {
+    let crc = 0xFFFFFFFF;
+    const t = this._crc32Table;
+    for (let i = 0; i < data.length; i++) crc = (t[(crc ^ data[i]) & 0xFF] ^ (crc >>> 8)) >>> 0;
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+  },
+  makeZip(files) {
+    // files: [{name: string, data: Uint8Array | string}]
+    const encoder = new TextEncoder();
+    const entries = files.map(f => ({
+      nameBytes: encoder.encode(f.name),
+      dataBytes: f.data instanceof Uint8Array ? f.data : encoder.encode(f.data)
+    }));
+    const localChunks = [];
+    const centralChunks = [];
+    let offset = 0;
+    for (const e of entries) {
+      const crc = this.crc32(e.dataBytes);
+      const sz = e.dataBytes.length;
+      const nLen = e.nameBytes.length;
+
+      const local = new Uint8Array(30 + nLen + sz);
+      const lv = new DataView(local.buffer);
+      lv.setUint32(0, 0x04034b50, true);
+      lv.setUint16(4, 20, true);
+      lv.setUint16(6, 0x0800, true);
+      lv.setUint16(8, 0, true);
+      lv.setUint16(10, 0, true);
+      lv.setUint16(12, 0x21, true);
+      lv.setUint32(14, crc, true);
+      lv.setUint32(18, sz, true);
+      lv.setUint32(22, sz, true);
+      lv.setUint16(26, nLen, true);
+      lv.setUint16(28, 0, true);
+      local.set(e.nameBytes, 30);
+      local.set(e.dataBytes, 30 + nLen);
+      localChunks.push(local);
+
+      const central = new Uint8Array(46 + nLen);
+      const cv = new DataView(central.buffer);
+      cv.setUint32(0, 0x02014b50, true);
+      cv.setUint16(4, 20, true);
+      cv.setUint16(6, 20, true);
+      cv.setUint16(8, 0x0800, true);
+      cv.setUint16(10, 0, true);
+      cv.setUint16(12, 0, true);
+      cv.setUint16(14, 0x21, true);
+      cv.setUint32(16, crc, true);
+      cv.setUint32(20, sz, true);
+      cv.setUint32(24, sz, true);
+      cv.setUint16(28, nLen, true);
+      cv.setUint16(30, 0, true);
+      cv.setUint16(32, 0, true);
+      cv.setUint16(34, 0, true);
+      cv.setUint16(36, 0, true);
+      cv.setUint32(38, 0, true);
+      cv.setUint32(42, offset, true);
+      central.set(e.nameBytes, 46);
+      centralChunks.push(central);
+
+      offset += local.length;
+    }
+    const centralSize = centralChunks.reduce((s, c) => s + c.length, 0);
+    const eocd = new Uint8Array(22);
+    const ev = new DataView(eocd.buffer);
+    ev.setUint32(0, 0x06054b50, true);
+    ev.setUint16(4, 0, true);
+    ev.setUint16(6, 0, true);
+    ev.setUint16(8, entries.length, true);
+    ev.setUint16(10, entries.length, true);
+    ev.setUint32(12, centralSize, true);
+    ev.setUint32(16, offset, true);
+    ev.setUint16(20, 0, true);
+
+    const total = offset + centralSize + 22;
+    const out = new Uint8Array(total);
+    let pos = 0;
+    for (const c of localChunks) { out.set(c, pos); pos += c.length; }
+    for (const c of centralChunks) { out.set(c, pos); pos += c.length; }
+    out.set(eocd, pos);
+    return new Blob([out], { type: 'application/zip' });
+  },
+
+  /**
+   * HTML 转义，防止 XSS
+   */
+  escapeHtml(s) {
+    const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+    return String(s ?? '').replace(/[&<>"']/g, m => map[m]);
+  },
+
+  /**
+   * 模糊查找工作表名（忽略空白与全半角差异）
+   */
+  findSheet(wb, keyword) {
+    const norm = s => String(s).replace(/\s+/g, '').toLowerCase();
+    const k = norm(keyword);
+    return wb.SheetNames.find(n => norm(n).includes(k)) || null;
+  }
+};
+
+// ==================== DOM 工具类 ====================
+const DOM = {
+  $(id) {
+    const el = document.getElementById(id);
+    if (!el) console.warn(`Element #${id} not found`);
+    return el;
+  },
+
+  /**
+   * 设置拖拽区域
+   * @param {string} zoneId - 拖拽区域 ID
+   * @param {string} inputId - 文件输入 ID
+   * @param {Function} handler - 文件处理函数
+   */
+  setupDropZone(zoneId, inputId, handler) {
+    const zone = this.$(zoneId);
+    const input = this.$(inputId);
+    if (!zone || !input) return;
+
+    let dragCounter = 0;
+
+    zone.addEventListener('dragover', evt => {
+      evt.preventDefault();
+      evt.stopPropagation();
+    });
+    zone.addEventListener('dragenter', evt => {
+      evt.preventDefault();
+      evt.stopPropagation();
+      dragCounter++;
+      zone.classList.add('drag-over');
+    });
+    zone.addEventListener('dragleave', evt => {
+      evt.preventDefault();
+      evt.stopPropagation();
+      dragCounter = Math.max(0, dragCounter - 1);
+      if (dragCounter === 0) zone.classList.remove('drag-over');
+    });
+    zone.addEventListener('drop', evt => {
+      evt.preventDefault();
+      evt.stopPropagation();
+      dragCounter = 0;
+      zone.classList.remove('drag-over');
+      if (evt.dataTransfer.files.length) handler(evt.dataTransfer.files[0]);
+    });
+    zone.addEventListener('click', () => input.click());
+    input.addEventListener('change', e => {
+      if (e.target.files.length) handler(e.target.files[0]);
+      e.target.value = '';
+    });
+  },
+
+  /**
+   * 显示日志
+   * @param {string} containerId - 容器 ID
+   * @param {string} message - 消息
+   * @param {string} type - 类型 (ok, err, info, warn)
+   */
+  log(containerId, message, type = 'info') {
+    const container = this.$(containerId);
+    if (!container) return;
+    container.style.display = 'block';
+    const div = document.createElement('div');
+    div.className = type;
+    div.textContent = String(message ?? '');
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+  },
+
+  /**
+   * 清空日志
+   * @param {string} containerId - 容器 ID
+   */
+  clearLog(containerId) {
+    const container = this.$(containerId);
+    if (container) {
+      container.innerHTML = '';
+      container.style.display = 'none';
+    }
+  }
+};
+
+// ==================== 产品登録工具类 ====================
+class ProductTool {
+  constructor() {
+    this.workbook = null;
+    this.sheetNames = { nst: null, jd: null, bm: null };
+    this.translateAbort = null;
+    this.init();
+  }
+
+  init() {
+    DOM.setupDropZone('productDropZone', 'productFileInput', this.handleFile.bind(this));
+    
+    // 绑定按钮事件
+    DOM.$('btnProductAll')?.addEventListener('click', () => this.exportAll());
+  }
+
+  handleFile(file) {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const data = new Uint8Array(e.target.result);
+        this.workbook = XLSX.read(data, { type: 'array', cellStyles: true });
+        this.validateAndShow();
+      } catch (err) {
+        DOM.$('productCheckResult').textContent = '❌ 文件解析失败 / ファイル解析失敗: ' + err.message;
+        DOM.$('productCheckResult').style.color = '#e63946';
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  validateAndShow() {
+    const nstName = Utils.findSheet(this.workbook, CONFIG.SHEET_KEYWORDS.NST);
+    const jdName = Utils.findSheet(this.workbook, CONFIG.SHEET_KEYWORDS.JD);
+    const bmName = Utils.findSheet(this.workbook, CONFIG.SHEET_KEYWORDS.BM);
+    this.sheetNames = { nst: nstName, jd: jdName, bm: bmName };
+
+    DOM.$('productInfoPanel').style.display = 'block';
+    DOM.$('productActionPanel').style.display = 'block';
+
+    if (!nstName || !jdName || !bmName) {
+      DOM.$('productCheckResult').textContent = '❌ 缺少必要工作表（需要含 NetSuite / JD / BM 关键词的三表）/ 必要なワークシートがありません（NetSuite / JD / BM を含む 3 表が必要）';
+      DOM.$('productCheckResult').style.color = '#e63946';
+      return;
+    }
+
+    const nstWs = this.workbook.Sheets[nstName];
+    const jdWs = this.workbook.Sheets[jdName];
+    const bmWs = this.workbook.Sheets[bmName];
+
+    const nstCount = this.countValidNSTRows(nstWs);
+    const jdCount = this.countValidRows(jdWs, CONFIG.ROW_OFFSETS.JD_BM_DATA_START);
+    const bmCount = this.countValidRows(bmWs, CONFIG.ROW_OFFSETS.JD_BM_DATA_START);
+
+    this.renderStats(nstCount, jdCount, bmCount);
+    this.renderCheckResult(nstCount, jdCount, bmCount);
+
+    document.querySelectorAll('#productActionPanel .btn').forEach(btn => btn.disabled = false);
+  }
+
+  countValidNSTRows(ws) {
+    const { NST_DATA_START } = CONFIG.ROW_OFFSETS;
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    let count = 0;
+    for (let r = NST_DATA_START; r <= range.e.r; r++) {
+      const addr = XLSX.utils.encode_cell({ r, c: 0 });
+      const cell = ws[addr];
+      if (cell?.v != null) {
+        const val = String(cell.v).trim();
+        if (val && !val.startsWith('=') && !val.startsWith('（例')) count++;
+      }
+    }
+    return count;
+  }
+
+  countValidRows(ws, startRow) {
+    let count = 0;
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    for (let r = startRow; r <= range.e.r; r++) {
+      let hasValue = false;
+      for (let c = 0; c <= 20; c++) {
+        const addr = XLSX.utils.encode_cell({ r, c });
+        const cell = ws[addr];
+        if (cell?.v != null && String(cell.v).trim()) {
+          hasValue = true;
+          break;
+        }
+      }
+      if (hasValue) count++;
+      else if (count > 0) break;
+    }
+    return count;
+  }
+
+  renderStats(nstCount, jdCount, bmCount) {
+    const isConsistent = nstCount === jdCount && jdCount === bmCount;
+    DOM.$('productStats').innerHTML = `
+      <div class="stat-card">
+        <div class="num" style="color:${isConsistent ? '#4361ee' : '#e63946'};">${nstCount}</div>
+        <div class="label">NST SKU</div>
+      </div>
+      <div class="stat-card" style="${jdCount !== nstCount ? 'background:#fff3e0;' : ''}">
+        <div class="num" style="color:${jdCount === nstCount ? '#2d6a4f' : '#e63946'};">${jdCount}</div>
+        <div class="label">JD 有效行 / 有効行</div>
+      </div>
+      <div class="stat-card" style="${bmCount !== nstCount ? 'background:#fff3e0;' : ''}">
+        <div class="num" style="color:${bmCount === nstCount ? '#2d6a4f' : '#e63946'};">${bmCount}</div>
+        <div class="label">BM 有效行 / 有効行</div>
+      </div>
+    `;
+  }
+
+  renderCheckResult(nstCount, jdCount, bmCount) {
+    const isConsistent = nstCount === jdCount && jdCount === bmCount && nstCount > 0;
+    const color = isConsistent ? '#2d6a4f' : '#e63946';
+    const icon = isConsistent ? '✅' : '⚠️';
+    const n = v => Utils.escapeHtml(String(v));
+
+    let html = `<div style="color:${color};font-weight:500;margin-bottom:8px;">${icon} 文件校验完成 / ファイルチェック完了</div>`;
+    html += `<div>📊 NST有效 / 有効: ${n(nstCount)} SKU</div>`;
+    html += `<div>📊 JD有效 / 有効: ${n(jdCount)} 行, BM有效 / 有効: ${n(bmCount)} 行</div>`;
+
+    if (jdCount !== nstCount) html += `<div style="color:#e63946;">⚠️ JD有效行 / 有効行(${n(jdCount)})≠NST(${n(nstCount)})</div>`;
+    if (bmCount !== nstCount) html += `<div style="color:#e63946;">⚠️ BM有效行 / 有効行(${n(bmCount)})≠NST(${n(nstCount)})</div>`;
+    if (isConsistent) html += `<div style="color:#2d6a4f;font-weight:500;">✅ 三表有效行数一致 / 3 表の有効行数が一致</div>`;
+
+    DOM.$('productCheckResult').innerHTML = html;
+    DOM.$('productCheckResult').style.color = '';
+  }
+
+  buildNSTCsv() {
+    if (!this.workbook) return null;
+    const ws = this.sheetNames.nst && this.workbook.Sheets[this.sheetNames.nst];
+    if (!ws) return null;
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+    const filtered = rows.filter((_, idx) => idx !== 0 && idx !== 2 && idx !== 3);
+    const headerRow = filtered[0];
+    const dataRows = filtered.slice(1).filter(row => row[0] && String(row[0]).trim() !== '');
+    const finalRows = headerRow ? [headerRow, ...dataRows] : dataRows;
+    // 暴露 dataRows 供 Supabase 提交使用
+    window.lastParsedRows = dataRows;
+    return { csv: Utils.createCSV(finalRows), count: dataRows.length };
+  }
+
+  buildSheetXlsxBuf(sheetKey, outSheetName) {
+    if (!this.workbook) return null;
+    const sheetName = this.sheetNames[sheetKey];
+    const ws = sheetName && this.workbook.Sheets[sheetName];
+    if (!ws) return null;
+
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+    const validRows = [];
+    if (rows[0]) validRows.push(rows[0]);
+    if (rows[1]) validRows.push(rows[1]);
+    for (let i = 2; i < rows.length; i++) {
+      const row = rows[i] || [];
+      let hasValue = false;
+      for (let c = 0; c <= 20; c++) {
+        if (row[c] != null && String(row[c]).trim()) { hasValue = true; break; }
+      }
+      if (hasValue) validRows.push(row);
+    }
+
+    const newWb = XLSX.utils.book_new();
+    const newWs = XLSX.utils.aoa_to_sheet(validRows);
+    if (ws['!cols']) newWs['!cols'] = ws['!cols'];
+    if (ws['!merges']) newWs['!merges'] = ws['!merges'];
+    XLSX.utils.book_append_sheet(newWb, newWs, outSheetName);
+    const buf = XLSX.write(newWb, { type: 'array', bookType: 'xlsx' });
+    return { buf: new Uint8Array(buf), count: Math.max(0, validRows.length - 2) };
+  }
+
+  exportNST() {
+    const r = this.buildNSTCsv();
+    if (!r) {
+      DOM.log('productLog', '❌ 找不到 NetSuiteマスタ登録 工作表 / NetSuiteマスタ登録 ワークシートが見つかりません', 'err');
+      return false;
+    }
+    Utils.downloadFile(new Blob([r.csv], { type: 'text/csv;charset=utf-8' }), `${Utils.getDateStr()}_NetSuite【アイテム】マスタ登録-V260326EX_登録者名.csv`);
+    DOM.log('productLog', `✅ NST 导出成功 / 書き出し成功: ${r.count} 行数据 / 行のデータ`, 'ok');
+    return true;
+  }
+
+  exportSheet(sheetKey, outSheetName, filenamePrefix) {
+    const r = this.buildSheetXlsxBuf(sheetKey, outSheetName);
+    if (!r) {
+      DOM.log('productLog', `❌ 找不到 ${outSheetName} 工作表 / ${outSheetName} ワークシートが見つかりません`, 'err');
+      return false;
+    }
+    Utils.downloadFile(new Blob([r.buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `${filenamePrefix}_${Utils.getDateStr()}.xlsx`);
+    DOM.log('productLog', `✅ ${filenamePrefix} 导出成功 / 書き出し成功: ${r.count} 行有效数据 / 行の有効データ`, 'ok');
+    return true;
+  }
+
+  exportJD() {
+    return this.exportSheet('jd', 'JD商品登録', 'JD');
+  }
+
+  exportBM() {
+    return this.exportSheet('bm', 'BM商品登録', 'BM');
+  }
+
+  async exportAll() {
+    if (!this.workbook) {
+      DOM.log('productLog', '❌ 一键导出失败：未加载文件 / 一括書き出し失敗: ファイル未読込', 'err');
+      return;
+    }
+
+    const btn = DOM.$('btnProductAll');
+    const origText = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ 处理中… / 処理中…'; }
+
+    try {
+      // Step 1: HSCode
+      DOM.log('productLog', '🔍 [1/3] 查询 HSCode... / HSコード検索...', 'info');
+      try { this.fillHSCode(); } catch (e) {
+        DOM.log('productLog', `❌ HSCode 查询失败 / HSコード検索失敗: ${e.message}`, 'err');
+      }
+
+      // Step 2: 翻译
+      DOM.log('productLog', '🌐 [2/4] 翻译（日文→英文） / 翻訳（日本語→英語）...', 'info');
+      try { await this.translate({ skipAutoExport: true }); } catch (e) {
+        DOM.log('productLog', `❌ 翻译失败 / 翻訳失敗: ${e.message}`, 'err');
+      }
+
+      // Step 2.5: 画像URL 自動記入（JD G 列）
+      DOM.log('productLog', '🖼️ [3/4] 画像URL → JD G 列 自動記入 / 画像 URL 自動入力...', 'info');
+      try { await this.fillJDImageUrls(); } catch (e) {
+        DOM.log('productLog', `❌ 画像URL 記入失敗: ${e.message}`, 'err');
+      }
+
+      // Step 3: 打包导出
+      DOM.log('productLog', '📦 [4/4] 打包导出 / パッケージ書き出し...', 'info');
+      const nst = this.buildNSTCsv();
+      const jd = this.buildSheetXlsxBuf('jd', 'JD商品登録');
+      const bm = this.buildSheetXlsxBuf('bm', 'BM商品登録');
+      if (!nst || !jd || !bm) {
+        DOM.log('productLog', '❌ 一键导出失败：缺少必要工作表 / 一括書き出し失敗: 必要なワークシートがありません', 'err');
+        return;
+      }
+      const date = Utils.getDateStr();
+      const files = [
+        { name: `${date}_NetSuite【アイテム】マスタ登録-V260326EX_登録者名.csv`, data: nst.csv },
+        { name: `JD_${date}.xlsx`, data: jd.buf },
+        { name: `BM_${date}.xlsx`, data: bm.buf }
+      ];
+      Utils.downloadFile(Utils.makeZip(files), `商品登録_${date}.zip`);
+      DOM.log('productLog', `✅ 一键导出完成 / 一括書き出し完了（ZIP 含 NST.csv / JD.xlsx / BM.xlsx）`, 'ok');
+      DOM.log('productLog', `   解压后即得 3 个独立文件 / 解凍後 3 個のファイル`, 'info');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = origText || '📦 一键导出（自动翻译+查HSCode） / 一括書き出し（翻訳・HSコード検索を自動実行）'; }
+    }
+  }
+
+  async fetchTranslation(nameJP, signal) {
+    const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(nameJP)}&langpair=ja|en`;
+    const delays = [0, 1000, 3000];
+    let lastErr = null;
+    for (let attempt = 0; attempt < delays.length; attempt++) {
+      if (delays[attempt] > 0) await new Promise(r => setTimeout(r, delays[attempt]));
+      try {
+        const response = await fetch(url, { signal });
+        if (response.status === 429 || response.status >= 500) {
+          lastErr = new Error(`HTTP ${response.status}`);
+          continue;
+        }
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        if (data.responseStatus !== 200 && data.responseStatus !== '200') {
+          throw new Error(`API responseStatus=${data.responseStatus}`);
+        }
+        return data.responseData.translatedText;
+      } catch (err) {
+        if (err.name === 'AbortError') throw err;
+        lastErr = err;
+      }
+    }
+    throw lastErr || new Error('翻译失败');
+  }
+
+  async translate() {
+    if (!this.workbook) return;
+
+    const nstWs = this.sheetNames.nst && this.workbook.Sheets[this.sheetNames.nst];
+    const jdWs = this.sheetNames.jd && this.workbook.Sheets[this.sheetNames.jd];
+    const bmWs = this.sheetNames.bm && this.workbook.Sheets[this.sheetNames.bm];
+
+    if (!nstWs || !jdWs || !bmWs) {
+      DOM.log('productLog', '❌ 缺少必要工作表 / 必要なワークシートがありません', 'err');
+      return;
+    }
+
+    this.translateAbort = new AbortController();
+    const nstData = XLSX.utils.sheet_to_json(nstWs, { header: 1 });
+    const { COLUMN_MAP } = CONFIG;
+
+    let translateCount = 0;
+    let errorCount = 0;
+
+    try {
+      for (let i = 4; i < nstData.length; i++) {
+        const row = nstData[i];
+        if (!row || !row[1]) continue;
+        const nameJP = String(row[1]).trim();
+        if (!nameJP || nameJP.startsWith('商品名を入力')) continue;
+
+        const jdBmRowIdx = i - 2;
+        if (jdBmRowIdx < 2) continue;
+
+        try {
+          const nameEN = await this.fetchTranslation(nameJP, this.translateAbort.signal);
+
+          jdWs[XLSX.utils.encode_cell({ r: jdBmRowIdx, c: COLUMN_MAP.JD_NAME_C })] = { t: 's', v: nameEN };
+          jdWs[XLSX.utils.encode_cell({ r: jdBmRowIdx, c: COLUMN_MAP.JD_NAME_AG })] = { t: 's', v: nameEN };
+          bmWs[XLSX.utils.encode_cell({ r: jdBmRowIdx, c: COLUMN_MAP.BM_NAME_AE })] = { t: 's', v: nameEN };
+
+          translateCount++;
+          if (translateCount % 10 === 0) {
+            DOM.log('productLog', `🌐 已翻译 ${translateCount} 条 / ${translateCount} 件翻訳済み...`, 'info');
+          }
+          if (translateCount % 5 === 0) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+        } catch (err) {
+          if (err.name === 'AbortError') throw err;
+          errorCount++;
+          console.error(`翻译失败: ${nameJP}`, err);
+        }
+      }
+
+      DOM.log('productLog', `✅ 翻译完成 / 翻訳完了: ${translateCount} 条成功 / 件成功, ${errorCount} 条失败 / 件失敗`, translateCount > 0 ? 'ok' : 'warn');
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        DOM.log('productLog', '⛔ 翻译已取消 / 翻訳キャンセル', 'warn');
+      } else {
+        DOM.log('productLog', `❌ 翻译异常 / 翻訳エラー: ${err.message}`, 'err');
+      }
+    } finally {
+      this.translateAbort = null;
+    }
+  }
+
+  async fillJDImageUrls() {
+    if (!this.workbook) return 0;
+    const JD_IMAGE_COL_IDX = 6;   // G 列
+    const JD_JAN_COL_IDX = 1;     // B 列（JAN の取得源）
+    const JD_IMAGE_COL_LETTER = 'G';
+
+    if (!window.jansearchTool) {
+      DOM.log('productLog', '❌ JAN 画像検索 モジュール未初期化', 'err');
+      return 0;
+    }
+
+    const jdWs = this.sheetNames.jd && this.workbook.Sheets[this.sheetNames.jd];
+    if (!jdWs) {
+      DOM.log('productLog', '❌ JD シートが見つかりません', 'err');
+      return 0;
+    }
+
+    const jdData = XLSX.utils.sheet_to_json(jdWs, { header: 1 });
+    DOM.log('productLog', `📋 JD シート総行数: ${jdData.length}（データは 3 行目以降想定）`, 'info');
+    // 先頭数行の B 列を確認用に出力
+    const sampleBCol = [];
+    for (let i = 0; i < Math.min(jdData.length, 6); i++) {
+      const v = jdData[i] && jdData[i][JD_JAN_COL_IDX];
+      sampleBCol.push(`行${i + 1}:[${v == null ? '' : String(v).slice(0, 20)}]`);
+    }
+    DOM.log('productLog', `🔎 B 列サンプル: ${sampleBCol.join(' ')}`, 'info');
+
+    const tasks = [];
+    let skippedInvalid = 0, skippedEmpty = 0;
+    for (let i = 2; i < jdData.length; i++) {
+      const row = jdData[i];
+      if (!row) { skippedEmpty++; continue; }
+      const raw = row[JD_JAN_COL_IDX];
+      if (raw == null || String(raw).trim() === '') { skippedEmpty++; continue; }
+      const jan = String(raw).trim().replace(/\.0+$/, '');
+      if (!/^\d{8}$|^\d{12}$|^\d{13}$/.test(jan)) { skippedInvalid++; continue; }
+      tasks.push({ jan, jdRowIdx: i });
+    }
+    if (skippedInvalid) DOM.log('productLog', `⚠️ JD B 列の JAN 形式不正 ${skippedInvalid} 件スキップ`, 'warn');
+    if (skippedEmpty) DOM.log('productLog', `ℹ️ JD B 列空白 ${skippedEmpty} 件スキップ`, 'info');
+
+    if (tasks.length === 0) {
+      DOM.log('productLog', '⚠️ JD B 列に有効な JAN（8/12/13 桁数字）が見つかりません。B 列を確認してください', 'err');
+      return 0;
+    }
+
+    DOM.log('productLog', `🖼️ 画像URL 取得開始: JD B 列で ${tasks.length} 件の JAN 検出 → JD ${JD_IMAGE_COL_LETTER} 列に書き込み`, 'info');
+    DOM.log('productLog', `  予定サンプル: 行 ${tasks[0].jdRowIdx + 1} JAN ${tasks[0].jan} → ${XLSX.utils.encode_cell({ r: tasks[0].jdRowIdx, c: JD_IMAGE_COL_IDX })}`, 'info');
+
+    // 代理可用性先验
+    let proxyOK = false;
+    try {
+      await window.jansearchTool.fetchViaProxy('https://www.example.com/');
+      proxyOK = true;
+    } catch (e) {
+      DOM.log('productLog', '⚠️ プロキシ未起動のため、jancode.xyz のみ試みます（占位图識別不可）: ' + e.message, 'warn');
+    }
+
+    const uniqJans = [...new Set(tasks.map(t => t.jan))];
+    const results = await window.jansearchTool.lookupBatch(uniqJans, {
+      onProgress: (msg, type) => DOM.log('productLog', msg, type)
+    });
+
+    let filled = 0, skippedRows = 0;
+    for (const { jan, jdRowIdx } of tasks) {
+      const r = results.get(jan);
+      if (r && r.url) {
+        const cellAddr = XLSX.utils.encode_cell({ r: jdRowIdx, c: JD_IMAGE_COL_IDX });
+        jdWs[cellAddr] = { t: 's', v: r.url, w: r.url };
+        filled++;
+      } else {
+        skippedRows++;
+      }
+    }
+
+    // !ref 拡張：G 列が範囲外だった場合に備えて
+    const ref = jdWs['!ref'];
+    if (ref) {
+      const range = XLSX.utils.decode_range(ref);
+      let changed = false;
+      if (JD_IMAGE_COL_IDX > range.e.c) { range.e.c = JD_IMAGE_COL_IDX; changed = true; }
+      const maxRowWritten = Math.max(...tasks.map(t => t.jdRowIdx));
+      if (maxRowWritten > range.e.r) { range.e.r = maxRowWritten; changed = true; }
+      if (changed) jdWs['!ref'] = XLSX.utils.encode_range(range);
+    }
+
+    DOM.log('productLog', `✅ JD G 列 記入完了: 命中上書 ${filled} 件 / 未命中保持 ${skippedRows} 件（合計 ${tasks.length} 行）`, filled > 0 ? 'ok' : 'warn');
+    if (filled > 0) {
+      // 書き込み検証（1 行目サンプル）
+      const firstTask = tasks.find(t => results.get(t.jan));
+      if (firstTask) {
+        const sampleAddr = XLSX.utils.encode_cell({ r: firstTask.jdRowIdx, c: JD_IMAGE_COL_IDX });
+        const sampleCell = jdWs[sampleAddr];
+        DOM.log('productLog', `✓ 検証: ${sampleAddr} = ${sampleCell ? sampleCell.v.slice(0, 80) : '(空)'}`, 'info');
+      }
+    }
+    return filled;
+  }
+
+  fillHSCode() {
+    if (!this.workbook) return;
+
+    const nstWs = this.sheetNames.nst && this.workbook.Sheets[this.sheetNames.nst];
+    if (!nstWs) {
+      DOM.log('productLog', '❌ 找不到 NetSuiteマスタ登録 工作表 / NetSuiteマスタ登録 ワークシートが見つかりません', 'err');
+      return;
+    }
+
+    const nstData = XLSX.utils.sheet_to_json(nstWs, { header: 1 });
+    const aiCol = CONFIG.COLUMN_MAP.NST_HSCODE_AI;
+    let hsCodeCount = 0;
+    let notFoundCount = 0;
+
+    for (let i = 3; i < nstData.length; i++) {
+      const row = nstData[i];
+      if (!row) continue;
+      const category = row[2] || row[3] || row[4] || '';
+      if (!category) continue;
+
+      const hsCode = Utils.getHSCode(category);
+      if (hsCode) {
+        const cellAI = XLSX.utils.encode_cell({ r: i, c: aiCol });
+        if (!nstWs[cellAI]) nstWs[cellAI] = { t: 's' };
+        nstWs[cellAI].v = hsCode;
+        nstWs[cellAI].t = 's';
+        hsCodeCount++;
+      } else {
+        notFoundCount++;
+      }
+    }
+
+    DOM.log('productLog', `🔍 HS Code查询完成 / HSコード検索完了: ${hsCodeCount} 条匹配 / 件マッチ, ${notFoundCount} 条未找到 / 件見つからず`, 'ok');
+  }
+}
+
+// ==================== 组合品工具类 ====================
+class BundleTool {
+  constructor() {
+    this.productDB = {};
+    this.nstDB = {};
+    this.init();
+  }
+
+  init() {
+    this.loadFromStorage();
+    this.setupEventListeners();
+  }
+
+  loadFromStorage() {
+    const loadOne = (key, onLoad) => {
+      const raw = localStorage.getItem(key);
+      if (!raw) return;
+      try {
+        onLoad(JSON.parse(raw));
+      } catch (err) {
+        console.error(`Failed to parse ${key}:`, err);
+        localStorage.removeItem(key);
+      }
+    };
+    loadOne(CONFIG.STORAGE_KEYS.PRODUCT_DB, db => {
+      this.productDB = db || {};
+      this.updateDBStatus('已恢复', Object.keys(this.productDB).length);
+    });
+    loadOne(CONFIG.STORAGE_KEYS.NST_DB, db => {
+      this.nstDB = db || {};
+      this.updateNSTStatus();
+    });
+  }
+
+  setupEventListeners() {
+    DOM.setupDropZone('dbDropZone', 'dbFileInput', this.handleDBFile.bind(this));
+    DOM.setupDropZone('nstDropZone', 'nstFileInput', this.handleNSTFile.bind(this));
+
+    DOM.$('btnClearDB')?.addEventListener('click', () => this.clearDB());
+    DOM.$('btnClearNST')?.addEventListener('click', () => this.clearNST());
+    DOM.$('btnBundleAll')?.addEventListener('click', () => this.exportAll());
+  }
+
+  handleDBFile(file) {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const wb = XLSX.read(data, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+
+        // 查找表头
+        let headerIdx = 0;
+        for (let i = 0; i < rows.length; i++) {
+          if (rows[i][0] && String(rows[i][0]).includes('SKU')) {
+            headerIdx = i;
+            break;
+          }
+        }
+
+        // 构建数据库
+        const db = {};
+        for (let i = headerIdx + 1; i < rows.length; i++) {
+          const row = rows[i];
+          if (row[0]) {
+            const jan = String(row[0]).trim();
+            db[jan] = {
+              jan,
+              nameCN: row[1] || '',
+              nameEN: row[2] || '',
+              weight: parseFloat(row[5]) || 0,
+              hsCode: row[6] || ''
+            };
+          }
+        }
+
+        this.productDB = db;
+        localStorage.setItem(CONFIG.STORAGE_KEYS.PRODUCT_DB, JSON.stringify(db));
+        this.updateDBStatus(file.name, Object.keys(db).length);
+        this.log(`✅ 数据库加载成功 / データベース読込成功: ${file.name}\n📊 ${Object.keys(db).length} 条记录 / 件`, 'ok');
+      } catch (err) {
+        this.log('❌ 文件解析失败 / ファイル解析失敗: ' + err.message, 'error');
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  handleNSTFile(file) {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const wb = XLSX.read(data, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        if (!ws) throw new Error('工作簿无有效工作表 / ワークブックに有効なワークシートがありません');
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+
+        // 查找表头：含「内部ID」或「Internal ID」或「アイテム」的行
+        let headerIdx = -1;
+        for (let i = 0; i < Math.min(rows.length, 20); i++) {
+          const row = rows[i] || [];
+          const joined = row.map(c => String(c ?? '')).join('|');
+          if (/内部ID|Internal\s*ID|アイテム名/i.test(joined)) { headerIdx = i; break; }
+        }
+        if (headerIdx === -1) headerIdx = 0;
+
+        // 默认按 NST「アイテム」格式：B 列 = 内部ID, D 列 = UPC
+        const header = rows[headerIdx] || [];
+        let idCol = 1, upcCol = 3;
+        header.forEach((h, idx) => {
+          const t = String(h ?? '');
+          if (/内部ID|Internal\s*ID/i.test(t)) idCol = idx;
+          if (/UPC|JAN|バーコード/i.test(t)) upcCol = idx;
+        });
+
+        const db = {};
+        for (let i = headerIdx + 1; i < rows.length; i++) {
+          const row = rows[i];
+          if (!row) continue;
+          const upc = row[upcCol] != null ? String(row[upcCol]).trim() : '';
+          const id = row[idCol] != null ? String(row[idCol]).trim() : '';
+          if (upc && id) db[upc] = id;
+        }
+
+        this.nstDB = db;
+        const count = Object.keys(db).length;
+        try {
+          localStorage.setItem(CONFIG.STORAGE_KEYS.NST_DB, JSON.stringify(db));
+        } catch (storageErr) {
+          console.error('NST 数据保存失败:', storageErr);
+        }
+        this.updateNSTStatus();
+        this.log(`✅ NST 数据表加载成功 / NST データ表読込成功: ${file.name} (${count} 条 UPC→内部ID 映射 / 件 UPC→内部IDマッピング)`, 'ok');
+      } catch (err) {
+        this.log('❌ NST 文件解析失败 / NST ファイル解析失敗: ' + err.message, 'error');
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  updateDBStatus(filename = '', count = 0) {
+    const status = DOM.$('dbStatus');
+    if (!status) return;
+    if (count > 0) {
+      const safeName = Utils.escapeHtml(filename);
+      const safeCount = Utils.escapeHtml(String(count));
+      status.innerHTML = `<div>✅ 数据库已加载 / データベース読込完了</div><div style="margin-top:6px;font-size:11px;">${safeName}<br>📊 ${safeCount} 条记录 / 件</div>`;
+      status.className = 'db-status';
+    } else {
+      status.textContent = '⚠️ 数据库为空 / データベースが空です';
+      status.className = 'db-status empty';
+    }
+  }
+
+  updateNSTStatus() {
+    const status = DOM.$('nstStatus');
+    if (!status) return;
+    const count = Object.keys(this.nstDB).length;
+    if (count > 0) {
+      const safeCount = Utils.escapeHtml(String(count));
+      status.innerHTML = `<div>✅ NST 数据表已加载 / NST データ表読込完了</div><div style="margin-top:6px;font-size:11px;">📊 ${safeCount} 条记录 / 件</div>`;
+      status.className = 'db-status';
+    } else {
+      status.textContent = '⚠️ NST 数据表未加载 / NST データ表未読込';
+      status.className = 'db-status empty';
+    }
+  }
+
+  clearDB() {
+    if (confirm('确定清空数据库？/ データベースをクリアしますか？')) {
+      this.productDB = {};
+      localStorage.removeItem(CONFIG.STORAGE_KEYS.PRODUCT_DB);
+      this.updateDBStatus();
+      this.log('数据库已清空 / データベースをクリアしました', 'ok');
+    }
+  }
+
+  clearNST() {
+    if (confirm('确定清空 NST 数据表？/ NST データ表をクリアしますか？')) {
+      this.nstDB = {};
+      localStorage.removeItem(CONFIG.STORAGE_KEYS.NST_DB);
+      this.updateNSTStatus();
+      this.log('NST 数据表已清空 / NST データ表をクリアしました', 'ok');
+    }
+  }
+
+  parseInput() {
+    const raw = DOM.$('inputList')?.value || '';
+    const lines = raw.split('\n').map(s => s.trim()).filter(s => s);
+    const items = [], errors = [];
+    lines.forEach((line, idx) => {
+      const pos = line.lastIndexOf('_');
+      if (pos <= 0 || pos === line.length - 1) {
+        errors.push(`第${idx + 1}行 / ${idx + 1}行目: 格式错误 / フォーマットエラー「${line}」（应为 / 形式: JAN_数量）`);
+        return;
+      }
+      const jan = line.substring(0, pos);
+      const qtyStr = line.substring(pos + 1);
+      if (!/^\d{8,14}$/.test(jan)) {
+        errors.push(`第${idx + 1}行 / ${idx + 1}行目: JAN 必须为 8-14 位数字 / JAN は 8〜14 桁の数字が必要「${jan}」`);
+        return;
+      }
+      if (!/^[1-9]\d*$/.test(qtyStr)) {
+        errors.push(`第${idx + 1}行 / ${idx + 1}行目: 数量必须为正整数 / 数量は正の整数が必要「${qtyStr}」`);
+        return;
+      }
+      if (qtyStr.length > 2) {
+        errors.push(`第${idx + 1}行 / ${idx + 1}行目: 数量不得超过 2 位数（≤99）/ 数量は 2 桁以下（≤99）当前 / 現在「${qtyStr}」`);
+        return;
+      }
+      const qty = parseInt(qtyStr, 10);
+      const product = this.productDB[jan];
+      if (!product) {
+        errors.push(`第${idx + 1}行 / ${idx + 1}行目: 找不到 / 見つかりません ${jan}（请先加载单品数据库 / 先に単品データベースを読み込んでください）`);
+        return;
+      }
+      items.push({ jan, qty, bundleSku: line, product, internalId: this.nstDB[jan] || '' });
+    });
+    return { items, errors };
+  }
+
+  buildNSTRows() {
+    const { items, errors } = this.parseInput();
+    if (items.length === 0) return { ok: false, reason: '解析失败 / 解析失敗', errors };
+    const missing = items.filter(it => !it.internalId);
+    const valid = items.filter(it => it.internalId);
+    if (valid.length === 0) return { ok: false, reason: '所有项均缺失内部 ID（请先加载 NST「アイテム」数据表）/ すべての項目で内部IDが不足（先に NST「アイテム」データ表を読み込んでください）', errors, missing };
+
+    const parentRows = [['外部 ID', '名称']];
+    valid.forEach(it => parentRows.push([it.bundleSku, it.bundleSku]));
+
+    const childRows = [['外部 ID', '父记录', '内部 ID', 'UPC Code', '价格']];
+    valid.forEach(it => {
+      for (let i = 1; i <= it.qty; i++) {
+        childRows.push([`${it.bundleSku}_${i}`, it.bundleSku, it.internalId, it.jan, '']);
+      }
+    });
+    return { ok: true, parentRows, childRows, valid, errors, missing };
+  }
+
+  async exportNST() {
+    const r = this.buildNSTRows();
+    if (!r.ok) {
+      this.log('❌ NST 导出失败 / NST 書き出し失敗：' + r.reason + (r.errors && r.errors.length ? '\n' + r.errors.join('\n') : ''), 'error');
+      return false;
+    }
+    const date = Utils.getDateStr();
+    Utils.downloadFile(
+      new Blob([Utils.createCSV(r.parentRows)], { type: 'text/csv;charset=utf-8' }),
+      `NST_父组合货品SKU_${date}.csv`
+    );
+    await Utils.sleep(600);
+    Utils.downloadFile(
+      new Blob([Utils.createCSV(r.childRows)], { type: 'text/csv;charset=utf-8' }),
+      `NST_子组合货品_${date}.csv`
+    );
+
+    const warn = (r.errors.length || r.missing.length)
+      ? `（${r.errors.length} 条解析警告 / 解析警告 ${r.errors.length} 件 ; ${r.missing.length} 项缺内部ID 已跳过 / 内部ID不足 ${r.missing.length} 件をスキップ）`
+      : '';
+    this.log(`✅ NST 导出成功 / 書き出し成功: 父记录 / 親レコード ${r.valid.length} 行 + 子记录 / 子レコード ${r.childRows.length - 1} 行${warn}`, 'ok');
+    if (r.missing.length) this.log('缺内部ID 的 JAN / 内部ID不足の JAN: ' + r.missing.map(m => m.jan).join(', '), 'warn');
+    if (r.errors.length) this.log(r.errors.join('\n'), 'warn');
+    return true;
+  }
+
+  exportJD() {
+    const { items, errors } = this.parseInput();
+    if (items.length === 0) {
+      this.log('❌ JD 导出失败 / JD 書き出し失敗:\n' + errors.join('\n'), 'error');
+      return false;
+    }
+    const jdA = DOM.$('jdA')?.value || '';
+    const jdB = DOM.$('jdB')?.value || '';
+    const jdF = DOM.$('jdF')?.value || '';
+    const jdG = DOM.$('jdG')?.value || '';
+    const header = ['JD客户编码', 'JD销售渠道', '组合SKU', '子品JAN', '子品内部ID', '生效开始', '生效结束', '数量', '中文品名', '英文品名'];
+    const rows = [header];
+    items.forEach(it => {
+      rows.push([jdA, jdB, it.bundleSku, it.jan, it.internalId, jdF, jdG, it.qty, it.product.nameCN, it.product.nameEN]);
+    });
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, 'JD组合品');
+    XLSX.writeFile(wb, `Bundle_JD_${Utils.getDateStr()}.xlsx`);
+    const warn = errors.length ? `（含 ${errors.length} 条警告 / 警告 ${errors.length} 件含む）` : '';
+    this.log(`✅ JD 导出成功 / JD 書き出し成功: ${items.length} 个组合品 / 件のセット品${warn}`, 'ok');
+    if (errors.length) this.log(errors.join('\n'), 'warn');
+    return true;
+  }
+
+  exportBM() {
+    const { items, errors } = this.parseInput();
+    if (items.length === 0) {
+      this.log('❌ BM 导出失败 / BM 書き出し失敗:\n' + errors.join('\n'), 'error');
+      return false;
+    }
+    const header = ['组合SKU', '子品JAN', '中文品名', '英文品名', '数量', '单位重量', '总重量', 'HSCode'];
+    const rows = [header];
+    items.forEach(it => {
+      const total = Number(it.product.weight || 0) * it.qty;
+      rows.push([
+        it.bundleSku,
+        it.jan,
+        it.product.nameCN,
+        it.product.nameEN,
+        it.qty,
+        it.product.weight,
+        Math.round(total * 1000) / 1000,
+        it.product.hsCode
+      ]);
+    });
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, 'BM报关信息');
+    XLSX.writeFile(wb, `Bundle_BM_${Utils.getDateStr()}.xlsx`);
+    const warn = errors.length ? `（含 ${errors.length} 条警告 / 警告 ${errors.length} 件含む）` : '';
+    this.log(`✅ BM 导出成功 / BM 書き出し成功: ${items.length} 个组合品 / 件のセット品${warn}`, 'ok');
+    if (errors.length) this.log(errors.join('\n'), 'warn');
+    return true;
+  }
+
+  exportAll() {
+    const { items, errors } = this.parseInput();
+    if (items.length === 0) {
+      this.log('❌ 一键导出失败 / 一括書き出し失敗:\n' + errors.join('\n'), 'error');
+      return;
+    }
+    const r = this.buildNSTRows();
+    if (!r.ok) {
+      this.log('❌ 一键导出失败 / 一括書き出し失敗：' + r.reason, 'error');
+      return;
+    }
+
+    const date = Utils.getDateStr();
+    const files = [];
+
+    // 1. JD Excel
+    const jdA = DOM.$('jdA')?.value || '';
+    const jdB = DOM.$('jdB')?.value || '';
+    const jdF = DOM.$('jdF')?.value || '';
+    const jdG = DOM.$('jdG')?.value || '';
+    const jdRows = [['JD客户编码', 'JD销售渠道', '组合SKU', '子品JAN', '子品内部ID', '生效开始', '生效结束', '数量', '中文品名', '英文品名']];
+    items.forEach(it => jdRows.push([jdA, jdB, it.bundleSku, it.jan, it.internalId, jdF, jdG, it.qty, it.product.nameCN, it.product.nameEN]));
+    const jdWb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(jdWb, XLSX.utils.aoa_to_sheet(jdRows), 'JD组合品');
+    const jdBuf = XLSX.write(jdWb, { type: 'array', bookType: 'xlsx' });
+    files.push({ name: `Bundle_JD_${date}.xlsx`, data: new Uint8Array(jdBuf) });
+
+    // 2. BM Excel
+    const bmRows = [['组合SKU', '子品JAN', '中文品名', '英文品名', '数量', '单位重量', '总重量', 'HSCode']];
+    items.forEach(it => {
+      const total = Number(it.product.weight || 0) * it.qty;
+      bmRows.push([it.bundleSku, it.jan, it.product.nameCN, it.product.nameEN, it.qty, it.product.weight, Math.round(total * 1000) / 1000, it.product.hsCode]);
+    });
+    const bmWb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(bmWb, XLSX.utils.aoa_to_sheet(bmRows), 'BM报关信息');
+    const bmBuf = XLSX.write(bmWb, { type: 'array', bookType: 'xlsx' });
+    files.push({ name: `Bundle_BM_${date}.xlsx`, data: new Uint8Array(bmBuf) });
+
+    // 3 & 4. NST 父记录 + 子记录 CSV
+    files.push({ name: `NST_父组合货品SKU_${date}.csv`, data: Utils.createCSV(r.parentRows) });
+    files.push({ name: `NST_子组合货品_${date}.csv`, data: Utils.createCSV(r.childRows) });
+
+    const zipBlob = Utils.makeZip(files);
+    Utils.downloadFile(zipBlob, `Bundle_全部_${date}.zip`);
+
+    const warn = (errors.length || r.missing.length)
+      ? `（${errors.length} 条解析警告 / 解析警告 ${errors.length} 件 ; ${r.missing.length} 项缺内部ID / 内部ID不足 ${r.missing.length} 件）`
+      : '';
+    this.log(`📦 一键导出成功 / 一括書き出し成功（ZIP 含 4 文件: JD.xlsx / BM.xlsx / NST父.csv / NST子.csv）${warn}`, 'ok');
+    this.log(`   解压后即得 4 个独立文件 / 解凍後 4 個のファイル`, 'info');
+    if (r.missing.length) this.log('缺内部ID 的 JAN / 内部ID不足の JAN: ' + r.missing.map(m => m.jan).join(', '), 'warn');
+    if (errors.length) this.log(errors.join('\n'), 'warn');
+  }
+
+  log(message, type = 'info') {
+    DOM.$('bundleResultPanel').style.display = 'block';
+    const logEl = DOM.$('bundleResultLog');
+    if (!logEl) return;
+    const div = document.createElement('div');
+    div.className = type;
+    div.textContent = String(message ?? '');
+    logEl.appendChild(div);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+}
+
+// ==================== JAN 画像検索工具类 ====================
+const JAN_SEARCH_CONFIG = {
+  LOCAL_PROXY: 'http://127.0.0.1:8787/',
+  SCRAPE_DELAY_MS: 1500,
+  JAN_COL_KEYWORDS: ['jan', 'upc', 'upc code', 'バーコード', 'barcode', 'ean'],
+  SHOPPING_SITES: ['rakuten.co.jp', 'amazon.co.jp', 'shopping.yahoo.co.jp', 'yodobashi.com', 'paypaymall.yahoo.co.jp'],
+  amazonSearchUrl: jan => 'https://www.amazon.co.jp/s?k=' + encodeURIComponent(jan),
+  rakutenSearchUrl: jan => 'https://search.rakuten.co.jp/search/mall/' + encodeURIComponent(jan) + '/'
+};
+
+class JanSearchTool {
+  constructor() {
+    this.rows = [];
+    this.urlMap = new Map();
+    this.nameMap = new Map();
+    this.sourceMap = new Map();
+    this.abort = false;
+    this.init();
+  }
+
+  init() {
+    DOM.$('janBtnClear').addEventListener('click', () => this.clear());
+    DOM.$('janBtnDownload').addEventListener('click', () => this.runDownload());
+    DOM.$('janBtnStop').addEventListener('click', () => { this.abort = true; });
+  }
+
+  log(msg, type = 'info') { DOM.log('janLogPanel', msg, type); }
+  clearLog() { DOM.clearLog('janLogPanel'); }
+
+  isValidJan(s) { return /^\d{8}$|^\d{12}$|^\d{13}$/.test(s); }
+
+  buildSearchUrl(jan) {
+    const siteQuery = JAN_SEARCH_CONFIG.SHOPPING_SITES.map(s => 'site:' + s).join(' OR ');
+    return 'https://www.google.com/search?tbm=isch&q=' + encodeURIComponent(jan + ' (' + siteQuery + ')');
+  }
+
+  dedupeAndValidate(candidates) {
+    const seen = new Set();
+    const valid = [];
+    let invalid = 0, dup = 0;
+    for (const raw of candidates) {
+      const jan = String(raw).trim().replace(/\.0+$/, '');
+      if (!jan) continue;
+      if (!this.isValidJan(jan)) { invalid++; this.log('跳过非法 JAN: ' + raw, 'warn'); continue; }
+      if (seen.has(jan)) { dup++; continue; }
+      seen.add(jan);
+      valid.push(jan);
+    }
+    if (invalid) this.log('非法数据 ' + invalid + ' 条已跳过', 'warn');
+    if (dup) this.log('重复 JAN ' + dup + ' 条已去重', 'info');
+    this.log('有效 JAN ' + valid.length + ' 条', 'ok');
+    return valid;
+  }
+
+  async fetchViaLocalProxy(targetUrl) {
+    let res;
+    try {
+      res = await fetch(JAN_SEARCH_CONFIG.LOCAL_PROXY + '?url=' + encodeURIComponent(targetUrl));
+    } catch (e) {
+      throw new Error('本地代理未启动？请先运行 JAN画像検索.app 或 proxy.py（原始错误：' + e.message + '）');
+    }
+    const text = await res.text();
+    if (!res.ok) throw new Error('代理 HTTP ' + res.status + ': ' + text.slice(0, 200));
+    return text;
+  }
+
+  extractAmazon(doc) {
+    const img = doc.querySelector('img.s-image, [data-component-type="s-product-image"] img, img[data-image-latency]');
+    let url = '', name = '';
+    if (img) {
+      url = img.getAttribute('src') || img.getAttribute('data-src') || '';
+      url = url.replace(/\._AC_[A-Z0-9_]+_\.(jpg|png|webp)/i, '.$1');
+      name = (img.getAttribute('alt') || '').trim();
+    }
+    if (!name) {
+      const h2 = doc.querySelector('[data-component-type="s-search-result"] h2, h2 a span');
+      if (h2) name = h2.textContent.trim();
+    }
+    name = name.replace(/\s+/g, ' ').slice(0, 120);
+    return { url, name };
+  }
+
+  extractRakuten(doc) {
+    const selectors = [
+      'img[src*="thumbnail.image.rakuten.co.jp"]',
+      'img[data-src*="thumbnail.image.rakuten.co.jp"]',
+      'img[src*="shop.r10s.jp"]',
+      'img[data-src*="shop.r10s.jp"]'
+    ];
+    let img = null;
+    for (const sel of selectors) { img = doc.querySelector(sel); if (img) break; }
+    let url = '', name = '';
+    if (img) {
+      url = img.getAttribute('src') || img.getAttribute('data-src') || '';
+      url = url.replace(/\?_ex=\d+x\d+$/, '');
+      name = (img.getAttribute('alt') || '').trim();
+    }
+    if (!name) {
+      const titleLink = doc.querySelector('h2 a, [class*="title"] a');
+      if (titleLink) name = titleLink.textContent.trim();
+    }
+    name = name.replace(/\s+/g, ' ').slice(0, 120);
+    return { url, name };
+  }
+
+  async scrapeChained(jan) {
+    const parser = new DOMParser();
+    try {
+      const html = await this.fetchViaLocalProxy(JAN_SEARCH_CONFIG.amazonSearchUrl(jan));
+      const r = this.extractAmazon(parser.parseFromString(html, 'text/html'));
+      if (r.url) return { ...r, source: 'Amazon' };
+    } catch (e) {
+      if (/代理|proxy/i.test(e.message)) throw e;
+    }
+    const html2 = await this.fetchViaLocalProxy(JAN_SEARCH_CONFIG.rakutenSearchUrl(jan));
+    const r2 = this.extractRakuten(parser.parseFromString(html2, 'text/html'));
+    if (r2.url) return { ...r2, source: 'Rakuten' };
+    return { url: '', name: '', source: '' };
+  }
+
+  parseJans(text) {
+    const candidates = (text || '').split(/[\s,;\t\r\n]+/).map(s => s.trim()).filter(Boolean);
+    return this.dedupeAndValidate(candidates);
+  }
+
+  clear() {
+    DOM.$('janTextarea').value = '';
+    this.rows = [];
+    this.abort = false;
+    DOM.$('janResultsBody').innerHTML = '';
+    DOM.$('janResultPanel').style.display = 'none';
+    DOM.$('janStats').innerHTML = '';
+    DOM.$('janProgressBar').style.width = '0%';
+    DOM.$('janProgress').classList.remove('active');
+    this.clearLog();
+  }
+
+  renderStatusTable(jans) {
+    const body = DOM.$('janResultsBody');
+    body.innerHTML = '';
+    jans.forEach((jan, idx) => {
+      const tr = document.createElement('tr');
+      tr.dataset.jan = jan;
+      tr.innerHTML =
+        '<td class="num">' + (idx + 1) + '</td>' +
+        '<td class="jan">' + jan + '</td>' +
+        '<td class="status">⏳ 待機中</td>' +
+        '<td class="source" style="font-size:11px;color:#666"></td>' +
+        '<td class="count" style="text-align:center"></td>';
+      body.appendChild(tr);
+    });
+    DOM.$('janResultPanel').style.display = 'block';
+  }
+
+  updateStatus(jan, { status, source = '', count = null }) {
+    const tr = document.querySelector('tr[data-jan="' + CSS.escape(jan) + '"]');
+    if (!tr) return;
+    tr.className = 'status-' + status;
+    const statusCell = tr.querySelector('.status');
+    if (statusCell) {
+      statusCell.textContent = status === 'loading' ? '⏳ 取得中'
+        : status === 'ok' ? '✅ 成功'
+        : '❌ 未命中';
+    }
+    if (source) tr.querySelector('.source').textContent = source;
+    if (count != null) tr.querySelector('.count').textContent = count;
+  }
+
+  refreshStats() {
+    const total = this.rows.length;
+    let ok = 0, totalImgs = 0;
+    for (const tr of DOM.$('janResultsBody').querySelectorAll('tr.status-ok')) {
+      ok++;
+      const c = parseInt(tr.querySelector('.count')?.textContent || '0', 10);
+      if (!isNaN(c)) totalImgs += c;
+    }
+    DOM.$('janStats').innerHTML =
+      '<div class="stat-card"><div class="num">' + total + '</div><div class="label">JAN 件数</div></div>' +
+      '<div class="stat-card"><div class="num">' + ok + '</div><div class="label">成功</div></div>' +
+      '<div class="stat-card"><div class="num">' + (total - ok) + '</div><div class="label">未命中</div></div>' +
+      '<div class="stat-card"><div class="num">' + totalImgs + '</div><div class="label">画像合計</div></div>';
+  }
+
+  extensionFromUrl(url) {
+    const m = (url || '').match(/\.(jpe?g|png|webp|gif)(?:\?|$)/i);
+    if (!m) return 'jpg';
+    const ext = m[1].toLowerCase();
+    return ext === 'jpeg' ? 'jpg' : ext;
+  }
+
+  truncate(s, n) { s = String(s || ''); return s.length > n ? s.slice(0, n) + '…' : s; }
+
+  probeImage(url, timeoutMs = 6000) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      let done = false;
+      const timer = setTimeout(() => {
+        if (done) return;
+        done = true;
+        img.src = '';
+        resolve({ ok: false, reason: 'timeout' });
+      }, timeoutMs);
+      img.onload = () => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        resolve({ ok: true, width: img.naturalWidth, height: img.naturalHeight });
+      };
+      img.onerror = () => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        resolve({ ok: false, reason: '403/404' });
+      };
+      img.src = url;
+    });
+  }
+
+  async fetchViaProxy(url) {
+    const res = await fetch(JAN_SEARCH_CONFIG.LOCAL_PROXY + '?url=' + encodeURIComponent(url));
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return new Uint8Array(await res.arrayBuffer());
+  }
+
+  async lookupBatch(jans, opts = {}) {
+    const { wantBytes = false, onProgress = null, abortFlag = null } = opts;
+    const results = new Map();
+    if (!jans || jans.length === 0) return results;
+    const total = jans.length;
+    const PLACEHOLDER_MAX = 8000;
+    let proxyAvailable = true;
+    const log = (m, t) => onProgress && onProgress(m, t);
+
+    log('[1/2] jancode.xyz 並列探測...（' + total + ' 件、8 件/バッチ）', 'info');
+    const BATCH = 8;
+    const jancodeLoaded = new Map();
+    for (let i = 0; i < total; i += BATCH) {
+      if (abortFlag && abortFlag()) { log('中止', 'warn'); return results; }
+      const chunk = jans.slice(i, i + BATCH);
+      const probes = await Promise.all(chunk.map(async jan => {
+        const url = 'https://www.jancode.xyz/images/' + jan + '.jpg';
+        const r = await this.probeImage(url);
+        return { jan, url, loaded: r.ok };
+      }));
+      for (const p of probes) jancodeLoaded.set(p.jan, p);
+    }
+
+    log('[2/2] 占位图過濾 + Amazon → Rakuten 補完（順次）...', 'info');
+    for (let i = 0; i < total; i++) {
+      if (abortFlag && abortFlag()) { log('中止', 'warn'); break; }
+      const jan = jans[i];
+      const probe = jancodeLoaded.get(jan);
+      let finalUrl = '', finalName = '', finalSource = '', bytes = null;
+      let needDelay = false;
+
+      if (probe.loaded && proxyAvailable) {
+        try {
+          const b = await this.fetchViaProxy(probe.url);
+          needDelay = true;
+          if (b.length > PLACEHOLDER_MAX) {
+            finalUrl = probe.url;
+            finalSource = 'jancode.xyz';
+            if (wantBytes) bytes = b;
+          }
+        } catch (e) {
+          proxyAvailable = false;
+          finalUrl = probe.url;
+          finalSource = 'jancode.xyz?';
+        }
+      } else if (probe.loaded && !proxyAvailable) {
+        finalUrl = probe.url;
+        finalSource = 'jancode.xyz?';
+      }
+
+      if (!finalUrl && proxyAvailable) {
+        try {
+          const scraped = await this.scrapeChained(jan);
+          needDelay = true;
+          if (scraped.url) {
+            finalUrl = scraped.url;
+            finalName = scraped.name;
+            finalSource = scraped.source;
+            if (wantBytes) {
+              try { bytes = await this.fetchViaProxy(finalUrl); } catch (e) { /* keep url */ }
+            }
+          }
+        } catch (e) {
+          if (/HTTP \d|fetch|network|proxy|代理/i.test(e.message)) proxyAvailable = false;
+        }
+      }
+
+      if (finalUrl) {
+        results.set(jan, { url: finalUrl, name: finalName, source: finalSource, bytes });
+        log('[' + (i+1) + '/' + total + '] [' + finalSource + '] ' + jan + (finalName ? ' → ' + this.truncate(finalName, 40) : ''), 'ok');
+      } else {
+        log('[' + (i+1) + '/' + total + '] ' + jan + ' 未命中', 'warn');
+      }
+      if (needDelay && i < total - 1) await Utils.sleep(JAN_SEARCH_CONFIG.SCRAPE_DELAY_MS);
+    }
+    return results;
+  }
+
+  async getMainImage(jan) {
+    // 主图：jancode.xyz 優先 → Amazon 検索頁 1 枚 → Rakuten 検索頁 1 枚
+    // Returns: { url, bytes, source } or null
+
+    const jancodeUrl = 'https://www.jancode.xyz/images/' + jan + '.jpg';
+    try {
+      const bytes = await this.fetchViaProxy(jancodeUrl);
+      if (bytes.length > 8000) return { url: jancodeUrl, bytes, source: 'jancode.xyz' };
+    } catch (e) {
+      if (!/HTTP 40[34]/i.test(e.message)) throw e;
+    }
+
+    // Amazon 検索頁の最初の 1 枚
+    try {
+      const html = await this.fetchViaLocalProxy(JAN_SEARCH_CONFIG.amazonSearchUrl(jan));
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const img = doc.querySelector('img.s-image, [data-component-type="s-product-image"] img');
+      if (img) {
+        let u = img.getAttribute('src') || img.getAttribute('data-src') || '';
+        u = u.replace(/\._AC_[A-Z0-9_]+_\.(jpg|png|webp)/i, '.$1');
+        if (u) {
+          const b = await this.fetchViaProxy(u);
+          if (b.length > 1000) return { url: u, bytes: b, source: 'Amazon' };
+        }
+      }
+    } catch (e) { /* fall through */ }
+
+    // Rakuten 検索頁の最初の 1 枚
+    try {
+      const html = await this.fetchViaLocalProxy(JAN_SEARCH_CONFIG.rakutenSearchUrl(jan));
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const img = doc.querySelector('img[src*="thumbnail.image.rakuten.co.jp"], img[data-src*="thumbnail.image.rakuten.co.jp"]');
+      if (img) {
+        let u = (img.getAttribute('src') || img.getAttribute('data-src') || '').replace(/\?_ex=\d+x\d+$/, '');
+        if (u) {
+          const b = await this.fetchViaProxy(u);
+          if (b.length > 1000) return { url: u, bytes: b, source: 'Rakuten' };
+        }
+      }
+    } catch (e) { /* fall through */ }
+
+    return null;
+  }
+
+  async getAmazonDetailImages(jan) {
+    // 検索頁 → 最初の /dp/ASIN リンク → 商品詳細ページ → 全画像
+    try {
+      const searchHtml = await this.fetchViaLocalProxy(JAN_SEARCH_CONFIG.amazonSearchUrl(jan));
+      const m = searchHtml.match(/\/dp\/([A-Z0-9]{10})[\/"?]/);
+      if (!m) return [];
+      const asin = m[1];
+      const detailUrl = 'https://www.amazon.co.jp/dp/' + asin;
+      const detailHtml = await this.fetchViaLocalProxy(detailUrl);
+
+      // Amazon 詳細頁には media-amazon.com/images/I/ の URL が散らばる
+      const urls = new Set();
+      const re = /https:\/\/m\.media-amazon\.com\/images\/I\/[A-Za-z0-9+%\-_,\.]+?\.(?:jpg|jpeg|png|webp)/gi;
+      let match;
+      while ((match = re.exec(detailHtml)) !== null) {
+        // サイズサフィックス除去して高解像版を狙う
+        const cleaned = match[0].replace(/\._[A-Z0-9_,]+_\./g, '.');
+        urls.add(cleaned);
+      }
+      const list = [...urls].slice(0, 10);
+      const images = [];
+      for (const u of list) {
+        try {
+          const b = await this.fetchViaProxy(u);
+          if (b.length > 3000) images.push({ url: u, bytes: b });
+        } catch (e) { /* skip */ }
+      }
+      return images;
+    } catch (e) {
+      if (/fetch|network|proxy|代理/i.test(e.message)) throw e;
+      return [];
+    }
+  }
+
+  async getRakutenDetailImages(jan) {
+    // 検索頁 → 最初の item.rakuten.co.jp リンク → 商品詳細ページ → 全画像
+    try {
+      const searchHtml = await this.fetchViaLocalProxy(JAN_SEARCH_CONFIG.rakutenSearchUrl(jan));
+      const m = searchHtml.match(/https:\/\/item\.rakuten\.co\.jp\/[^\s"'<>?]+?\//);
+      if (!m) return [];
+      const detailUrl = m[0];
+      const detailHtml = await this.fetchViaLocalProxy(detailUrl);
+
+      const urls = new Set();
+      const re = /https:\/\/(?:thumbnail\.)?image\.rakuten\.co\.jp\/@0_(?:mall|gold)\/[^\s"'<>?]+?\.(?:jpg|jpeg|png|webp)/gi;
+      let match;
+      while ((match = re.exec(detailHtml)) !== null) {
+        const cleaned = match[0].replace(/\?_ex=\d+x\d+$/, '');
+        urls.add(cleaned);
+      }
+      const list = [...urls].slice(0, 10);
+      const images = [];
+      for (const u of list) {
+        try {
+          const b = await this.fetchViaProxy(u);
+          if (b.length > 3000) images.push({ url: u, bytes: b });
+        } catch (e) { /* skip */ }
+      }
+      return images;
+    } catch (e) {
+      if (/fetch|network|proxy|代理/i.test(e.message)) throw e;
+      return [];
+    }
+  }
+
+  async getAllImages(jan, includeDetails) {
+    // メイン：jancode → Amazon search → Rakuten search（1 枚）
+    // 詳細画像（includeDetails=true）：Amazon 詳細頁 + Rakuten 詳細頁
+    const images = [];
+    const sources = [];
+
+    const main = await this.getMainImage(jan);
+    if (main) {
+      images.push({ url: main.url, bytes: main.bytes });
+      sources.push(main.source);
+    }
+
+    if (includeDetails) {
+      const amzDetails = await this.getAmazonDetailImages(jan);
+      if (amzDetails.length > 0) {
+        // メイン URL と同じものは除外
+        const mainUrl = main ? main.url : '';
+        for (const img of amzDetails) {
+          if (img.url !== mainUrl) images.push(img);
+        }
+        sources.push('Amazon詳細×' + amzDetails.length);
+      }
+      const rakDetails = await this.getRakutenDetailImages(jan);
+      if (rakDetails.length > 0) {
+        const mainUrl = main ? main.url : '';
+        for (const img of rakDetails) {
+          if (img.url !== mainUrl) images.push(img);
+        }
+        sources.push('Rakuten詳細×' + rakDetails.length);
+      }
+    }
+
+    if (images.length === 0) return null;
+    return { source: sources.join(' + '), images };
+  }
+
+  async runDownload() {
+    const text = DOM.$('janTextarea').value;
+    if (!text.trim()) { alert('JAN を貼り付けてください'); return; }
+
+    const includeDetails = DOM.$('janChkDetails') && DOM.$('janChkDetails').checked;
+    this.clearLog();
+    const jans = this.parseJans(text);
+    if (jans.length === 0) { this.log('❌ 有効な JAN が 0 件（8/12/13 桁の数字のみ）', 'err'); return; }
+
+    this.rows = jans;
+    this.abort = false;
+    DOM.$('janBtnDownload').disabled = true;
+    DOM.$('janBtnStop').style.display = 'inline-block';
+    DOM.$('janProgress').classList.add('active');
+    DOM.$('janProgressBar').style.width = '0%';
+
+    this.renderStatusTable(jans);
+    this.refreshStats();
+
+    this.log('🚀 ' + jans.length + ' 件の画像取得を開始（' + (includeDetails ? '主图 + 詳細画像' : '主图のみ') + '、ZIP で保存）', 'info');
+
+    try {
+      await this.fetchViaProxy('https://www.example.com/');
+    } catch (e) {
+      this.log('❌ プロキシに接続できません: ' + e.message, 'err');
+      this.log('→ 商品登録ツール.app が起動しているか確認してください', 'err');
+      DOM.$('janBtnDownload').disabled = false;
+      DOM.$('janBtnStop').style.display = 'none';
+      return;
+    }
+
+    const allFiles = [];
+    let okCount = 0, failCount = 0;
+    const misses = [];
+
+    for (let i = 0; i < jans.length; i++) {
+      if (this.abort) { this.log('⛔ 停止されました', 'warn'); break; }
+      const jan = jans[i];
+      this.updateStatus(jan, { status: 'loading' });
+
+      try {
+        const r = await this.getAllImages(jan, includeDetails);
+        if (r && r.images.length > 0) {
+          const picked = [];
+          if (r.images.length === 1) {
+            const ext = this.extensionFromUrl(r.images[0].url);
+            picked.push({ name: jan + '.' + ext, data: r.images[0].bytes });
+          } else {
+            r.images.forEach((img, idx) => {
+              const ext = this.extensionFromUrl(img.url);
+              picked.push({ name: jan + '_' + (idx + 1) + '.' + ext, data: img.bytes });
+            });
+          }
+          allFiles.push(...picked);
+          this.updateStatus(jan, { status: 'ok', source: r.source, count: r.images.length });
+          this.log('[' + (i+1) + '/' + jans.length + '] ✅ [' + r.source + '] ' + jan + '（' + r.images.length + ' 枚）', 'ok');
+          okCount++;
+        } else {
+          this.updateStatus(jan, { status: 'fail' });
+          this.log('[' + (i+1) + '/' + jans.length + '] ❌ ' + jan + ' 未命中', 'warn');
+          misses.push(jan);
+          failCount++;
+        }
+      } catch (e) {
+        this.updateStatus(jan, { status: 'fail' });
+        this.log('[' + (i+1) + '/' + jans.length + '] ❌ ' + jan + ' エラー: ' + e.message, 'err');
+        misses.push(jan);
+        failCount++;
+        if (/fetch|network|proxy|代理/i.test(e.message)) {
+          this.log('↑ プロキシが落ちた可能性。中止します', 'err');
+          this.abort = true;
+        }
+      }
+
+      DOM.$('janProgressBar').style.width = Math.round((i+1) * 100 / jans.length) + '%';
+      this.refreshStats();
+      if (i < jans.length - 1) await Utils.sleep(JAN_SEARCH_CONFIG.SCRAPE_DELAY_MS);
+    }
+
+    this.log('========= 完了 =========', 'info');
+    this.log('成功: ' + okCount + ' 件 / 失敗: ' + failCount + ' 件', okCount > 0 ? 'ok' : 'warn');
+
+    if (allFiles.length > 0) {
+      const zipBlob = Utils.makeZip(allFiles);
+      const filename = 'JAN画像_' + Utils.getDateStr() + '.zip';
+      Utils.downloadFile(zipBlob, filename);
+      const totalKB = Math.round(allFiles.reduce((s, f) => s + f.data.length, 0) / 1024);
+      this.log('💾 ZIP 保存: ' + filename + '（' + allFiles.length + ' 枚 / ' + totalKB + ' KB）', 'ok');
+    } else {
+      this.log('⚠️ 取得できた画像が 0 枚', 'warn');
+    }
+
+    if (misses.length > 0) {
+      this.log('── 未命中 JAN（手動で確認してください）──', 'warn');
+      this.log(misses.join(', '), 'warn');
+    }
+
+    DOM.$('janBtnDownload').disabled = false;
+    DOM.$('janBtnStop').style.display = 'none';
+  }
+}
+
+// ==================== Supabase 提交函数 ====================
+async function submitToSupabase(rows) {
+  if (!SUPABASE_CONFIG.URL.startsWith('https://')) {
+    alert('⚠️ 请先在 HTML 顶部配置 SUPABASE_CONFIG.URL 和 ANON_KEY');
+    return;
+  }
+
+  // 字段映射（NetSuite → Supabase item_master）
+  const FIELD_MAP = {
+    '表示名': '商品名',
+    'アイテム定義原価': '仕入価格',
+    'カートン入数': 'ケース入数',
+    '発注ロット': '発注ロット',
+    'パッケージ重量(g)': '重量',
+    '手持': '在庫',
+    '利用可能': '利用可能',
+    '注文済': '発注済',
+    '名前': '商品コード',
+    '商品ランク': 'ランク',
+  };
+
+  const mapped = rows.map(r => {
+    const out = {};
+    for (const [src, dst] of Object.entries(FIELD_MAP)) {
+      if (r[src] !== undefined) out[dst] = r[src];
+    }
+    // jan: 找含 UPC 的字段
+    const upcKey = Object.keys(r).find(k => k.includes('UPC'));
+    if (upcKey) out['jan'] = r[upcKey];
+    return out;
+  });
+
+  try {
+    const res = await fetch(`${SUPABASE_CONFIG.URL}/rest/v1/${SUPABASE_CONFIG.TABLE}`, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_CONFIG.ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_CONFIG.ANON_KEY}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'resolution=merge-duplicates'
+      },
+      body: JSON.stringify(mapped)
+    });
+    if (res.ok) {
+      alert(`✅ 成功提交 ${mapped.length} 条到 Supabase`);
+    } else {
+      const err = await res.text();
+      alert(`❌ 失败：HTTP ${res.status}\n${err}`);
+    }
+  } catch (e) {
+    alert(`❌ 网络错误：${e.message}`);
+  }
+}
+
+// ==================== 初始化 ====================
+document.addEventListener('DOMContentLoaded', () => {
+  // 标签切换
+  document.querySelectorAll('.tab-btn').forEach(tab => {
+    tab.addEventListener('click', () => {
+      const tool = tab.dataset.tool;
+      document.querySelectorAll('.tab-btn').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      document.querySelectorAll('.tool-panel').forEach(p => p.classList.remove('active'));
+      DOM.$(`tool-${tool}`)?.classList.add('active');
+    });
+  });
+
+  // 初始化工具
+  window.jansearchTool = new JanSearchTool();
+  new ProductTool();
+  new BundleTool();
+
+  // 绑定 Supabase 提交按钮
+  const btn = document.getElementById('btn-submit-supabase');
+  if (btn) {
+    btn.addEventListener('click', () => {
+      if (typeof window.lastParsedRows === 'undefined') {
+        alert('⚠️ 请先上传 Excel 解析后再提交');
+        return;
+      }
+      submitToSupabase(window.lastParsedRows);
+    });
+  }
+});
+</script>
+</body>
+</html>

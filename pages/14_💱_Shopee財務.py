@@ -20,8 +20,9 @@ st.set_page_config(page_title="Shopee 財務", page_icon="💱", layout="wide")
 st.title("💱 Shopee 財務")
 st.caption("Shopee 拨款 → 各项扣费 → 净到账 全链路对账（4 月份数据）")
 
-DB = Path('/Users/joe/CC/商品信息管理/data_warehouse/warehouse.db')
-conn = sqlite3.connect(str(DB))
+from shared.db import get_connection, DB_PATH
+DB = DB_PATH
+conn = get_connection()
 conn.row_factory = sqlite3.Row
 
 # 月度选择器（默认 2026-04）

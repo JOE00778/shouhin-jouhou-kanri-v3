@@ -6,8 +6,9 @@ import plotly.graph_objects as go
 
 st.set_page_config(page_title="等级历史趋势", page_icon="📈", layout="wide")
 
-DB = Path('/Users/joe/CC/商品信息管理/data_warehouse/warehouse.db')
-conn = sqlite3.connect(str(DB))
+from shared.db import get_connection, DB_PATH
+DB = DB_PATH
+conn = get_connection()
 
 st.title("📈 等级历史趋势")
 st.caption("跨季度等级变化跟踪 · 升级/降级/稳定 SKU 分析")

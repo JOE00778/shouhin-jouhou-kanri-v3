@@ -46,8 +46,9 @@ def handle_action(conn, row, action):
 st.title("⚠️ 改廃確認（Boss-only）")
 st.caption("月度改廃信号审核 · 三按钮：取扱中止 / 継続 / 代替品調査 · 取扱中止自动联动等级=停売")
 
-DB = Path('/Users/joe/CC/商品信息管理/data_warehouse/warehouse.db')
-conn = sqlite3.connect(str(DB))
+from shared.db import get_connection, DB_PATH
+DB = DB_PATH
+conn = get_connection()
 
 # Tab 1: 待確認  Tab 2: 历史回看
 tab1, tab2 = st.tabs(['🆕 待確認', '📜 历史回看'])

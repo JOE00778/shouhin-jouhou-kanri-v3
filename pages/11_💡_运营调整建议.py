@@ -15,7 +15,8 @@ from modules.operation_advice.rules import (
 
 st.set_page_config(page_title="运营调整建议", page_icon="💡", layout="wide")
 
-DB = Path("/Users/joe/CC/商品信息管理/data_warehouse/warehouse.db")
+from shared.db import DB_PATH, get_connection
+DB = DB_PATH
 
 st.title("💡 运营调整建议（B/C 档）")
 st.caption(
@@ -35,7 +36,7 @@ with col_recalc:
         st.rerun()
 
 # 数据加载
-conn = sqlite3.connect(str(DB))
+conn = get_connection()
 df = pd.read_sql_query(
     "SELECT * FROM operation_advice_monthly WHERE year_month = ?",
     conn, params=[ym],

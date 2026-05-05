@@ -9,9 +9,10 @@ st.caption("现有商品登録ツール（HTML 版）· 输出 NetSuite/JD/BM CS
 
 st.info("📌 这是现有商品登録ツール的 iframe 嵌入版。功能跟桌面 app 完全一致，入口集中到 Streamlit。")
 
-html_path = Path('/Users/joe/CC/商品上架APP/商品登録ツール_0418.html')
+# repo 内 assets/ 相对路径（生产/本地都能找到）
+html_path = Path(__file__).resolve().parent.parent / "assets" / "商品登録ツール_0418.html"
 if html_path.exists():
     components.html(html_path.read_text(encoding='utf-8'), height=1500, scrolling=True)
 else:
     st.error(f"❌ 找不到 HTML 文件：{html_path}")
-    st.markdown("请确认 ~/CC/商品上架APP/商品登録ツール_0418.html 存在")
+    st.markdown("请确认 `assets/商品登録ツール_0418.html` 已 push 到 repo")
