@@ -18,7 +18,7 @@ import re
 
 import pandas as pd
 import streamlit as st
-from shared.i18n import t
+from shared.i18n import t, lang_selector
 
 from shared.db import get_connection
 

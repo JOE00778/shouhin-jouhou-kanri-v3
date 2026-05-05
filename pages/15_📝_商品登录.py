@@ -1,5 +1,5 @@
 import streamlit as st
-from shared.i18n import t
+from shared.i18n import t, lang_selector
 import streamlit.components.v1 as components
 from pathlib import Path
 

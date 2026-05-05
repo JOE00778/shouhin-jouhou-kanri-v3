@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import pandas as pd
 import streamlit as st
-from shared.i18n import t
+from shared.i18n import t, lang_selector
 import plotly.express as px
 
 from modules.inventory_health.metrics import THRESHOLD, batch_calc

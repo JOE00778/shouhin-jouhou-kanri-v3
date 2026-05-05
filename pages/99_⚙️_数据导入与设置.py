@@ -13,7 +13,7 @@ from datetime import datetime
 from pathlib import Path
 
 import streamlit as st
-from shared.i18n import t
+from shared.i18n import t, lang_selector
 
 from data_warehouse.ingest.items import LocalItemMasterIngestor
 from data_warehouse.ingest.xls_ingest import (
