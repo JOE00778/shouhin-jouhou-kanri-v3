@@ -40,13 +40,20 @@ QUARTER_RANGES = {
     'FY2025-Q4': '2025-12 ~ 2026-02',
 }
 
-# 季度选择器
-q = st.selectbox(
-    t("季度"),
-    ['FY2026-Q1', 'FY2026-Q2', 'FY2026-Q3', 'FY2026-Q4', 'FY2025-Q4'],
-    index=0,
-    format_func=lambda x: f"{x} ({QUARTER_RANGES.get(x, '?')})",
-)
+# 月度选项 (近 12 个月)
+from datetime import date, timedelta as _td
+def _gen_months(n=12):
+    today = date.today().replace(day=1)
+    months = []
+    cur = today
+    for _ in range(n):
+        months.append(cur.strftime("%Y-%m"))
+        # 上个月
+        prev_last = cur - _td(days=1)
+        cur = prev_last.replace(day=1)
+    return months
+
+MONTH_OPTIONS = _gen_months(12)
 
 # Tab 1: 生成新建议  Tab 2: 历史回看
 tab1, tab2 = st.tabs([t('🆕 新建议'), t('📜 历史回看')])
@@ -54,12 +61,45 @@ tab1, tab2 = st.tabs([t('🆕 新建议'), t('📜 历史回看')])
 with tab1:
     if 'proposal_data' not in st.session_state:
         st.session_state.proposal_data = None
+    if 'proposal_period_label' not in st.session_state:
+        st.session_state.proposal_period_label = None
 
-    if st.button(t("🔄 生成等级建议")):
-        with st.spinner(t("跑 generate_proposal...")):
-            data = generate_proposal(q, str(DB))
-            st.session_state.proposal_data = data
-        st.success(t(f"✓ 已生成 {len(data)} 条建议"))
+    # 两个粒度并排:
+    # 左侧: 月度 selector + 月度按钮
+    # 右侧: 季度 selector + 季度按钮
+    g1, g2 = st.columns(2)
+    with g1:
+        st.markdown(f"**{t('📅 按月度')}**")
+        sel_month = st.selectbox(
+            t("月度"), MONTH_OPTIONS, index=0, key="rank_month_sel",
+        )
+        if st.button(t("🔄 按月度 生成等级建议"), use_container_width=True, key="btn_rank_month"):
+            with st.spinner(t("跑 generate_proposal...")):
+                # generate_proposal 当前用 quarter 参数,这里复用为 period 标识
+                data = generate_proposal(sel_month, str(DB))
+                st.session_state.proposal_data = data
+                st.session_state.proposal_period_label = f"月度 {sel_month}"
+            st.success(t(f"✓ [月度 {sel_month}] 已生成 {len(data)} 条建议"))
+
+    with g2:
+        st.markdown(f"**{t('📆 按季度 (财年 3 月开始)')}**")
+        q = st.selectbox(
+            t("季度"),
+            ['FY2026-Q1', 'FY2026-Q2', 'FY2026-Q3', 'FY2026-Q4', 'FY2025-Q4'],
+            index=0,
+            format_func=lambda x: f"{x} ({QUARTER_RANGES.get(x, '?')})",
+            key="rank_q_sel",
+        )
+        if st.button(t("🔄 按季度 生成等级建议"), use_container_width=True, type="primary", key="btn_rank_q"):
+            with st.spinner(t("跑 generate_proposal...")):
+                data = generate_proposal(q, str(DB))
+                st.session_state.proposal_data = data
+                st.session_state.proposal_period_label = f"季度 {q} ({QUARTER_RANGES.get(q,'?')})"
+            st.success(t(f"✓ [季度 {q}] 已生成 {len(data)} 条建议"))
+
+    # 当前已选期间提示
+    if st.session_state.proposal_period_label:
+        st.info(t(f"📌 当前预览期间: {st.session_state.proposal_period_label}"))
 
     if st.session_state.proposal_data:
         df = pd.DataFrame(st.session_state.proposal_data)
