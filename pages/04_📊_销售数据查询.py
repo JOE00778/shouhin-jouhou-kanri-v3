@@ -55,11 +55,10 @@ if sales_count == 0:
     st.stop()
 
 # ============================================================
-# 粒度切换 + 期间筛选
+# 粒度切换 + 期间筛选 (Boss: 删除前日维度)
+# 二维度: 月度 (asean_monthly) / 季度 (3 个月聚合)
 # ============================================================
-# 三维度: 前日 (asean_daily) / 月度 (asean_monthly) / 季度 (3 个月聚合)
 GRAN_LABELS = {
-    t("前日"): "daily",
     t("月度"): "monthly",
     t("季度"): "quarterly",
 }
@@ -80,19 +79,8 @@ with c0:
     )
     gran = GRAN_LABELS[gran_label]
 
-# 根据粒度选不同的源 + 不同的期间 selector
-if gran == "daily":
-    period_opts = conn.execute(
-        "SELECT DISTINCT period_start, period_end FROM sales_line "
-        "WHERE source = 'asean_daily' ORDER BY period_start DESC"
-    ).fetchall()
-    periods = [(r["period_start"], r["period_end"]) for r in period_opts]
-    with c1:
-        sel_period = st.selectbox(
-            t("前日期间"), periods,
-            format_func=lambda p: f"{p[0]} ~ {p[1]}" if p[0] else t("(无期间)"),
-        )
-elif gran == "monthly":
+# 根据粒度选不同的期间 selector
+if gran == "monthly":
     period_opts = conn.execute(
         "SELECT DISTINCT period_start, period_end FROM sales_line "
         "WHERE source = 'asean_monthly' ORDER BY period_start DESC"
@@ -119,18 +107,7 @@ with c3:
     show_zero_sales = st.checkbox(t("含销量为 0 的 SKU"), value=False)
 
 # 根据粒度构 SQL
-if gran == "daily":
-    df_raw = _df(
-        """
-        SELECT store, item_code, upc, display_name, handling_status, maker, rank,
-               qty_sold, revenue, defined_cost, gross_profit, gross_margin, source
-        FROM sales_line
-        WHERE period_start = :p_start AND period_end = :p_end
-          AND source = 'asean_daily'
-        """,
-        {"p_start": sel_period[0], "p_end": sel_period[1]},
-    )
-elif gran == "monthly":
+if gran == "monthly":
     df_raw = _df(
         """
         SELECT store, item_code, upc, display_name, handling_status, maker, rank,
