@@ -248,12 +248,16 @@ agg["inv_sales_ratio"] = (
     agg["inv_value"] / agg["revenue"]
 ).where(agg["revenue"] > 0).fillna(0)
 
-# 利益貢献度 U = I/$I$2 = 毛利 / 整体总毛利
-# (用 ASEAN 集計専用源表全部 SKU 的总毛利, 不是过滤视图后的)
-total_gp_grand = float(df_raw["gross_profit"].sum())
+# 利益貢献度 U = I/$I$2
+# Excel $I$2 = R2 表头单元格「取扱中商品売上」的总毛利
+# 即 仅 handling_status="取扱中" SKU 的毛利总和 (排除取扱中止 / メーカー取扱中止)
+_active_mask = ~df_raw["handling_status"].astype(str).str.strip().isin(
+    ("取扱中止", "メーカー取扱中止")
+)
+total_gp_active = float(df_raw[_active_mask]["gross_profit"].sum())
 agg["profit_contribution"] = (
-    agg["gross_profit"] / total_gp_grand
-) if total_gp_grand else 0
+    agg["gross_profit"] / total_gp_active
+) if total_gp_active else 0
 
 
 def _grade(row):
