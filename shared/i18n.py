@@ -561,14 +561,56 @@ TRANSLATIONS_JA: dict[str, str] = {
 }
 
 
+# 自定义 sidebar nav（path → t() key 映射）
+_NAV_PAGES = [
+    ("商品信息管理.py", "🏠 首页"),
+    ("pages/02_🔍_商品情报检索.py", "🔍 商品情报检索"),
+    ("pages/03_💰_定義原価編集.py", "💰 定義原価編集"),
+    ("pages/04_📊_销售数据查询.py", "📊 销售数据查询"),
+    ("pages/05_🏪_店铺别毛利.py", "🏪 店铺别毛利"),
+    ("pages/06_📦_库存健康监控.py", "📦 库存健康监控"),
+    ("pages/07_🏷️_商品等级判定.py", "🏷️ 商品等级判定"),
+    ("pages/11_💡_运营调整建议.py", "💡 运营调整建议"),
+    ("pages/12_🚫_入荷困難商品.py", "🚫 入荷困難商品"),
+    ("pages/13_⚠️_改廃確認.py", "⚠️ 改廃確認"),
+    ("pages/14_💱_Shopee財務.py", "💱 Shopee財務"),
+    ("pages/15_📝_商品登录.py", "📝 商品登录"),
+    ("pages/16_📈_等级历史趋势.py", "📈 等级历史趋势"),
+    ("pages/99_⚙️_数据导入与设置.py", "⚙️ 数据导入与设置"),
+]
+
+# i18n key 「🏠 首页」的翻译条目（缺失则补）
+TRANSLATIONS_JA.setdefault("🏠 首页", "🏠 ホーム")
+
+
 def lang_selector():
-    """每个 page 调用一次,侧边栏顶部显示 🌐 切换器。"""
+    """每个 page 调用一次。
+    - 隐藏 Streamlit 默认（基于文件名的）sidebar 导航
+    - 在 sidebar 顶部渲染 🌐 切换器
+    - 用 st.sidebar.page_link 重建可翻译 sidebar 导航
+    """
+    # 1) 隐藏默认导航
+    st.markdown(
+        "<style>[data-testid='stSidebarNav']{display:none!important;}</style>",
+        unsafe_allow_html=True,
+    )
+
+    # 2) 语言切换器
     selected = st.sidebar.selectbox(
         "🌐 Language / 言語",
         list(LANGS.keys()),
         key="lang_label",
     )
     st.session_state["lang"] = LANGS[selected]
+
+    # 3) 自定义可翻译导航
+    st.sidebar.divider()
+    for path, label in _NAV_PAGES:
+        try:
+            st.sidebar.page_link(path, label=t(label))
+        except Exception:
+            pass
+
     return selected
 
 
