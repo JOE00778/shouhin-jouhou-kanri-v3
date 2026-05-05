@@ -252,17 +252,33 @@ elif step == 2:
         t(f"⚠️ 异常告警 ({n_red + n_yellow})"),
     ])
 
+    # 列名 → 中文/日文 (走 t() 走 i18n)
+    COL_RENAME = {
+        "internal_id": t("内部 ID"),
+        "item_code": t("商品代码"),
+        "display_name": t("商品名"),
+        "total_qty": t("库存数量"),
+        "std_cost_old": t("当前定义原价"),
+        "std_cost_new": t("新定义原价"),
+        "avg_cost": t("平均原価"),
+        "diff": t("差额"),
+        "diff_pct": t("差额率"),
+        "severity": t("严重度"),
+        "action": t("处理"),
+        "skip_reason": t("跳过原因"),
+    }
+
     with tab_u:
         df_u = df_all[df_all["action"] == "UPDATE"].copy()
         if df_u.empty:
             st.info(t("本次没有 SKU 触发更新。"))
         else:
             df_show = df_u[["internal_id", "item_code", "display_name", "total_qty",
-                            "std_cost_old", "std_cost_new", "diff", "diff_pct", "severity"]]
-            df_show = df_show.copy()
+                            "std_cost_old", "std_cost_new", "diff", "diff_pct", "severity"]].copy()
             df_show["diff_pct"] = df_show["diff_pct"].apply(
                 lambda x: f"{x:+.2%}" if pd.notna(x) else ""
             )
+            df_show = df_show.rename(columns=COL_RENAME)
             st.dataframe(df_show, use_container_width=True, hide_index=True)
 
     with tab_s:
@@ -271,7 +287,8 @@ elif step == 2:
             st.info(t("没有任何 SKU 被跳过。"))
         else:
             df_show = df_s[["internal_id", "item_code", "display_name", "total_qty",
-                            "avg_cost", "std_cost_old", "action", "skip_reason"]]
+                            "avg_cost", "std_cost_old", "action", "skip_reason"]].copy()
+            df_show = df_show.rename(columns=COL_RENAME)
             st.dataframe(df_show, use_container_width=True, hide_index=True)
 
     with tab_a:
@@ -290,6 +307,7 @@ elif step == 2:
             df_show["diff_pct"] = df_show["diff_pct"].apply(
                 lambda x: f"{x:+.2%}" if pd.notna(x) else ""
             )
+            df_show = df_show.rename(columns=COL_RENAME)
             st.dataframe(df_show, use_container_width=True, hide_index=True)
 
     st.divider()
