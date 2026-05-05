@@ -43,7 +43,7 @@ tab_import, tab_status, tab_logs, tab_legacy = st.tabs(
 # Tab 1：一键多文件导入
 # ============================================================
 with tab_import:
-    st.subheader(t("拖拽 6 类 NetSuite 导出文件"))
+    st.subheader(t("拖拽 NetSuite + Shopee 导出文件"))
     with st.expander(t("📖 支持的文件类型"), expanded=False):
         st.markdown(
             """
@@ -55,6 +55,8 @@ with tab_import:
             | `ASEAN` + `店舗別` | `sales_line` (asean_monthly) | ASEAN 月销售（按店铺） |
             | `輸出` + `アイテム別` | `sales_line` (export_item) | 出口销售（SKU 维度，带 rank） |
             | `輸出` + `店舗別` | `sales_line` (export_store) | 出口销售（店铺×SKU 维度） |
+            | `订单导出` | `shopee_orders_raw` | Shopee 订单导出（订单号+SKU+店铺） |
+            | `mtkshop`/`income`/`已拨款` | `shopee_income_lines` | Shopee 拨款明细（含各项扣费） |
 
             一次可以拖多个文件，挨个识别 + 导入。识别不到的文件会显示警告但不影响其他文件。
             """

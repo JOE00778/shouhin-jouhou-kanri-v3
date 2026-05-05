@@ -393,6 +393,235 @@ def ingest_inventory_turnover(
 
 
 # ============================================================
+# Ingestor 7：shopee_orders_raw（订单导出.xlsx Sheet0）
+# ============================================================
+def ingest_shopee_orders_raw(
+    path, conn, *, source_name: str | None = None
+) -> dict:
+    """订单导出 .xlsx Sheet0 (8 列): 支付币种/单价/发货数量/本地SKU/支付金额/平台/订单号/店铺."""
+    import openpyxl
+    path = Path(path)
+    source_name = source_name or path.name
+    run_id = _start_run(conn, "shopee_orders_raw", source_name)
+
+    wb = openpyxl.load_workbook(str(path), data_only=True)
+    ws = wb[wb.sheetnames[0]]
+    rows_iter = list(ws.iter_rows(values_only=True))
+    if len(rows_iter) < 2:
+        _finalize_run(conn, run_id, total=0, inserted=0, errors=0)
+        return {"run_id": run_id, "total": 0, "inserted": 0, "errors": 0,
+                "period_start": None, "period_end": None}
+
+    header = [str(h).strip() if h is not None else "" for h in rows_iter[0]]
+    # 字段映射 (中文表头 → DB 字段)
+    name_map = {
+        "支付币种": "currency", "单价": "unit_price", "发货数量": "ship_qty",
+        "本地SKU": "local_sku", "支付金额": "payment_amount",
+        "平台": "platform", "订单号": "order_no", "店铺": "shop_name",
+    }
+    col_to_field = {i: name_map[h] for i, h in enumerate(header) if h in name_map}
+
+    sql = """
+        INSERT OR REPLACE INTO shopee_orders_raw (
+            currency, unit_price, ship_qty, local_sku, payment_amount,
+            platform, order_no, shop_name, source_file, imported_at
+        ) VALUES (
+            :currency, :unit_price, :ship_qty, :local_sku, :payment_amount,
+            :platform, :order_no, :shop_name, :source_file, :imported_at
+        )
+    """
+    now = _now_iso()
+    inserted = errors = 0
+    total = len(rows_iter) - 1
+    for n, row in enumerate(rows_iter[1:], start=1):
+        try:
+            payload = {
+                "currency": None, "unit_price": None, "ship_qty": None,
+                "local_sku": None, "payment_amount": None,
+                "platform": None, "order_no": None, "shop_name": None,
+                "source_file": source_name, "imported_at": now,
+            }
+            for i, field in col_to_field.items():
+                if i < len(row):
+                    v = row[i]
+                    if field == "payment_amount":
+                        payload[field] = _to_float(v)
+                    else:
+                        payload[field] = _to_str(v)
+            if not payload["order_no"]:
+                continue  # 跳过空行
+            conn.execute(sql, payload)
+            inserted += 1
+        except Exception as e:
+            errors += 1
+            _record_error(conn, run_id, n, str(e), {"row": str(row)[:200]})
+
+    conn.commit()
+    _finalize_run(conn, run_id, total=total, inserted=inserted, errors=errors)
+    return {"run_id": run_id, "total": total, "inserted": inserted,
+            "errors": errors, "period_start": None, "period_end": None}
+
+
+# ============================================================
+# Ingestor 8：shopee_income_lines（ph.mtkshop.*.income.已拨款.xlsx Income sheet）
+# ============================================================
+def ingest_shopee_income(
+    path, conn, *, source_name: str | None = None
+) -> dict:
+    """ph.*.income.已拨款.xlsx Income sheet (R6 表头, 46 列)."""
+    import openpyxl
+    path = Path(path)
+    source_name = source_name or path.name
+    run_id = _start_run(conn, "shopee_income", source_name)
+
+    wb = openpyxl.load_workbook(str(path), data_only=True)
+    if "Income" not in wb.sheetnames:
+        _finalize_run(conn, run_id, total=0, inserted=0, errors=0)
+        return {"run_id": run_id, "total": 0, "inserted": 0, "errors": 0,
+                "period_start": None, "period_end": None}
+    ws = wb["Income"]
+
+    # R1: 卖家帐号/付款ID/收款渠道/拨款时间 (header)
+    # R2: 值 (mtkshop.ph / 2026-04-01 等)
+    # R6: 主表头
+    # R7+: detail
+    rows = list(ws.iter_rows(values_only=True))
+    if len(rows) < 7:
+        _finalize_run(conn, run_id, total=0, inserted=0, errors=0)
+        return {"run_id": run_id, "total": 0, "inserted": 0, "errors": 0,
+                "period_start": None, "period_end": None}
+
+    # 顶部 meta (R2)
+    seller_account = _to_str(rows[1][0]) if len(rows[1]) > 0 else None
+    payout_date_top = _to_str(rows[1][3]) if len(rows[1]) > 3 else None
+    if payout_date_top:
+        # 'YYYY-MM-DD HH:MM:SS' 或 'YYYY-MM-DD'
+        payout_date_top = payout_date_top.split(" ")[0].split("T")[0]
+
+    # 表头映射 (中文 → DB 字段)
+    header = [str(h).strip() if h is not None else "" for h in rows[5]]  # R6 (0-indexed=5)
+    NAME_MAP = {
+        "编号": "seq", "订单编号": "order_no", "退款ID": "refund_id",
+        "买家帐号": "buyer_account", "订单成立时间": "order_created_at",
+        "买家付款方式": "payment_method", "Hot Listing": "hot_listing",
+        "买家付款方式详情_1": "payment_method_detail",
+        "分期付款计划 （如适用）": "installment_plan",
+        "installment rate": "installment_rate",
+        "拨款完成日期": "payout_completed_at",
+        "商品原价": "gross_price", "商品折扣": "product_discount",
+        "退款金額": "refund_amount", "Shopee回扣金额": "shopee_rebate",
+        "卖家赞助的优惠券": "seller_voucher",
+        "卖家赞助的合资优惠券": "seller_voucher_jv",
+        "卖家赞助的 Shopee 币回扣": "seller_shopee_coin",
+        "卖家赞助的合资 Shopee 币回扣": "seller_shopee_coin_jv",
+        "买家支付运费": "buyer_shipping",
+        "Shopee运费补贴": "shopee_shipping_subsidy",
+        "卖家支付运费": "seller_shipping",
+        "退货运费": "return_shipping",
+        "退货给卖家的运费": "return_to_seller_ship",
+        "通过运费险计划节省下的运费总额": "shipping_insurance_save",
+        "联盟营销方案佣金": "affiliate_commission",
+        "佣金": "commission",
+        "物流+：海外免退服务-派送失败场景服务费": "fbs_overseas_fail",
+        "物流+：海外免退服务-退货退款场景服务费": "fbs_overseas_return",
+        "服务费": "service_fee",
+        "运费险计划活动服务费": "shipping_insurance_fee",
+        "交易手续费": "transaction_fee",
+        "FBS Fee": "fbs_fee",
+        "拨款金额 (₱)": "payout_amount",
+        "优惠码": "promo_code",
+        "损失赔偿": "loss_compensation",
+        "每个订单的实际总重量": "actual_weight",
+        "卖家提供的运费促销": "seller_shipping_promo",
+        "物流承运商": "logistics_carrier",
+        "物流名称": "logistics_name",
+        "退款给买家的现金金额": "refund_cash",
+        "退货/退款商品的按比例Shopee币抵消": "prorated_shopee_coin",
+        "退货商品的按比例Shopee优惠券抵消": "prorated_shopee_voucher",
+        "Pro-rated Bank Payment Channel Promotion  for return refund Items": "prorated_bank_promo",
+        "Pro-rated Shopee Payment Channel Promotion  for return refund Items": "prorated_payment_promo",
+    }
+    col_to_field = {i: NAME_MAP[h] for i, h in enumerate(header) if h in NAME_MAP}
+    NUMERIC_FIELDS = {
+        "gross_price", "product_discount", "refund_amount", "shopee_rebate",
+        "seller_voucher", "seller_voucher_jv", "seller_shopee_coin",
+        "seller_shopee_coin_jv", "buyer_shipping", "shopee_shipping_subsidy",
+        "seller_shipping", "return_shipping", "return_to_seller_ship",
+        "shipping_insurance_save", "affiliate_commission", "commission",
+        "fbs_overseas_fail", "fbs_overseas_return", "service_fee",
+        "shipping_insurance_fee", "transaction_fee", "fbs_fee",
+        "payout_amount", "loss_compensation", "actual_weight",
+        "seller_shipping_promo", "refund_cash",
+        "prorated_shopee_coin", "prorated_shopee_voucher",
+        "prorated_bank_promo", "prorated_payment_promo",
+    }
+    INT_FIELDS = {"seq"}
+
+    # 所有 DB 字段（按 schema 顺序）
+    DB_FIELDS = [
+        "seq", "order_no", "refund_id", "buyer_account", "order_created_at",
+        "payment_method", "hot_listing", "payment_method_detail",
+        "installment_plan", "installment_rate", "payout_completed_at",
+        "gross_price", "product_discount", "refund_amount", "shopee_rebate",
+        "seller_voucher", "seller_voucher_jv", "seller_shopee_coin",
+        "seller_shopee_coin_jv", "buyer_shipping", "shopee_shipping_subsidy",
+        "seller_shipping", "return_shipping", "return_to_seller_ship",
+        "shipping_insurance_save", "affiliate_commission", "commission",
+        "fbs_overseas_fail", "fbs_overseas_return", "service_fee",
+        "shipping_insurance_fee", "transaction_fee", "fbs_fee",
+        "payout_amount", "promo_code", "loss_compensation", "actual_weight",
+        "seller_shipping_promo", "logistics_carrier", "logistics_name",
+        "refund_cash", "prorated_shopee_coin", "prorated_shopee_voucher",
+        "prorated_bank_promo", "prorated_payment_promo",
+        "seller_account", "payout_date", "source_file", "imported_at",
+    ]
+    placeholders = ",".join(f":{f}" for f in DB_FIELDS)
+    cols = ",".join(DB_FIELDS)
+    sql = f"INSERT OR REPLACE INTO shopee_income_lines ({cols}) VALUES ({placeholders})"
+
+    now = _now_iso()
+    inserted = errors = 0
+    detail_rows = rows[6:]  # R7+ (0-indexed=6)
+    total = 0
+    for n, row in enumerate(detail_rows, start=1):
+        try:
+            if not row or all(v is None for v in row):
+                continue
+            payload = {f: None for f in DB_FIELDS}
+            payload["seller_account"] = seller_account
+            payload["payout_date"] = payout_date_top
+            payload["source_file"] = source_name
+            payload["imported_at"] = now
+
+            for i, field in col_to_field.items():
+                if i < len(row):
+                    v = row[i]
+                    if field in NUMERIC_FIELDS:
+                        payload[field] = _to_float(v)
+                    elif field in INT_FIELDS:
+                        try:
+                            payload[field] = int(v) if v is not None else None
+                        except (ValueError, TypeError):
+                            payload[field] = None
+                    else:
+                        payload[field] = _to_str(v)
+
+            if not payload.get("order_no"):
+                continue  # 跳过空行 / 小计行
+            total += 1
+            conn.execute(sql, payload)
+            inserted += 1
+        except Exception as e:
+            errors += 1
+            _record_error(conn, run_id, n, str(e), {"row": str(row)[:200]})
+
+    conn.commit()
+    _finalize_run(conn, run_id, total=total, inserted=inserted, errors=errors)
+    return {"run_id": run_id, "total": total, "inserted": inserted,
+            "errors": errors, "period_start": payout_date_top, "period_end": payout_date_top}
+
+
+# ============================================================
 # 自动派发：根据文件名启发式选择 ingestor
 # ============================================================
 INGESTOR_REGISTRY: dict[str, callable] = {
@@ -402,6 +631,8 @@ INGESTOR_REGISTRY: dict[str, callable] = {
     "export_item": ingest_sales_export_item,
     "export_store": ingest_sales_export_store,
     "turnover": ingest_inventory_turnover,
+    "shopee_orders": ingest_shopee_orders_raw,
+    "shopee_income": ingest_shopee_income,
 }
 
 
@@ -420,4 +651,11 @@ def detect_ingestor(filename: str) -> str | None:
         return "export_item"
     if "輸出" in n and "店舗別" in n:
         return "export_store"
+    # Shopee 财务两份原表
+    if "订单导出" in n or "订单导出" in n.lower():
+        return "shopee_orders"
+    if "income" in n.lower() and ("已拨款" in n or "拨款" in n):
+        return "shopee_income"
+    if "mtkshop" in n.lower() and "income" in n.lower():
+        return "shopee_income"
     return None

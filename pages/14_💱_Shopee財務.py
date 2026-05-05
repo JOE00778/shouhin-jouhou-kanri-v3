@@ -49,26 +49,37 @@ def _week_start(d) -> str | None:
     return monday.isoformat()
 
 
-def _market_from_seller(seller: str | None) -> str:
-    """seller_account 'mtkshop.ph' → 'PH'."""
-    if not seller:
-        return "?"
-    s = str(seller).lower()
-    m = re.search(r"\.([a-z]{2,3})$", s)
-    return m.group(1).upper() if m else s.upper()
+def _market_region(_label: str | None = None) -> str:
+    """市场维度:
+    当前阶段 Shopee + Lazada 都归属东南亚。Coupang(韩国) 后置.
+    一律返回「东南亚」直到将来扩展。"""
+    return t("东南亚")
 
 
-def _market_from_shop(shop: str | None) -> str:
-    """shop_name 'Smikie Japan.ph' → 'PH'; '官方旗艦店（日本直郵）' → 'CB' (跨境)."""
+def _country_from_shop(shop: str | None) -> str:
+    """国家代码 (sub-market): TW/PH/MY/SG/ID/VN/TH/BR/...
+    - 'Smikie Japan.ph' → 'PH'
+    - '官方旗艦店（日本直郵）' → 'TW' (跨境到台湾)
+    """
     if not shop:
         return "?"
     s = str(shop).lower()
     m = re.search(r"\.([a-z]{2,3})\b", s)
     if m:
         return m.group(1).upper()
-    if "日本直" in s or "官方" in s:
-        return "CB"
+    s_orig = str(shop)
+    if "日本直" in s_orig or "直郵" in s_orig or "旗艦" in s_orig or "台灣" in s_orig:
+        return "TW"
     return "OTHER"
+
+
+def _country_from_seller(seller: str | None) -> str:
+    """seller_account 'mtkshop.ph' → 'PH'."""
+    if not seller:
+        return "?"
+    s = str(seller).lower()
+    m = re.search(r"\.([a-z]{2,3})$", s)
+    return m.group(1).upper() if m else s.upper()
 
 
 # ============================================================
@@ -101,12 +112,19 @@ if not df_income.empty:
     df_income["month"] = df_income["payout_date"].apply(
         lambda d: pd.to_datetime(d).strftime("%Y-%m") if pd.notna(d) else None
     )
-    df_income["market"] = df_income["seller_account"].apply(_market_from_seller)
+    df_income["country"] = df_income["seller_account"].apply(_country_from_seller)
+    df_income["market"] = df_income["seller_account"].apply(_market_region)
+    if "platform" not in df_income.columns:
+        df_income["platform"] = "Shopee"  # 拨款表都来自 Shopee 平台
 
 # 订单导出: 给每个订单算周(用 payout_date 不可得 → 用 income 表 join)
 # 简化: 仅做 shop_name → market 映射
 if not df_orders.empty:
-    df_orders["market"] = df_orders["shop_name"].apply(_market_from_shop)
+    df_orders["country"] = df_orders["shop_name"].apply(_country_from_shop)
+    df_orders["market"] = df_orders["shop_name"].apply(_market_region)
+    # platform 字段在订单导出原表里就有 (F 列)
+    if "platform" not in df_orders.columns:
+        df_orders["platform"] = "Shopee"
     if not df_income.empty:
         # join 拿订单的 week / month (来自 income.payout_date)
         df_orders = df_orders.merge(
@@ -132,21 +150,24 @@ with c1:
     period_label = t("拨款周（周一）") if gran_col == "week" else t("拨款月（YYYY-MM）")
     sel_period = st.selectbox(period_label, [t("全部")] + periods)
 with c2:
-    markets = []
+    platforms_in_data = []
+    if not df_orders.empty:
+        platforms_in_data += df_orders["platform"].dropna().unique().tolist()
     if not df_income.empty:
-        markets = sorted(df_income["market"].dropna().unique().tolist())
-    sel_market = st.selectbox(t("市场"), [t("全部")] + markets)
+        platforms_in_data += df_income["platform"].dropna().unique().tolist()
+    platforms_in_data = sorted(set(platforms_in_data))
+    sel_platform = st.selectbox(t("平台"), [t("全部")] + platforms_in_data)
 
 # 应用筛选
 if sel_period != t("全部") and not df_income.empty:
     df_income = df_income[df_income[gran_col] == sel_period]
     if not df_orders.empty and gran_col in df_orders.columns:
         df_orders = df_orders[(df_orders[gran_col] == sel_period) | df_orders[gran_col].isna()]
-if sel_market != t("全部"):
-    if not df_income.empty:
-        df_income = df_income[df_income["market"] == sel_market]
+if sel_platform != t("全部"):
+    if not df_income.empty and "platform" in df_income.columns:
+        df_income = df_income[df_income["platform"] == sel_platform]
     if not df_orders.empty:
-        df_orders = df_orders[df_orders["market"] == sel_market]
+        df_orders = df_orders[df_orders["platform"] == sel_platform]
 
 # ============================================================
 # KPI
@@ -168,16 +189,19 @@ c3.metric(t("商品原价合计"), f"₱{total_gross:,.0f}")
 c4.metric(t("总扣费"), f"₱{total_deduct:,.0f}")
 c5.metric(t("拨款金额合计"), f"₱{total_payout:,.0f}")
 
+# 市场提示 (当前唯一)
+st.info(t("📍 市场: 东南亚（Shopee + Lazada）· Coupang 等其他市场后置"))
 st.divider()
 
 # ============================================================
-# Tab: 周×市场 / 周×店铺 / 原始
+# Tab: 平台 / 店铺 / 市场×粒度 + 原始数据
 # ============================================================
 period_col_label = t("周") if gran_col == "week" else t("月")
 
-tab_market, tab_shop, tab_raw_o, tab_raw_i = st.tabs([
-    f"🌐 {period_col_label} × {t('市场')}",
+tab_platform, tab_shop, tab_market, tab_raw_o, tab_raw_i = st.tabs([
+    f"📱 {period_col_label} × {t('平台')}",
     f"🏪 {period_col_label} × {t('店铺')}",
+    f"🌐 {period_col_label} × {t('市场')}",
     t("📦 订单导出（原始）"),
     t("💰 拨款明细（原始）"),
 ])
@@ -189,6 +213,61 @@ def _fmt_money(x):
     except Exception:
         return x
 
+
+def _agg_dim(df, gran_col, dim_col):
+    """通用聚合: by 期间 × dim_col."""
+    return df.groupby([gran_col, dim_col], as_index=False).agg(
+        gross_price=("gross_price", "sum"),
+        commission=("commission", "sum"),
+        service_fee=("service_fee", "sum"),
+        transaction_fee=("transaction_fee", "sum"),
+        buyer_shipping=("buyer_shipping", "sum"),
+        seller_shipping=("seller_shipping", "sum"),
+        payout_amount=("payout_amount", "sum"),
+        n_orders=("order_no", "nunique"),
+    )
+
+
+def _format_agg(agg, gran_col, dim_col, dim_label, period_col_label):
+    """格式化聚合表 → display df + raw csv."""
+    agg = agg.copy()
+    agg["net_deduct"] = agg["gross_price"] - agg["payout_amount"]
+    show = agg.rename(columns={
+        gran_col: period_col_label,
+        dim_col: dim_label,
+        "gross_price": t("商品原价"),
+        "commission": t("佣金"),
+        "service_fee": t("服务费"),
+        "transaction_fee": t("交易手续费"),
+        "buyer_shipping": t("买家运费"),
+        "seller_shipping": t("卖家运费"),
+        "payout_amount": t("拨款金额"),
+        "n_orders": t("订单数"),
+        "net_deduct": t("净扣费"),
+    }).copy()
+    for col in (t("商品原价"), t("佣金"), t("服务费"), t("交易手续费"),
+                t("买家运费"), t("卖家运费"), t("拨款金额"), t("净扣费")):
+        if col in show.columns:
+            show[col] = show[col].map(_fmt_money)
+    return show, agg
+
+
+with tab_platform:
+    if df_income.empty:
+        st.info(t("拨款明细未上传, 无法按平台聚合。"))
+    else:
+        agg = _agg_dim(df_income, gran_col, "platform")
+        show, raw = _format_agg(agg, gran_col, "platform", t("平台"), period_col_label)
+        show = show.sort_values([period_col_label, t("平台")], ascending=[False, True])
+        st.dataframe(show, use_container_width=True, hide_index=True, height=460)
+        st.caption(t(f"共 {len(agg):,} 行 ({period_col_label} × 平台)"))
+        st.download_button(
+            f"📥 {period_col_label}×{t('平台')} CSV",
+            data=raw.to_csv(index=False).encode("utf-8-sig"),
+            file_name=f"shopee_{gran_col}_platform.csv",
+            mime="text/csv",
+            key="dl_platform",
+        )
 
 with tab_market:
     if df_income.empty:
