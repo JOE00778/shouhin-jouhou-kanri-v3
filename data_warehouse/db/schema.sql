@@ -746,3 +746,41 @@ CREATE TABLE IF NOT EXISTS std_cost_history (
 );
 CREATE INDEX IF NOT EXISTS idx_stdcost_hist_iid     ON std_cost_history(internal_id);
 CREATE INDEX IF NOT EXISTS idx_stdcost_hist_changed ON std_cost_history(changed_at);
+
+-- ============================================================
+-- 销售聚合（对齐原 order-management-app sales 表）
+-- 字段: jan / quantity_sold / stock_available / stock_ordered
+-- 业务: 按 SKU 聚合最近一个月的销售 + 当前库存快照
+-- ============================================================
+CREATE TABLE IF NOT EXISTS sales (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  jan             TEXT NOT NULL,
+  quantity_sold   INTEGER NOT NULL DEFAULT 0,
+  stock_available INTEGER NOT NULL DEFAULT 0,
+  stock_ordered   INTEGER NOT NULL DEFAULT 0,
+  period_label    TEXT,                -- e.g. "2026-04" / "直近1ヶ月"
+  source_file     TEXT,
+  imported_at     TEXT NOT NULL,
+  UNIQUE(jan, period_label)
+);
+CREATE INDEX IF NOT EXISTS idx_sales_jan    ON sales(jan);
+CREATE INDEX IF NOT EXISTS idx_sales_period ON sales(period_label);
+
+-- ============================================================
+-- 店舗別粗利月度（对齐原 store_profit_lines 表）
+-- ============================================================
+CREATE TABLE IF NOT EXISTS store_profit_lines (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  report_period   TEXT NOT NULL,        -- e.g. "2026-04"
+  line_type       TEXT NOT NULL,        -- detail / 合計 / 総計
+  store           TEXT,
+  qty             INTEGER DEFAULT 0,
+  revenue         INTEGER DEFAULT 0,
+  defined_cost    INTEGER DEFAULT 0,
+  gross_profit    INTEGER DEFAULT 0,
+  original_line   TEXT,
+  source_file     TEXT,
+  imported_at     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_spl_period ON store_profit_lines(report_period);
+CREATE INDEX IF NOT EXISTS idx_spl_store  ON store_profit_lines(store);
