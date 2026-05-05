@@ -129,11 +129,14 @@ agg["gross_margin"] = (
 ).where(agg["revenue"] > 0).fillna(0)
 
 # ============================================================
-# 库存 join · nst_inventory_snapshot (按 upc 聚合)
+# 库存 join · nst_inventory_snapshot
+# Boss 决定: 销售数据库存数仅看 JD-物流-千葉 仓库 (弁天 / 本社 / Amazon 不计入)
+# 库存健康监控 (page 06) 才需要分 JD 和 弁天分开判断
 # ============================================================
 df_inv = _df(
     "SELECT item_code, upc, qty_on_hand, total_amount, location, department "
-    "FROM nst_inventory_snapshot"
+    "FROM nst_inventory_snapshot "
+    "WHERE location = 'JD-物流-千葉'"
 )
 if not df_inv.empty:
     df_inv["qty_on_hand"] = pd.to_numeric(df_inv["qty_on_hand"], errors="coerce").fillna(0)

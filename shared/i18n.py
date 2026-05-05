@@ -664,6 +664,8 @@ for _zh, _ja in [
      "📍 市場: 東南アジア（Shopee + Lazada）· Coupang 等は後置"),
     ("📍 市场: 东南亚（Shopee + Lazada）· Coupang 等其他市场后置 · 💴 所有合计金额已按公司固定汇率换算为日元 (PHP=2.4 / USD=145 等,详见首页)",
      "📍 市場: 東南アジア（Shopee + Lazada）· Coupang 等は後置 · 💴 全合計金額は会社固定為替で日元換算済 (PHP=2.4 / USD=145 等,詳細はホーム)"),
+    ("📍 当前数据范围: 仅 JD-物流-千葉 仓库 · 弁天倉庫健康度分开判断功能 后续支持 (需改 schema + metrics 参数化)",
+     "📍 現データ範囲: JD-物流-千葉 倉庫のみ · 弁天倉庫健全性分割判定 後続対応 (schema + metrics パラメータ化要)"),
     ("📍 市场: 东南亚（Shopee + Lazada）· Coupang 等其他市场后置 · 💴 KPI 与聚合 tab 已按公司固定汇率换算为日元 (PHP=2.4 / USD=145) · 原始拨款明细 tab 保留 PHP 原值",
      "📍 市場: 東南アジア（Shopee + Lazada）· Coupang 等は後置 · 💴 KPI と集計 tab は会社固定為替で日元換算済 (PHP=2.4 / USD=145) · 元振込明細 tab は PHP 原値保持"),
     ("📍 市场: 东南亚（Shopee + Lazada）· Coupang 等其他市场后置 · 💴 所有 tab (KPI / 聚合 / 原始) 都按 country × 公司固定汇率换算为日元 · PHP=2.4 / TWD=4.57 / MYR=36.48 / SGD=113.44 / USD=145 等 (详见首页折叠区)",
