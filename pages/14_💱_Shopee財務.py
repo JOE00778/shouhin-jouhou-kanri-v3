@@ -1,18 +1,20 @@
-"""模块 ④ Shopee 財務 v2 · 数据源对齐 Boss 提供的两份原表.
+"""模块 ④ Shopee 財務 v3 · 按周 × 店铺/市场汇总.
+
+业务节奏: Shopee 拨款以「周」为单位 → 对账粒度也按周
 
 数据源:
-1. `shopee_orders_raw`
-   ← 来自 订单导出-*.xlsx Sheet0 (8 列)
-   A=支付币种 B=单价 C=发货数量 D=本地SKU E=支付金额 F=平台 G=订单号 H=店铺
-   订单维度，提供 订单号 + SKU + 售价 + 平台/店铺
+- shopee_orders_raw  ← 订单导出.xlsx (订单号 / 店铺 / 平台 / SKU)
+- shopee_income_lines ← ph.mtkshop.ph.income.已拨款.xlsx (拨款扣费, 含 seller_account)
 
-2. `shopee_income_lines`
-   ← 来自 ph.mtkshop.ph.income.已拨款.*.xlsx Income sheet (R6 表头, 46 列)
-   拨款维度，提供各项扣费 + 拨款金额
-
-业务: 按 订单号 join → 订单级对账（商品原价 → 各项扣费 → 净拨款）
+聚合维度:
+- 周 (payout_date 所在 ISO 周, 用周一日期表示)
+- 店铺 (shop_name, 来自订单导出)
+- 市场 (从 seller_account 末段或 shop_name 后缀提取, 如 mtkshop.ph → PH)
 """
 from __future__ import annotations
+
+import re
+from datetime import datetime, timedelta
 
 import pandas as pd
 import streamlit as st
@@ -26,14 +28,47 @@ conn = get_connection()
 
 st.title(t("💱 Shopee 財務"))
 st.caption(t(
-    "数据源: 订单导出.xlsx (订单+SKU) + ph.mtkshop.ph.income.已拨款.xlsx (拨款扣费) · "
-    "按订单号对账"
+    "按周 × 店铺/市场汇总 · 数据源: 订单导出.xlsx + ph.mtkshop.ph.income.已拨款.xlsx"
 ))
 
 
 def _df(sql: str, params=None) -> pd.DataFrame:
     rs = conn.execute(sql, params or {}).fetchall()
     return pd.DataFrame([dict(r) for r in rs])
+
+
+def _week_start(d) -> str | None:
+    """ISO 周开始日 (周一)。返回 'YYYY-MM-DD' 或 None."""
+    if d is None or pd.isna(d):
+        return None
+    try:
+        dt = pd.to_datetime(d).date()
+    except Exception:
+        return None
+    monday = dt - timedelta(days=dt.weekday())
+    return monday.isoformat()
+
+
+def _market_from_seller(seller: str | None) -> str:
+    """seller_account 'mtkshop.ph' → 'PH'."""
+    if not seller:
+        return "?"
+    s = str(seller).lower()
+    m = re.search(r"\.([a-z]{2,3})$", s)
+    return m.group(1).upper() if m else s.upper()
+
+
+def _market_from_shop(shop: str | None) -> str:
+    """shop_name 'Smikie Japan.ph' → 'PH'; '官方旗艦店（日本直郵）' → 'CB' (跨境)."""
+    if not shop:
+        return "?"
+    s = str(shop).lower()
+    m = re.search(r"\.([a-z]{2,3})\b", s)
+    if m:
+        return m.group(1).upper()
+    if "日本直" in s or "官方" in s:
+        return "CB"
+    return "OTHER"
 
 
 # ============================================================
@@ -45,81 +80,90 @@ df_income = _df("SELECT * FROM shopee_income_lines")
 if df_orders.empty and df_income.empty:
     st.warning(t(
         "⚠️ 数据为空。请到「⚙️ 数据导入与设置」上传:\n"
-        "1) 订单导出-*.xlsx (订单 ID + SKU)\n"
+        "1) 订单导出-*.xlsx (订单 ID + SKU + 店铺)\n"
         "2) ph.mtkshop.ph.income.已拨款.*.xlsx (拨款扣费)"
     ))
     st.stop()
 
-# ============================================================
-# 期间筛选 (按拨款时间)
-# ============================================================
-periods = []
-if not df_income.empty and "payout_date" in df_income.columns:
-    periods = sorted(df_income["payout_date"].dropna().unique().tolist(), reverse=True)
-
-c1, c2, c3 = st.columns([1.5, 1.5, 1])
-with c1:
-    if periods:
-        sel_period = st.selectbox(t("拨款日期"), [t("全部")] + periods)
-        if sel_period != t("全部"):
-            df_income = df_income[df_income["payout_date"] == sel_period]
-    else:
-        sel_period = t("全部")
-with c2:
-    keyword = st.text_input(t("订单号搜索"), "")
-with c3:
-    shops = []
-    if not df_orders.empty and "shop_name" in df_orders.columns:
-        shops = sorted(df_orders["shop_name"].dropna().unique().tolist())
-    if shops:
-        sel_shop = st.selectbox(t("店铺"), [t("全部")] + shops)
-        if sel_shop != t("全部"):
-            df_orders = df_orders[df_orders["shop_name"] == sel_shop]
-
-if keyword.strip():
-    kw = keyword.strip()
-    if not df_orders.empty:
-        df_orders = df_orders[df_orders["order_no"].astype(str).str.contains(kw, na=False)]
-    if not df_income.empty:
-        df_income = df_income[df_income["order_no"].astype(str).str.contains(kw, na=False)]
-
-# ============================================================
 # 数值化
-# ============================================================
 fee_cols = [
     "gross_price", "product_discount", "refund_amount", "shopee_rebate",
-    "seller_voucher", "seller_voucher_jv", "seller_shopee_coin", "seller_shopee_coin_jv",
-    "buyer_shipping", "shopee_shipping_subsidy", "seller_shipping",
-    "return_shipping", "return_to_seller_ship", "shipping_insurance_save",
-    "affiliate_commission", "commission",
-    "fbs_overseas_fail", "fbs_overseas_return", "service_fee",
-    "shipping_insurance_fee", "transaction_fee", "fbs_fee",
-    "payout_amount",
+    "seller_voucher", "buyer_shipping", "shopee_shipping_subsidy",
+    "seller_shipping", "commission", "service_fee",
+    "transaction_fee", "fbs_fee", "payout_amount",
 ]
 if not df_income.empty:
     for c in fee_cols:
         if c in df_income.columns:
             df_income[c] = pd.to_numeric(df_income[c], errors="coerce").fillna(0)
+    # 周 / 月 / 市场
+    df_income["week"] = df_income["payout_date"].apply(_week_start)
+    df_income["month"] = df_income["payout_date"].apply(
+        lambda d: pd.to_datetime(d).strftime("%Y-%m") if pd.notna(d) else None
+    )
+    df_income["market"] = df_income["seller_account"].apply(_market_from_seller)
+
+# 订单导出: 给每个订单算周(用 payout_date 不可得 → 用 income 表 join)
+# 简化: 仅做 shop_name → market 映射
+if not df_orders.empty:
+    df_orders["market"] = df_orders["shop_name"].apply(_market_from_shop)
+    if not df_income.empty:
+        # join 拿订单的 week / month (来自 income.payout_date)
+        df_orders = df_orders.merge(
+            df_income[["order_no", "week", "month"]].drop_duplicates("order_no"),
+            on="order_no", how="left",
+        )
+
+# ============================================================
+# 期间筛选 (粒度切换 + 期间 + 市场)
+# ============================================================
+GRANULARITY_LABELS = {t("按周"): "week", t("按月"): "month"}
+
+c0, c1, c2 = st.columns([1, 1.5, 1.5])
+with c0:
+    gran_label = st.radio(t("粒度"), list(GRANULARITY_LABELS.keys()), horizontal=False)
+    gran_col = GRANULARITY_LABELS[gran_label]  # "week" or "month"
+
+periods = []
+if not df_income.empty and gran_col in df_income.columns:
+    periods = sorted(df_income[gran_col].dropna().unique().tolist(), reverse=True)
+
+with c1:
+    period_label = t("拨款周（周一）") if gran_col == "week" else t("拨款月（YYYY-MM）")
+    sel_period = st.selectbox(period_label, [t("全部")] + periods)
+with c2:
+    markets = []
+    if not df_income.empty:
+        markets = sorted(df_income["market"].dropna().unique().tolist())
+    sel_market = st.selectbox(t("市场"), [t("全部")] + markets)
+
+# 应用筛选
+if sel_period != t("全部") and not df_income.empty:
+    df_income = df_income[df_income[gran_col] == sel_period]
+    if not df_orders.empty and gran_col in df_orders.columns:
+        df_orders = df_orders[(df_orders[gran_col] == sel_period) | df_orders[gran_col].isna()]
+if sel_market != t("全部"):
+    if not df_income.empty:
+        df_income = df_income[df_income["market"] == sel_market]
+    if not df_orders.empty:
+        df_orders = df_orders[df_orders["market"] == sel_market]
 
 # ============================================================
 # KPI
 # ============================================================
 n_orders = len(df_orders) if not df_orders.empty else 0
-n_income = len(df_income) if not df_income.empty else 0
-
 if not df_income.empty:
-    total_gross = float(df_income["gross_price"].sum()) if "gross_price" in df_income else 0.0
-    total_payout = float(df_income["payout_amount"].sum()) if "payout_amount" in df_income else 0.0
-    # 总扣费 = 商品原价 - 拨款金额 (粗略口径)
+    total_gross = float(df_income.get("gross_price", pd.Series([0])).sum())
+    total_payout = float(df_income.get("payout_amount", pd.Series([0])).sum())
     total_deduct = total_gross - total_payout
-    n_refund = int((df_income["refund_amount"] < 0).sum()) if "refund_amount" in df_income else 0
+    n_periods = df_income[gran_col].nunique()
 else:
     total_gross = total_payout = total_deduct = 0.0
-    n_refund = 0
+    n_periods = 0
 
 c1, c2, c3, c4, c5 = st.columns(5)
-c1.metric(t("订单数"), f"{n_orders:,}")
-c2.metric(t("拨款行数"), f"{n_income:,}")
+c1.metric(t("覆盖期数"), f"{n_periods:,}")
+c2.metric(t("订单数"), f"{n_orders:,}")
 c3.metric(t("商品原价合计"), f"₱{total_gross:,.0f}")
 c4.metric(t("总扣费"), f"₱{total_deduct:,.0f}")
 c5.metric(t("拨款金额合计"), f"₱{total_payout:,.0f}")
@@ -127,93 +171,152 @@ c5.metric(t("拨款金额合计"), f"₱{total_payout:,.0f}")
 st.divider()
 
 # ============================================================
-# Tab 视图
+# Tab: 周×市场 / 周×店铺 / 原始
 # ============================================================
-tab_recon, tab_orders, tab_income = st.tabs([
-    t("📋 订单级对账（join）"),
+period_col_label = t("周") if gran_col == "week" else t("月")
+
+tab_market, tab_shop, tab_raw_o, tab_raw_i = st.tabs([
+    f"🌐 {period_col_label} × {t('市场')}",
+    f"🏪 {period_col_label} × {t('店铺')}",
     t("📦 订单导出（原始）"),
     t("💰 拨款明细（原始）"),
 ])
 
-with tab_recon:
-    if df_orders.empty or df_income.empty:
-        st.info(t("订单导出 + 拨款明细 都需上传后才能对账。"))
+
+def _fmt_money(x):
+    try:
+        return f"{int(round(float(x))):,}"
+    except Exception:
+        return x
+
+
+with tab_market:
+    if df_income.empty:
+        st.info(t("拨款明细未上传, 无法按市场聚合。"))
     else:
-        # 按订单号 join
-        merged = df_orders.merge(
-            df_income[[
-                "order_no", "buyer_account", "order_created_at", "payout_completed_at",
-                "gross_price", "product_discount", "refund_amount",
-                "commission", "service_fee", "transaction_fee",
-                "buyer_shipping", "seller_shipping",
-                "payout_amount", "payout_date",
-            ]],
-            on="order_no",
-            how="outer",
-            suffixes=("_o", "_i"),
+        agg = df_income.groupby([gran_col, "market"], as_index=False).agg(
+            gross_price=("gross_price", "sum"),
+            commission=("commission", "sum"),
+            service_fee=("service_fee", "sum"),
+            transaction_fee=("transaction_fee", "sum"),
+            buyer_shipping=("buyer_shipping", "sum"),
+            seller_shipping=("seller_shipping", "sum"),
+            payout_amount=("payout_amount", "sum"),
+            n_orders=("order_no", "nunique"),
         )
-        # 计算净到账（= 拨款金额 if 有, 否则 = payment_amount - 各项扣费）
-        merged["净到账"] = pd.to_numeric(merged.get("payout_amount"), errors="coerce").fillna(0)
-
-        show_cols = [
-            "order_no", "platform", "shop_name", "local_sku",
-            "currency", "payment_amount",
-            "buyer_account", "order_created_at",
-            "gross_price", "product_discount", "refund_amount",
-            "commission", "service_fee", "transaction_fee",
-            "buyer_shipping", "seller_shipping",
-            "payout_amount", "payout_date", "净到账",
-        ]
-        show_cols = [c for c in show_cols if c in merged.columns]
-        merged = merged[show_cols].sort_values("order_no")
-        st.dataframe(merged, use_container_width=True, hide_index=True, height=500)
-        st.caption(t(f"共 {len(merged):,} 行 (订单 ⊕ 拨款 outer join)"))
-        csv = merged.to_csv(index=False).encode("utf-8-sig")
+        agg["net_deduct"] = agg["gross_price"] - agg["payout_amount"]
+        show = agg.rename(columns={
+            gran_col: period_col_label,
+            "market": t("市场"),
+            "gross_price": t("商品原价"),
+            "commission": t("佣金"),
+            "service_fee": t("服务费"),
+            "transaction_fee": t("交易手续费"),
+            "buyer_shipping": t("买家运费"),
+            "seller_shipping": t("卖家运费"),
+            "payout_amount": t("拨款金额"),
+            "n_orders": t("订单数"),
+            "net_deduct": t("净扣费"),
+        }).copy()
+        show = show.sort_values([period_col_label, t("市场")], ascending=[False, True])
+        for col in (t("商品原价"), t("佣金"), t("服务费"), t("交易手续费"),
+                    t("买家运费"), t("卖家运费"), t("拨款金额"), t("净扣费")):
+            if col in show.columns:
+                show[col] = show[col].map(_fmt_money)
+        st.dataframe(show, use_container_width=True, hide_index=True, height=460)
+        st.caption(t(f"共 {len(agg):,} 行 ({period_col_label} × 市场)"))
+        csv = agg.to_csv(index=False).encode("utf-8-sig")
         st.download_button(
-            t("📥 对账明细 CSV"),
+            f"📥 {period_col_label}×{t('市场')} CSV",
             data=csv,
-            file_name=f"shopee_recon_{sel_period}.csv",
+            file_name=f"shopee_{gran_col}_market.csv",
             mime="text/csv",
+            key="dl_market",
         )
 
-with tab_orders:
+with tab_shop:
+    if df_income.empty or df_orders.empty:
+        st.info(t("订单导出 + 拨款明细 都需上传后才能按店铺聚合 (店铺信息来自订单导出)。"))
+    else:
+        # join 订单 → 拨款 (按订单号), 把 shop_name 带过来
+        joined = df_income.merge(
+            df_orders[["order_no", "shop_name"]].drop_duplicates("order_no"),
+            on="order_no", how="left",
+        )
+        joined["shop_name"] = joined["shop_name"].fillna(t("(无店铺信息)"))
+
+        agg = joined.groupby([gran_col, "shop_name"], as_index=False).agg(
+            gross_price=("gross_price", "sum"),
+            commission=("commission", "sum"),
+            service_fee=("service_fee", "sum"),
+            transaction_fee=("transaction_fee", "sum"),
+            buyer_shipping=("buyer_shipping", "sum"),
+            seller_shipping=("seller_shipping", "sum"),
+            payout_amount=("payout_amount", "sum"),
+            n_orders=("order_no", "nunique"),
+        )
+        agg["net_deduct"] = agg["gross_price"] - agg["payout_amount"]
+        show = agg.rename(columns={
+            gran_col: period_col_label,
+            "shop_name": t("店铺"),
+            "gross_price": t("商品原价"),
+            "commission": t("佣金"),
+            "service_fee": t("服务费"),
+            "transaction_fee": t("交易手续费"),
+            "buyer_shipping": t("买家运费"),
+            "seller_shipping": t("卖家运费"),
+            "payout_amount": t("拨款金额"),
+            "n_orders": t("订单数"),
+            "net_deduct": t("净扣费"),
+        }).copy()
+        show = show.sort_values([period_col_label, t("拨款金额")], ascending=[False, False])
+        for col in (t("商品原价"), t("佣金"), t("服务费"), t("交易手续费"),
+                    t("买家运费"), t("卖家运费"), t("拨款金额"), t("净扣费")):
+            if col in show.columns:
+                show[col] = show[col].map(_fmt_money)
+        st.dataframe(show, use_container_width=True, hide_index=True, height=460)
+        st.caption(t(f"共 {len(agg):,} 行 ({period_col_label} × 店铺)"))
+        csv = agg.to_csv(index=False).encode("utf-8-sig")
+        st.download_button(
+            f"📥 {period_col_label}×{t('店铺')} CSV",
+            data=csv,
+            file_name=f"shopee_{gran_col}_shop.csv",
+            mime="text/csv",
+            key="dl_shop",
+        )
+
+with tab_raw_o:
     if df_orders.empty:
         st.info(t("订单导出.xlsx 未上传。"))
     else:
-        cols = ["order_no", "platform", "shop_name", "currency",
-                "local_sku", "unit_price", "ship_qty", "payment_amount"]
+        cols = ["order_no", "platform", "shop_name", "market",
+                "currency", "local_sku", "unit_price", "ship_qty", "payment_amount"]
         cols = [c for c in cols if c in df_orders.columns]
-        st.dataframe(df_orders[cols], use_container_width=True, hide_index=True, height=500)
+        st.dataframe(df_orders[cols], use_container_width=True, hide_index=True, height=460)
         st.caption(t(f"共 {len(df_orders):,} 条订单"))
         csv = df_orders[cols].to_csv(index=False).encode("utf-8-sig")
         st.download_button(
-            t("📥 订单导出 CSV"),
-            data=csv,
-            file_name="shopee_orders_raw.csv",
-            mime="text/csv",
-            key="dl_orders",
+            t("📥 订单导出 CSV"), data=csv,
+            file_name="shopee_orders_raw.csv", mime="text/csv", key="dl_o",
         )
 
-with tab_income:
+with tab_raw_i:
     if df_income.empty:
         st.info(t("拨款明细.xlsx 未上传。"))
     else:
         cols = [
-            "seq", "order_no", "buyer_account", "order_created_at",
-            "payout_completed_at", "payout_date",
+            "week", "month", "market", "seller_account", "payout_date",
+            "order_no", "buyer_account", "order_created_at",
             "gross_price", "product_discount", "refund_amount",
             "commission", "service_fee", "transaction_fee",
-            "buyer_shipping", "shopee_shipping_subsidy", "seller_shipping",
+            "buyer_shipping", "seller_shipping",
             "payout_amount",
         ]
         cols = [c for c in cols if c in df_income.columns]
-        st.dataframe(df_income[cols], use_container_width=True, hide_index=True, height=500)
+        st.dataframe(df_income[cols], use_container_width=True, hide_index=True, height=460)
         st.caption(t(f"共 {len(df_income):,} 行拨款"))
         csv = df_income[cols].to_csv(index=False).encode("utf-8-sig")
         st.download_button(
-            t("📥 拨款明细 CSV"),
-            data=csv,
-            file_name="shopee_income_lines.csv",
-            mime="text/csv",
-            key="dl_income",
+            t("📥 拨款明细 CSV"), data=csv,
+            file_name="shopee_income_lines.csv", mime="text/csv", key="dl_i",
         )
