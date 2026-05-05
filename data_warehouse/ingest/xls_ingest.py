@@ -258,6 +258,11 @@ def _ingest_sales(
             if not item_code:
                 continue
 
+            # 跳过小计/总计行: A 列「合計 - 店铺名」/「合计」/「総合計」
+            # 例: 「合計 - Shopee J-Beauty Hub PH」(前日报表底部小计)
+            if any(k in item_code for k in ("合計", "合计", "総合計", "総計")):
+                continue
+
             # UPC (= JAN) 是销售数据基准 (Boss 决定)
             # UPC 为空 → 跳过该行 (不落库)
             upc = _to_str(raw.get("UPCコード"))
