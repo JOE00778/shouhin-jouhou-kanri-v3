@@ -635,3 +635,94 @@ CREATE TABLE IF NOT EXISTS operation_advice_monthly (
 CREATE INDEX IF NOT EXISTS idx_op_advice_advice   ON operation_advice_monthly(advice);
 CREATE INDEX IF NOT EXISTS idx_op_advice_rank     ON operation_advice_monthly(rank);
 CREATE INDEX IF NOT EXISTS idx_op_advice_value    ON operation_advice_monthly(inventory_value DESC);
+
+-- ============================================================
+-- 订货模块 6 张新表（v3.1 from order-management-app）
+-- ============================================================
+
+-- 进货价目（jan × supplier × order_lot → price）
+CREATE TABLE IF NOT EXISTS purchase_data (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  jan           TEXT NOT NULL,
+  supplier      TEXT,
+  order_lot     INTEGER,
+  price         REAL,
+  source_file   TEXT,
+  imported_at   TEXT NOT NULL,
+  UNIQUE(jan, supplier, order_lot)
+);
+CREATE INDEX IF NOT EXISTS idx_purchase_data_jan      ON purchase_data(jan);
+CREATE INDEX IF NOT EXISTS idx_purchase_data_supplier ON purchase_data(supplier);
+
+-- 订货历史（已下达过的订货单）
+CREATE TABLE IF NOT EXISTS purchase_history (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  jan           TEXT NOT NULL,
+  quantity      INTEGER NOT NULL,
+  memo          TEXT,
+  order_date    TEXT,
+  order_id      TEXT,
+  source_file   TEXT,
+  imported_at   TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_purchase_history_jan       ON purchase_history(jan);
+CREATE INDEX IF NOT EXISTS idx_purchase_history_orderdate ON purchase_history(order_date);
+CREATE INDEX IF NOT EXISTS idx_purchase_history_orderid   ON purchase_history(order_id);
+
+-- JD 仓库库存（product_code = jan）
+CREATE TABLE IF NOT EXISTS warehouse_stock (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  product_code    TEXT NOT NULL,
+  jan             TEXT,
+  stock_available INTEGER NOT NULL DEFAULT 0,
+  snapshot_at     TEXT,
+  source_file     TEXT,
+  imported_at     TEXT NOT NULL,
+  UNIQUE(product_code, snapshot_at)
+);
+CREATE INDEX IF NOT EXISTS idx_warehouse_stock_jan ON warehouse_stock(jan);
+
+-- 弁天仓库库存
+CREATE TABLE IF NOT EXISTS benten_stock (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  jan           TEXT NOT NULL,
+  stock         INTEGER NOT NULL DEFAULT 0,
+  snapshot_at   TEXT,
+  source_file   TEXT,
+  imported_at   TEXT NOT NULL,
+  UNIQUE(jan, snapshot_at)
+);
+CREATE INDEX IF NOT EXISTS idx_benten_stock_jan ON benten_stock(jan);
+
+-- 保质期管理（来自 Lark 同步）
+CREATE TABLE IF NOT EXISTS item_expiry (
+  jan           TEXT PRIMARY KEY,
+  name          TEXT,
+  expiry_1      TEXT,
+  expiry_2      TEXT,
+  expiry_3      TEXT,
+  expiry_4      TEXT,
+  expiry_5      TEXT,
+  expiry_min    TEXT,
+  updated_at    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_item_expiry_min ON item_expiry(expiry_min);
+
+-- 每日店铺销售明细
+CREATE TABLE IF NOT EXISTS store_profit_daily_lines (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  report_date   TEXT NOT NULL,
+  line_type     TEXT NOT NULL,    -- detail / 合計 / 総計 等
+  store         TEXT NOT NULL,
+  item          TEXT,
+  item_name     TEXT,
+  qty           INTEGER DEFAULT 0,
+  revenue       INTEGER DEFAULT 0,
+  defined_cost  INTEGER DEFAULT 0,
+  gross_profit  INTEGER DEFAULT 0,
+  source_file   TEXT,
+  imported_at   TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_spdl_date  ON store_profit_daily_lines(report_date);
+CREATE INDEX IF NOT EXISTS idx_spdl_store ON store_profit_daily_lines(store);
+CREATE INDEX IF NOT EXISTS idx_spdl_type  ON store_profit_daily_lines(line_type);
