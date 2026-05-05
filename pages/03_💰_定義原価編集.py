@@ -275,6 +275,44 @@ elif step == 2:
         )
         st.caption(t("跳过原因分布：") + " · ".join(f"{k}: {v}" for k, v in skip_breakdown.items()))
 
+    # ============================================================
+    # 预览全量 CSV 下载 (上传用 · 含全部 SKU 的判断结果)
+    # ============================================================
+    if total > 0:
+        from datetime import datetime as _dt
+        # 列名 → 中日 i18n
+        _COL_RENAME_FULL = {
+            "internal_id": t("内部 ID"),
+            "item_code": t("商品代码"),
+            "display_name": t("商品名"),
+            "total_qty": t("库存数量"),
+            "handling_status": t("取扱区分"),
+            "std_cost_old": t("当前定义原价"),
+            "avg_cost": t("平均原価"),
+            "std_cost_new": t("新定义原价"),
+            "diff": t("差额"),
+            "diff_pct": t("差额率"),
+            "severity": t("严重度"),
+            "action": t("处理"),
+            "skip_reason": t("跳过原因"),
+        }
+        cols_full = [c for c in _COL_RENAME_FULL.keys() if c in df_all.columns]
+        df_full = df_all[cols_full].copy()
+        if "diff_pct" in df_full.columns:
+            df_full["diff_pct"] = df_full["diff_pct"].apply(
+                lambda x: f"{x:+.4f}" if pd.notna(x) else ""
+            )
+        df_full = df_full.rename(columns=_COL_RENAME_FULL)
+        _ts = _dt.now().strftime("%Y%m%d_%H%M%S")
+        st.download_button(
+            t(f"📥 下载预览全量 CSV (上传用,{total} 行)"),
+            data=df_full.to_csv(index=False).encode("utf-8-sig"),
+            file_name=f"cost_preview_{_ts}.csv",
+            mime="text/csv",
+            key="dl_preview_full",
+            help=t("预览阶段全量数据 (含 UPDATE / SKIP / 异常),用于审阅或外部导入"),
+        )
+
     st.divider()
 
     tab_u, tab_s, tab_a = st.tabs([
