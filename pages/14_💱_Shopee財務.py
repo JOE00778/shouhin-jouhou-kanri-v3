@@ -118,14 +118,8 @@ if not df_income.empty:
     if "platform" not in df_income.columns:
         df_income["platform"] = "Shopee"  # 拨款表都来自 Shopee 平台
 
-    # ============================================================
-    # 货币换算 → JPY (公司固定汇率, country code 即 currency code)
-    # 把所有金额字段乘以汇率,后续 sum/groupby 出来的就是 JPY 视角
-    # ============================================================
+    # 汇率系数列(用于后续生成 jpy 副本; 现在还不换算)
     df_income["_jpy_rate"] = df_income["country"].map(FX_TO_JPY).fillna(1.0)
-    for c in fee_cols:
-        if c in df_income.columns:
-            df_income[c] = df_income[c] * df_income["_jpy_rate"]
 
 # 订单导出: 给每个订单算周(用 payout_date 不可得 → 用 income 表 join)
 # 简化: 仅做 shop_name → market 映射
@@ -180,14 +174,25 @@ if sel_platform != t("全部"):
         df_orders = df_orders[df_orders["platform"] == sel_platform]
 
 # ============================================================
-# KPI
+# 筛选后生成 JPY 副本（仅给 KPI / 聚合 tab 用，原始 tab 仍 PHP）
+# ============================================================
+if not df_income.empty:
+    df_income_jpy = df_income.copy()
+    for c in fee_cols:
+        if c in df_income_jpy.columns:
+            df_income_jpy[c] = df_income_jpy[c] * df_income_jpy["_jpy_rate"]
+else:
+    df_income_jpy = df_income
+
+# ============================================================
+# KPI (JPY 视角)
 # ============================================================
 n_orders = len(df_orders) if not df_orders.empty else 0
-if not df_income.empty:
-    total_gross = float(df_income.get("gross_price", pd.Series([0])).sum())
-    total_payout = float(df_income.get("payout_amount", pd.Series([0])).sum())
+if not df_income_jpy.empty:
+    total_gross = float(df_income_jpy.get("gross_price", pd.Series([0])).sum())
+    total_payout = float(df_income_jpy.get("payout_amount", pd.Series([0])).sum())
     total_deduct = total_gross - total_payout
-    n_periods = df_income[gran_col].nunique()
+    n_periods = df_income_jpy[gran_col].nunique()
 else:
     total_gross = total_payout = total_deduct = 0.0
     n_periods = 0
@@ -202,7 +207,8 @@ c5.metric(t("拨款金额合计 (¥)"), f"¥{total_payout:,.0f}")
 # 市场提示 (当前唯一)
 st.info(t(
     "📍 市场: 东南亚（Shopee + Lazada）· Coupang 等其他市场后置 · "
-    "💴 所有合计金额已按公司固定汇率换算为日元 (PHP=2.4 / USD=145 等,详见首页)"
+    "💴 KPI 与聚合 tab 已按公司固定汇率换算为日元 (PHP=2.4 / USD=145) · "
+    "原始拨款明细 tab 保留 PHP 原值"
 ))
 st.divider()
 
@@ -266,10 +272,10 @@ def _format_agg(agg, gran_col, dim_col, dim_label, period_col_label):
 
 
 with tab_platform:
-    if df_income.empty:
+    if df_income_jpy.empty:
         st.info(t("拨款明细未上传, 无法按平台聚合。"))
     else:
-        agg = _agg_dim(df_income, gran_col, "platform")
+        agg = _agg_dim(df_income_jpy, gran_col, "platform")
         show, raw = _format_agg(agg, gran_col, "platform", t("平台"), period_col_label)
         show = show.sort_values([period_col_label, t("平台")], ascending=[False, True])
         st.dataframe(show, use_container_width=True, hide_index=True, height=460)
@@ -283,10 +289,10 @@ with tab_platform:
         )
 
 with tab_market:
-    if df_income.empty:
+    if df_income_jpy.empty:
         st.info(t("拨款明细未上传, 无法按市场聚合。"))
     else:
-        agg = df_income.groupby([gran_col, "market"], as_index=False).agg(
+        agg = df_income_jpy.groupby([gran_col, "market"], as_index=False).agg(
             gross_price=("gross_price", "sum"),
             commission=("commission", "sum"),
             service_fee=("service_fee", "sum"),
@@ -327,11 +333,11 @@ with tab_market:
         )
 
 with tab_shop:
-    if df_income.empty or df_orders.empty:
+    if df_income_jpy.empty or df_orders.empty:
         st.info(t("订单导出 + 拨款明细 都需上传后才能按店铺聚合 (店铺信息来自订单导出)。"))
     else:
         # join 订单 → 拨款 (按订单号), 把 shop_name 带过来
-        joined = df_income.merge(
+        joined = df_income_jpy.merge(
             df_orders[["order_no", "shop_name"]].drop_duplicates("order_no"),
             on="order_no", how="left",
         )

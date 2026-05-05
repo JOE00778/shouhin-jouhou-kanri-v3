@@ -81,22 +81,23 @@ st.divider()
 import pandas as pd
 from shared.forex import FX_TO_JPY, FX_SYMBOLS, FX_NAMES_JA
 
-st.subheader(t("💱 公司对日元固定汇率"))
-st.caption(t("数据源 NetSuite 為替レート (発効日 2026-04-30) · Boss 修正: PHP=2.4 / USD=145 · 修改在 shared/forex.py"))
-
-fx_df = pd.DataFrame([
-    {
-        t("货币代码"): code,
-        t("ソース通貨"): FX_NAMES_JA.get(code, ""),
-        t("符号"): FX_SYMBOLS.get(code, ""),
-        t("1 单位 → JPY"): rate,
-        t("示例 (1000 单位 → JPY)"): f"¥{rate * 1000:,.0f}",
-    }
-    for code, rate in FX_TO_JPY.items()
-    if code != "JPY"
-])
-st.dataframe(fx_df, use_container_width=True, hide_index=True)
-st.caption(t("📌 基準通貨: 日本円 · Boss 修正: PHP=2.4 / USD=145 · 其他严格按 NetSuite 為替レート"))
+with st.expander(t("💱 公司对日元固定汇率（仅 Shopee 财务模块使用）"), expanded=False):
+    st.caption(t(
+        "📌 用途: 仅「💱 Shopee 財務」模块把 PHP 等外币换算到 JPY · "
+        "其他模块数据本身就是日元 · 数据源: NetSuite 為替レート (2026-04-30) · "
+        "Boss 修正: PHP=2.4 / USD=145 · 修改在 shared/forex.py"
+    ))
+    fx_df = pd.DataFrame([
+        {
+            t("货币代码"): code,
+            t("ソース通貨"): FX_NAMES_JA.get(code, ""),
+            t("符号"): FX_SYMBOLS.get(code, ""),
+            t("1 单位 → JPY"): rate,
+        }
+        for code, rate in FX_TO_JPY.items()
+        if code != "JPY"
+    ])
+    st.dataframe(fx_df, use_container_width=True, hide_index=True)
 
 st.divider()
 
