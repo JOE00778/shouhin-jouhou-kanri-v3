@@ -51,18 +51,31 @@ DIM_TO_SOURCES = {
 sel_dim = st.radio(t("维度"), list(DIM_TO_SOURCES.keys()), horizontal=True)
 allowed_srcs = DIM_TO_SOURCES[sel_dim]
 
-# 期间选项：当前维度下可用的所有期间
+# 期间选项：当前维度下可用的所有期间（先不过滤 store 看总览）
 src_placeholders = ",".join("?" * len(allowed_srcs))
 period_opts = conn.execute(
-    f"SELECT DISTINCT period_start, period_end FROM sales_line "
-    f"WHERE source IN ({src_placeholders}) AND store IS NOT NULL "
-    f"ORDER BY period_start DESC",
+    f"SELECT period_start, period_end, COUNT(*) AS total, "
+    f"SUM(CASE WHEN store IS NOT NULL AND store != '' THEN 1 ELSE 0 END) AS with_store "
+    f"FROM sales_line WHERE source IN ({src_placeholders}) "
+    f"GROUP BY period_start, period_end ORDER BY period_start DESC",
     allowed_srcs,
 ).fetchall()
 period_choices = [(r["period_start"], r["period_end"]) for r in period_opts]
 if not period_choices:
     st.warning(t("此维度下暂无数据。请到「⚙️ 数据导入与设置」上传对应文件。"))
     st.stop()
+# 诊断：显示每个期间总行数 vs 有店铺行数
+diag = pd.DataFrame([{"期间": f"{r['period_start']} ~ {r['period_end']}",
+                      "总行数": r["total"], "含店铺行数": r["with_store"]} for r in period_opts])
+empty_store_periods = [r for r in period_opts if r["total"] > 0 and r["with_store"] == 0]
+if empty_store_periods:
+    with st.expander("⚠️ 检测到部分期间 store 全为空（点开诊断）", expanded=True):
+        st.dataframe(diag, hide_index=True, use_container_width=True)
+        st.caption(
+            "原因：ingest 时未识别出店铺分组标题行 → 所有行 store=NULL → page 05 过滤后空。"
+            "店铺名前缀须以 Shopee/Lazada/Tokopedia 开头或含 Coupang。"
+            "把当前导入的报表第 1-3 行截图发给我可定位。"
+        )
 sel_period = st.selectbox(
     t("期间"),
     period_choices,
