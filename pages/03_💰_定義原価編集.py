@@ -151,25 +151,25 @@ if step == 1:
         f"部門（自动锁定）：{', '.join(sel_dept) or '（无）'}"
     )
 
-    # 预览过滤后的 SKU 数
-    where = ["snapshot_at = :snap"]
+    # 预览过滤后的 SKU 数（前缀 s. 因后续会 LEFT JOIN item_master_netsuite，department 等字段两表都有）
+    where = ["s.snapshot_at = :snap"]
     params: dict = {"snap": sel_snapshot}
     if sel_locs:
         placeholders = ",".join(f":loc{i}" for i in range(len(sel_locs)))
-        where.append(f"location IN ({placeholders})")
+        where.append(f"s.location IN ({placeholders})")
         params.update({f"loc{i}": v for i, v in enumerate(sel_locs)})
     if sel_handle:
         placeholders = ",".join(f":h{i}" for i in range(len(sel_handle)))
-        where.append(f"handling_status IN ({placeholders})")
+        where.append(f"s.handling_status IN ({placeholders})")
         params.update({f"h{i}": v for i, v in enumerate(sel_handle)})
     if sel_dept:
         placeholders = ",".join(f":d{i}" for i in range(len(sel_dept)))
-        where.append(f"department IN ({placeholders})")
+        where.append(f"s.department IN ({placeholders})")
         params.update({f"d{i}": v for i, v in enumerate(sel_dept)})
 
     where_sql = " AND ".join(where)
     sku_count = conn.execute(
-        f"SELECT COUNT(DISTINCT internal_id) AS c FROM inventory_snapshot WHERE {where_sql}",
+        f"SELECT COUNT(DISTINCT s.internal_id) AS c FROM inventory_snapshot s WHERE {where_sql}",
         params,
     ).fetchone()["c"]
 
@@ -190,15 +190,17 @@ if step == 1:
         # ========================================================
         agg_sql = f"""
             SELECT
-                internal_id,
-                MAX(item_code) AS item_code,
-                MAX(display_name) AS display_name,
-                MAX(handling_status) AS handling_status,
-                MAX(std_cost) AS std_cost,
-                SUM(qty_on_hand) AS total_qty
-            FROM inventory_snapshot
+                s.internal_id,
+                MAX(s.item_code) AS item_code,
+                MAX(s.display_name) AS display_name,
+                MAX(s.handling_status) AS handling_status,
+                MAX(s.std_cost) AS std_cost,
+                SUM(s.qty_on_hand) AS total_qty,
+                MAX(im.maker) AS maker
+            FROM inventory_snapshot s
+            LEFT JOIN item_master_netsuite im ON im.internal_id = s.internal_id
             WHERE {where_sql}
-            GROUP BY internal_id
+            GROUP BY s.internal_id
         """
         rows = conn.execute(agg_sql, params).fetchall()
 
@@ -239,6 +241,7 @@ if step == 1:
             }
             d = decide_action(row, master)
             d["total_qty"] = r["total_qty"]  # 附带库存量给预览
+            d["maker"] = r["maker"]          # 附带品牌给预览
             decisions.append(d)
 
         st.session_state.cs_decisions = decisions
@@ -285,6 +288,7 @@ elif step == 2:
             "internal_id": t("内部 ID"),
             "item_code": t("商品代码"),
             "display_name": t("商品名"),
+            "maker": t("品牌"),
             "total_qty": t("库存数量"),
             "handling_status": t("取扱区分"),
             "std_cost_old": t("当前定义原价"),
@@ -326,6 +330,7 @@ elif step == 2:
         "internal_id": t("内部 ID"),
         "item_code": t("商品代码"),
         "display_name": t("商品名"),
+        "maker": t("品牌"),
         "total_qty": t("库存数量"),
         "std_cost_old": t("当前定义原价"),
         "std_cost_new": t("新定义原价"),
@@ -342,7 +347,7 @@ elif step == 2:
         if df_u.empty:
             st.info(t("本次没有 SKU 触发更新。"))
         else:
-            df_show = df_u[["internal_id", "item_code", "display_name", "total_qty",
+            df_show = df_u[["internal_id", "item_code", "display_name", "maker", "total_qty",
                             "std_cost_old", "std_cost_new", "diff", "diff_pct", "severity"]].copy()
             df_show["diff_pct"] = df_show["diff_pct"].apply(
                 lambda x: f"{x:+.2%}" if pd.notna(x) else ""
@@ -355,7 +360,7 @@ elif step == 2:
         if df_s.empty:
             st.info(t("没有任何 SKU 被跳过。"))
         else:
-            df_show = df_s[["internal_id", "item_code", "display_name", "total_qty",
+            df_show = df_s[["internal_id", "item_code", "display_name", "maker", "total_qty",
                             "avg_cost", "std_cost_old", "action", "skip_reason"]].copy()
             df_show = df_show.rename(columns=COL_RENAME)
             st.dataframe(df_show, use_container_width=True, hide_index=True)
@@ -370,7 +375,7 @@ elif step == 2:
                 key=lambda s: s.map({"RED": 0, "YELLOW": 1}) if s.name == "severity" else s.abs(),
                 ascending=[True, False],
             )
-            df_show = df_a[["severity", "internal_id", "item_code", "display_name",
+            df_show = df_a[["severity", "internal_id", "item_code", "display_name", "maker",
                             "std_cost_old", "avg_cost", "std_cost_new",
                             "diff", "diff_pct", "action"]].copy()
             df_show["diff_pct"] = df_show["diff_pct"].apply(
