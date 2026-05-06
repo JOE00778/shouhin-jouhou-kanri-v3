@@ -20,6 +20,9 @@ import hmac
 
 import streamlit as st
 
+# 每次重要修复 push 时 bump，Cloud 部署后一眼能看出是不是新版
+APP_VERSION = "2.3.6 · asean_daily-fix"
+
 
 def _secret(name: str, default: str = "") -> str:
     try:
@@ -47,6 +50,7 @@ def _login_form() -> None:
         return
 
     st.title("🔒 一元管理系统V2.3")
+    st.caption(f"build {APP_VERSION}")
 
     with st.form("login", clear_on_submit=False):
         u = st.text_input("账号", key="__login_user", placeholder="请输入账号")

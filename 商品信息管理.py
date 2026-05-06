@@ -15,7 +15,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-from shared.auth import require_password, show_role_badge
+from shared.auth import require_password, show_role_badge, APP_VERSION
 require_password()
 show_role_badge()
 
@@ -26,7 +26,7 @@ conn = get_connection()
 
 # 首页内容
 st.title(f"📊 {t('一元管理系统V2.3')}")
-st.caption(t("SmikieJapan 综合商品分析与运营工具集 · Supabase 真源 + 本地缓存"))
+st.caption(f"{t('SmikieJapan 综合商品分析与运营工具集 · Supabase 真源 + 本地缓存')} · build `{APP_VERSION}`")
 
 # Supabase 连接状态
 if is_configured():

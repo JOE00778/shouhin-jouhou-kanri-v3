@@ -321,6 +321,14 @@ def _ingest_sales(
             _record_error(conn, run_id, n, str(e), raw)
 
     _finalize_run(conn, run_id, total=len(rows), inserted=inserted, errors=errors)
+    # inserted=0 但 total>0 → 字段名/格式不匹配的 silent failure，必须显式报错
+    if len(rows) > 0 and inserted == 0:
+        first_keys = list(rows[0].keys()) if rows else []
+        raise RuntimeError(
+            f"读取到 {len(rows)} 行但 0 行入库——报表列名跟 ingester 预期不符。"
+            f"检测到的列：{first_keys}。"
+            f"期待列至少含：アイテム / 表示名 / 販売数量 / 総収益 / 定義原価 / 粗利 / 粗利率"
+        )
     return {
         "run_id": run_id,
         "total": len(rows),
