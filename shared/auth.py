@@ -1,4 +1,4 @@
-"""双角色守门（管理员 / 访客）· 每个 page 顶部调用 require_password()。
+"""双角色守门（管理员 / SmikieJapan）· 每个 page 顶部调用 require_password()。
 
 密码配置（Streamlit Cloud → Settings → Secrets）：
     ADMIN_USERNAME = "admin"        # 可选，默认 "admin"
@@ -49,7 +49,7 @@ def _login_form() -> None:
     st.title("🔒 商品信息管理平台")
     st.caption("请选择身份并登录")
 
-    tab_admin, tab_guest = st.tabs(["👑 管理员入口", "👀 访客入口"])
+    tab_admin, tab_guest = st.tabs(["👑 管理员入口", "👀 SmikieJapan入口"])
 
     with tab_admin:
         with st.form("admin_login", clear_on_submit=False):
@@ -67,8 +67,8 @@ def _login_form() -> None:
 
     with tab_guest:
         with st.form("guest_login", clear_on_submit=False):
-            u = st.text_input("访客账号", value=guest_user, key="__guest_user")
-            p = st.text_input("访客密码", type="password", key="__guest_pwd")
+            u = st.text_input("SmikieJapan账号", value=guest_user, key="__guest_user")
+            p = st.text_input("SmikieJapan密码", type="password", key="__guest_pwd")
             if st.form_submit_button("登录", type="primary", use_container_width=True):
                 if u == guest_user and _check(p, guest_pwd):
                     st.session_state["__auth_ok"] = True
@@ -77,7 +77,7 @@ def _login_form() -> None:
                         st.session_state.pop(k, None)
                     st.rerun()
                 else:
-                    st.error("访客账号或密码错误")
+                    st.error("SmikieJapan账号或密码错误")
 
     st.stop()
 
@@ -93,7 +93,7 @@ def is_admin() -> bool:
 
 
 def require_admin() -> None:
-    """整页禁访客。仅 admin 可访问，否则显示提示并 stop。"""
+    """整页禁SmikieJapan。仅 admin 可访问，否则显示提示并 stop。"""
     require_password()
     if not is_admin():
         st.title("⛔ 仅管理员可访问")
@@ -111,7 +111,7 @@ def show_role_badge() -> None:
     if role == "admin":
         st.sidebar.success("👑 管理员")
     elif role == "guest":
-        st.sidebar.info("👀 访客")
+        st.sidebar.info("👥 SmikieJapan")
     if role and st.sidebar.button("🚪 切换账号", key="__auth_logout"):
         for k in ("__auth_ok", "__role"):
             st.session_state.pop(k, None)
