@@ -106,12 +106,8 @@ def require_admin() -> None:
 
 
 def show_role_badge() -> None:
-    """侧边栏显示当前身份 + 切换账号按钮。"""
+    """侧边栏切换账号按钮。"""
     role = st.session_state.get("__role")
-    if role == "admin":
-        st.sidebar.success("👑 管理员")
-    elif role == "guest":
-        st.sidebar.info("👥 SmikieJapan")
     if role and st.sidebar.button("🚪 切换账号", key="__auth_logout"):
         for k in ("__auth_ok", "__role"):
             st.session_state.pop(k, None)
