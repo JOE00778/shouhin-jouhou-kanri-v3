@@ -82,8 +82,32 @@ def _login_form() -> None:
     st.stop()
 
 
+_GUEST_HIDE_CSS = """
+<style>
+/* 仅 SmikieJapan 角色：隐藏 Streamlit 顶部 toolbar、状态条、部署标记、Manage app 浮动按钮 */
+[data-testid="stToolbar"],
+[data-testid="stStatusWidget"],
+[data-testid="stDecoration"],
+[data-testid="stHeader"] button,
+.viewerBadge_link__1S137,
+.viewerBadge_container__r5tak,
+.styles_viewerBadge__1yB5_,
+#MainMenu,
+header[data-testid="stHeader"] > div:last-child {
+    display: none !important;
+}
+</style>
+"""
+
+
+def _hide_chrome_for_guest() -> None:
+    if not is_admin():
+        st.markdown(_GUEST_HIDE_CSS, unsafe_allow_html=True)
+
+
 def require_password() -> None:
     if st.session_state.get("__auth_ok"):
+        _hide_chrome_for_guest()
         return
     _login_form()
 
