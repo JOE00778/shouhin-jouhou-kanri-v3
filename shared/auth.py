@@ -47,37 +47,24 @@ def _login_form() -> None:
         return
 
     st.title("🔒 一元管理系统V2.3")
-    st.caption("请选择身份并登录")
 
-    tab_admin, tab_guest = st.tabs(["👑 管理员入口", "👀 SmikieJapan入口"])
-
-    with tab_admin:
-        with st.form("admin_login", clear_on_submit=False):
-            u = st.text_input("管理员账号", key="__admin_user", placeholder="请输入账号")
-            p = st.text_input("管理员密码", type="password", key="__admin_pwd")
-            if st.form_submit_button("登录", type="primary", use_container_width=True):
-                if u == admin_user and _check(p, admin_pwd):
-                    st.session_state["__auth_ok"] = True
-                    st.session_state["__role"] = "admin"
-                    for k in ("__admin_user", "__admin_pwd", "__guest_user", "__guest_pwd"):
-                        st.session_state.pop(k, None)
-                    st.rerun()
-                else:
-                    st.error("管理员账号或密码错误")
-
-    with tab_guest:
-        with st.form("guest_login", clear_on_submit=False):
-            u = st.text_input("SmikieJapan账号", key="__guest_user", placeholder="请输入账号")
-            p = st.text_input("SmikieJapan密码", type="password", key="__guest_pwd")
-            if st.form_submit_button("登录", type="primary", use_container_width=True):
-                if u == guest_user and _check(p, guest_pwd):
-                    st.session_state["__auth_ok"] = True
-                    st.session_state["__role"] = "guest"
-                    for k in ("__admin_user", "__admin_pwd", "__guest_user", "__guest_pwd"):
-                        st.session_state.pop(k, None)
-                    st.rerun()
-                else:
-                    st.error("SmikieJapan账号或密码错误")
+    with st.form("login", clear_on_submit=False):
+        u = st.text_input("账号", key="__login_user", placeholder="请输入账号")
+        p = st.text_input("密码", type="password", key="__login_pwd")
+        if st.form_submit_button("登录", type="primary", use_container_width=True):
+            role = None
+            if u == admin_user and _check(p, admin_pwd):
+                role = "admin"
+            elif u == guest_user and _check(p, guest_pwd):
+                role = "guest"
+            if role:
+                st.session_state["__auth_ok"] = True
+                st.session_state["__role"] = role
+                for k in ("__login_user", "__login_pwd"):
+                    st.session_state.pop(k, None)
+                st.rerun()
+            else:
+                st.error("账号或密码错误")
 
     st.stop()
 
@@ -122,17 +109,9 @@ def require_admin() -> None:
     if not is_admin():
         st.title("⛔ 仅管理员可访问")
         st.warning("此功能涉及数据底盘操作（数据导入 / 定義原価覆盖），仅管理员账号可进入。")
-        if st.button("🚪 切换账号"):
-            for k in ("__auth_ok", "__role"):
-                st.session_state.pop(k, None)
-            st.rerun()
         st.stop()
 
 
 def show_role_badge() -> None:
-    """侧边栏切换账号按钮。"""
-    role = st.session_state.get("__role")
-    if role and st.sidebar.button("🚪 切换账号", key="__auth_logout"):
-        for k in ("__auth_ok", "__role"):
-            st.session_state.pop(k, None)
-        st.rerun()
+    """已废弃：保留空实现兼容主入口已有调用。"""
+    return
