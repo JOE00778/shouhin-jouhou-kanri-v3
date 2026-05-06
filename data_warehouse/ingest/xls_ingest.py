@@ -220,6 +220,7 @@ def _ingest_sales(
     has_store_groups: bool,         # CSV 用「店铺标题行 + SKU 明细行」分组结构
     has_rank: bool,
     has_purchase_price: bool,
+    has_upc: bool = True,           # 报表是否有 UPCコード 列（前日报表只有 7 列无 UPC）
     source_name: str | None = None,
 ) -> dict:
     """通用销售导入。
@@ -278,9 +279,9 @@ def _ingest_sales(
                 continue
 
             # UPC (= JAN) 是销售数据基准 (Boss 决定)
-            # UPC 为空 → 跳过该行 (不落库)
+            # 仅在报表含 UPCコード 列的 source 才强制检查（asean_daily 前日报只有 7 列无 UPC）
             upc = _to_str(raw.get("UPCコード"))
-            if not upc:
+            if has_upc and not upc:
                 continue
 
             # 决定 store 值
@@ -340,11 +341,11 @@ def ingest_sales_asean_monthly(path, conn, **kw):
 
 
 def ingest_sales_asean_daily(path, conn, **kw):
-    """ASEAN 店舗別売上（前日）（NetSuite 分组报表，店铺标题行 + SKU 明细行）"""
+    """ASEAN 店舗別売上（前日）（NetSuite 分组报表 · 7 列无 UPC · 店铺标题行 + SKU 明细行）"""
     return _ingest_sales(
         path, conn, source="asean_daily",
         has_store_column=False, has_store_groups=True,
-        has_rank=False, has_purchase_price=False, **kw,
+        has_rank=False, has_purchase_price=False, has_upc=False, **kw,
     )
 
 

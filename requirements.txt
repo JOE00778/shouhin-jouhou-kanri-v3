@@ -1,4 +1,4 @@
-# bump: force Cloud full rebuild
+# bump: force Cloud full rebuild (asean_daily UPC fix)
 streamlit>=1.32
 pandas>=2.2
 plotly>=5.20
