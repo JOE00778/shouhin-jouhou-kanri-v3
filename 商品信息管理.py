@@ -15,8 +15,9 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-from shared.auth import require_password
+from shared.auth import require_password, show_role_badge
 require_password()
+show_role_badge()
 
 # 全局语言切换器（侧边栏顶部）
 lang_selector()

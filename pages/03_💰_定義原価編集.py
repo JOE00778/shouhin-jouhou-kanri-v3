@@ -33,8 +33,8 @@ from modules.cost_sync.rules import (
 from shared.db import OUTPUTS_DIR, get_connection
 
 st.set_page_config(page_title=t("定義原価編集"), page_icon="💰", layout="wide")
-from shared.auth import require_password
-require_password()
+from shared.auth import require_admin
+require_admin()
 lang_selector()
 conn = get_connection()
 
