@@ -46,7 +46,7 @@ def _login_form() -> None:
         st.session_state["__role"] = "admin"
         return
 
-    st.title("🔒 商品信息管理平台")
+    st.title("🔒 一元管理系统V2.3")
     st.caption("请选择身份并登录")
 
     tab_admin, tab_guest = st.tabs(["👑 管理员入口", "👀 SmikieJapan入口"])

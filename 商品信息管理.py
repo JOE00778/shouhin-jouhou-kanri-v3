@@ -1,4 +1,4 @@
-"""商品信息管理平台 · Streamlit 主入口。"""
+"""一元管理系统V2.3 · Streamlit 主入口。"""
 from __future__ import annotations
 
 import streamlit as st
@@ -9,7 +9,7 @@ from shared.supabase_client import is_configured
 
 # 页面配置
 st.set_page_config(
-    page_title=t("商品信息管理平台"),
+    page_title=t("一元管理系统V2.3"),
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -25,7 +25,7 @@ lang_selector()
 conn = get_connection()
 
 # 首页内容
-st.title(f"📊 {t('商品信息管理平台')}")
+st.title(f"📊 {t('一元管理系统V2.3')}")
 st.caption(t("SmikieJapan 综合商品分析与运营工具集 · Supabase 真源 + 本地缓存"))
 
 # Supabase 连接状态
