@@ -42,42 +42,43 @@ if sales_count == 0:
 
 
 # ============================================================
-# 选择源 + 期间
+# 选择 维度（月度 / 前日）+ 期间
 # ============================================================
-src_opts = [r["source"] for r in conn.execute(
-    "SELECT DISTINCT source FROM sales_line WHERE store IS NOT NULL"
-).fetchall()]
-src_label = {
-    "asean_monthly": "ASEAN 月度（含店铺）",
-    "asean_daily": "ASEAN 日度（含店铺）",
-    "export_item": "輸出 SKU 维度",
-    "export_store": "輸出 店铺×SKU",
+DIM_TO_SOURCES = {
+    t("📅 月度"): ["asean_monthly", "export_store"],
+    t("📊 前日"): ["asean_daily"],
 }
-sel_src = st.selectbox(
-    t("数据源"), src_opts, format_func=lambda s: src_label.get(s, s)
-)
+sel_dim = st.radio(t("维度"), list(DIM_TO_SOURCES.keys()), horizontal=True)
+allowed_srcs = DIM_TO_SOURCES[sel_dim]
 
+# 期间选项：当前维度下可用的所有期间
+src_placeholders = ",".join("?" * len(allowed_srcs))
 period_opts = conn.execute(
-    "SELECT DISTINCT period_start, period_end FROM sales_line WHERE source = ? ORDER BY period_start DESC",
-    (sel_src,),
+    f"SELECT DISTINCT period_start, period_end FROM sales_line "
+    f"WHERE source IN ({src_placeholders}) AND store IS NOT NULL "
+    f"ORDER BY period_start DESC",
+    allowed_srcs,
 ).fetchall()
 period_choices = [(r["period_start"], r["period_end"]) for r in period_opts]
+if not period_choices:
+    st.warning(t("此维度下暂无数据。请到「⚙️ 数据导入与设置」上传对应文件。"))
+    st.stop()
 sel_period = st.selectbox(
     t("期间"),
     period_choices,
     format_func=lambda p: f"{p[0]} ~ {p[1]}",
 )
 
-# 加载明细
+# 加载明细（在该维度下的所有源 union）
 df = pd.DataFrame([dict(r) for r in conn.execute(
-    """
+    f"""
     SELECT store, item_code, display_name, qty_sold, revenue,
            defined_cost, gross_profit, gross_margin, rank
     FROM sales_line
-    WHERE source = ? AND period_start = ? AND period_end = ?
+    WHERE source IN ({src_placeholders}) AND period_start = ? AND period_end = ?
         AND store IS NOT NULL
     """,
-    (sel_src, sel_period[0], sel_period[1]),
+    (*allowed_srcs, sel_period[0], sel_period[1]),
 ).fetchall()])
 
 if df.empty:
@@ -187,4 +188,4 @@ with tab_top_skus:
 
 
 st.divider()
-st.caption(f"数据源：{src_label.get(sel_src, sel_src)} · 期间：{sel_period[0]} ~ {sel_period[1]}")
+st.caption(f"{t('维度')}：{sel_dim} · {t('期间')}：{sel_period[0]} ~ {sel_period[1]}")
