@@ -188,13 +188,27 @@ _STORE_KEYWORDS = ("COUPANG", "Coupang", "coupang")
 
 
 def _is_store_group_header(item_code: str | None, display_name: str | None) -> bool:
-    """判断一行是不是「店铺分组标题」（item_code 是店铺名，display_name 空）。"""
+    """判断一行是不是「店铺分组标题」（item_code 是店铺名，display_name 空）。
+
+    放宽策略：只要 item_code 非空 + display_name 空 + item_code 不是纯数字（SKU 编码通常是 4901... 之类），
+    就视为店铺标题。避免硬编码店铺前缀漏匹配（TikTok / Amazon / その他 等）。
+    合計/小計行已在调用方单独过滤。
+    """
     if not item_code or display_name:
         return False
     s = item_code.strip()
+    # 纯数字（SKU 编码 / EAN / JAN）→ 不是店铺
+    if s.isdigit():
+        return False
+    # 已知前缀 / 关键字（保留，命中即返回）
     if s.startswith(_STORE_PREFIXES):
         return True
-    return any(k in s for k in _STORE_KEYWORDS)
+    if any(k in s for k in _STORE_KEYWORDS):
+        return True
+    # 兜底：item_code 含字母 / 含空格 / 长度 > 4 → 多半是店铺名
+    if any(c.isalpha() for c in s) or " " in s:
+        return True
+    return False
 
 
 def _ingest_sales(

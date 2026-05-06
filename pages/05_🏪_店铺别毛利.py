@@ -31,12 +31,12 @@ st.caption(t("基于 NetSuite 销售报表 · 自带毛利+毛利率，零计算
 
 
 sales_count = conn.execute(
-    "SELECT COUNT(*) AS c FROM sales_line WHERE store IS NOT NULL"
+    "SELECT COUNT(*) AS c FROM sales_line"
 ).fetchone()["c"]
 if sales_count == 0:
     st.warning(
-        t("⚠️ 没有店铺级销售数据。请到「⚙️ 数据导入与设置」上传 "
-        "`【ASEAN】店舗別売上 集計専用.xls` 或 `【輸出】店舗別売上.xls`。")
+        t("⚠️ 没有销售数据。请到「⚙️ 数据导入与设置」上传 "
+        "`【ASEAN】店舗別売上 集計専用.xls` / `【ASEAN】店舗別売上（前日）.xls` / `【輸出】店舗別売上.xls`。")
     )
     st.stop()
 
@@ -88,14 +88,14 @@ sel_period = st.selectbox(
     format_func=lambda p: f"{p[0]} ~ {p[1]}",
 )
 
-# 加载明细（在该维度下的所有源 union）
+# 加载明细（不再硬过滤 store IS NOT NULL；店铺识别失败的行用占位符兜底）
 df = pd.DataFrame([dict(r) for r in conn.execute(
     f"""
-    SELECT store, item_code, display_name, qty_sold, revenue,
+    SELECT COALESCE(NULLIF(TRIM(COALESCE(store, '')), ''), '（未识别店铺）') AS store,
+           item_code, display_name, qty_sold, revenue,
            defined_cost, gross_profit, gross_margin, rank
     FROM sales_line
     WHERE source IN ({src_placeholders}) AND period_start = ? AND period_end = ?
-        AND store IS NOT NULL
     """,
     (*allowed_srcs, sel_period[0], sel_period[1]),
 ).fetchall()])
