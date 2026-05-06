@@ -8,3 +8,5 @@ requests>=2.31
 pyyaml>=6.0
 python-calamine>=0.2
 beautifulsoup4>=4.12
+# T-303 LLM 调用（免费 Gemini · Streamlit Cloud secrets 配 GEMINI_API_KEY）
+google-generativeai>=0.8

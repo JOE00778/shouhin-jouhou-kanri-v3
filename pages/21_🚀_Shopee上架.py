@@ -73,9 +73,10 @@ _PAGE_STRINGS_EN: Dict[str, str] = {
     "Mock 模式（不调 LLM/Rakuten，用占位数据生成 xlsx 验证流程）":
         "Mock mode (skip LLM/Rakuten, fill placeholders to verify pipeline)",
     "跳过主图查找（dry-run 时加速）": "Skip main-image lookup (faster dry-run)",
-    "✅ ANTHROPIC_API_KEY 已配置": "✅ ANTHROPIC_API_KEY configured",
-    "⚠️ ANTHROPIC_API_KEY 未配置 — 仅可跑 Mock 模式":
-        "⚠️ ANTHROPIC_API_KEY not set — only Mock mode works",
+    "✅ GEMINI_API_KEY 已配置（免费）": "✅ GEMINI_API_KEY configured (free)",
+    "✅ ANTHROPIC_API_KEY 已配置（付费）": "✅ ANTHROPIC_API_KEY configured (paid)",
+    "⚠️ 未配置 GEMINI_API_KEY 也未配置 ANTHROPIC_API_KEY — 仅可跑 Mock 模式":
+        "⚠️ Neither GEMINI_API_KEY nor ANTHROPIC_API_KEY set — only Mock mode works",
     "✅ RAKUTEN_APP_ID 已配置": "✅ RAKUTEN_APP_ID configured",
     "⚠️ RAKUTEN_APP_ID 未配置 — JAN 查询会跳过（Mock 模式不受影响）":
         "⚠️ RAKUTEN_APP_ID not set — JAN lookup will be skipped (Mock mode unaffected)",
@@ -299,8 +300,10 @@ def run_pipeline(
     # ── Stage 3：AI 生成 listing ─────────────────────────────
     progress_cb(0.35, tt("AI 生成 listing"))
     listings: Dict[str, Any] = {}
-    if mock_mode or not os.environ.get("ANTHROPIC_API_KEY", "").strip():
-        log_cb("[ai] mock / ANTHROPIC_API_KEY 未配置 — 全部用 mock listing")
+    has_gemini = bool(os.environ.get("GEMINI_API_KEY", "").strip())
+    has_anthropic = bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())
+    if mock_mode or not (has_gemini or has_anthropic):
+        log_cb("[ai] mock / 未配置 GEMINI_API_KEY 或 ANTHROPIC_API_KEY — 全部用 mock listing")
         for spu in spus:
             listings[spu.spu_key] = _make_mock_listing(spu, ListingDraft)
     else:
@@ -481,12 +484,15 @@ elif step == 2:
     st.divider()
 
     # 环境变量状态
+    has_gemini = bool(os.environ.get("GEMINI_API_KEY", "").strip())
     has_anthropic = bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())
     has_rakuten = bool(os.environ.get("RAKUTEN_APP_ID", "").strip())
-    if has_anthropic:
-        st.success(tt("✅ ANTHROPIC_API_KEY 已配置"))
+    if has_gemini:
+        st.success(tt("✅ GEMINI_API_KEY 已配置（免费）"))
+    elif has_anthropic:
+        st.success(tt("✅ ANTHROPIC_API_KEY 已配置（付费）"))
     else:
-        st.warning(tt("⚠️ ANTHROPIC_API_KEY 未配置 — 仅可跑 Mock 模式"))
+        st.warning(tt("⚠️ 未配置 GEMINI_API_KEY 也未配置 ANTHROPIC_API_KEY — 仅可跑 Mock 模式"))
     if has_rakuten:
         st.success(tt("✅ RAKUTEN_APP_ID 已配置"))
     else:
