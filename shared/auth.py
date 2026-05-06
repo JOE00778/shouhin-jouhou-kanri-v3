@@ -1,9 +1,9 @@
 """双角色守门（管理员 / SmikieJapan）· 每个 page 顶部调用 require_password()。
 
 密码配置（Streamlit Cloud → Settings → Secrets）：
-    ADMIN_USERNAME = "admin"        # 可选，默认 "admin"
+    ADMIN_USERNAME = "JO043"            # 可选，默认 "JO043"
     ADMIN_PASSWORD = "..."
-    GUEST_USERNAME = "guest"        # 可选，默认 "guest"
+    GUEST_USERNAME = "smikiejapan"      # 可选，默认 "smikiejapan"
     GUEST_PASSWORD = "..."
 
 向后兼容：仅配置 APP_PASSWORD 时视为管理员单密码（旧行为）。
@@ -33,9 +33,9 @@ def _check(entered: str, expected: str) -> bool:
 
 
 def _login_form() -> None:
-    admin_user = _secret("ADMIN_USERNAME", "admin")
+    admin_user = _secret("ADMIN_USERNAME", "JO043")
     admin_pwd = _secret("ADMIN_PASSWORD")
-    guest_user = _secret("GUEST_USERNAME", "guest")
+    guest_user = _secret("GUEST_USERNAME", "smikiejapan")
     guest_pwd = _secret("GUEST_PASSWORD")
     legacy_pwd = _secret("APP_PASSWORD")
     if not admin_pwd and not guest_pwd and legacy_pwd:
@@ -53,7 +53,7 @@ def _login_form() -> None:
 
     with tab_admin:
         with st.form("admin_login", clear_on_submit=False):
-            u = st.text_input("管理员账号", value=admin_user, key="__admin_user")
+            u = st.text_input("管理员账号", key="__admin_user", placeholder="请输入账号")
             p = st.text_input("管理员密码", type="password", key="__admin_pwd")
             if st.form_submit_button("登录", type="primary", use_container_width=True):
                 if u == admin_user and _check(p, admin_pwd):
@@ -67,7 +67,7 @@ def _login_form() -> None:
 
     with tab_guest:
         with st.form("guest_login", clear_on_submit=False):
-            u = st.text_input("SmikieJapan账号", value=guest_user, key="__guest_user")
+            u = st.text_input("SmikieJapan账号", key="__guest_user", placeholder="请输入账号")
             p = st.text_input("SmikieJapan密码", type="password", key="__guest_pwd")
             if st.form_submit_button("登录", type="primary", use_container_width=True):
                 if u == guest_user and _check(p, guest_pwd):
