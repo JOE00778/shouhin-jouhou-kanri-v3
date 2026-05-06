@@ -24,6 +24,8 @@ from shared.forex import FX_TO_JPY
 from shared.i18n import lang_selector, t
 
 st.set_page_config(page_title=t("Shopee 財務"), page_icon="💱", layout="wide")
+from shared.auth import require_password
+require_password()
 lang_selector()
 conn = get_connection()
 

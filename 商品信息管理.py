@@ -15,6 +15,9 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+from shared.auth import require_password
+require_password()
+
 # 全局语言切换器（侧边栏顶部）
 lang_selector()
 

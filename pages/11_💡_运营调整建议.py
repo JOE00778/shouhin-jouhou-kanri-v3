@@ -15,6 +15,8 @@ from modules.operation_advice.rules import (
 )
 
 st.set_page_config(page_title=t("运营调整建议"), page_icon="💡", layout="wide")
+from shared.auth import require_password
+require_password()
 lang_selector()
 
 from shared.db import DB_PATH, get_connection

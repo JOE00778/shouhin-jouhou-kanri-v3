@@ -22,6 +22,8 @@ from modules.inventory_health.metrics import THRESHOLD, batch_calc
 from shared.db import get_connection
 
 st.set_page_config(page_title=t("库存健康监控"), page_icon="📦", layout="wide")
+from shared.auth import require_password
+require_password()
 lang_selector()
 conn = get_connection()
 

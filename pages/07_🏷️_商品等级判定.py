@@ -7,6 +7,8 @@ from datetime import datetime
 from modules.rank_classifier.proposal import generate_proposal, export_csv
 
 st.set_page_config(page_title=t("商品等级判定"), page_icon="🏷️", layout="wide")
+from shared.auth import require_password
+require_password()
 lang_selector()
 st.title(t("🏷️ 商品等级判定（季度·Boss-only）"))
 st.caption(t(

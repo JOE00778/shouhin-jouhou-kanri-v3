@@ -7,6 +7,8 @@ from pathlib import Path
 from datetime import datetime
 
 st.set_page_config(page_title=t("改廃確認"), page_icon="⚠️", layout="wide")
+from shared.auth import require_password
+require_password()
 lang_selector()
 
 # ============================================================================
