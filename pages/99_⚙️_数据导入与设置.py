@@ -73,16 +73,41 @@ with tab_import:
     )
 
     if uploaded_files:
-        # 预扫描：识别每个文件
-        st.write(t("### 文件识别结果"))
-        plan: list[tuple[str, str, object]] = []  # (filename, ingestor_key, file_obj)
+        # 预扫描：识别每个文件，允许手动覆盖 ingester
+        st.write(t("### 文件识别结果（可手动指定 ingester）"))
+        INGESTOR_LABELS = {
+            "inventory": "📦 在庫快照 (輸出通常在庫数残数)",
+            "turnover": "🔄 在庫回転率",
+            "asean_monthly": "🏪 ASEAN 月度（店舗別 集計専用）",
+            "asean_daily": "📊 ASEAN 前日（店舗別売上 前日）",
+            "export_item": "🇯🇵 輸出 SKU 維度（アイテム別）",
+            "export_store": "🇯🇵 輸出 店舗別売上",
+            "shopee_orders": "🛒 Shopee 订单导出",
+            "shopee_income": "💱 Shopee 拨款明细",
+            "item_summary": "📋 NetSuite アイテム概要",
+        }
+        plan: list[tuple[str, str, object]] = []
+        all_keys = list(INGESTOR_LABELS.keys())
         for f in uploaded_files:
-            key = detect_ingestor(f.name)
-            if key:
-                st.success(f"✅ `{f.name}` → **{key}** ingestor ({f.size:,} bytes)")
-                plan.append((f.name, key, f))
-            else:
-                st.error(f"❌ `{f.name}` 文件名无法识别类型，跳过")
+            auto_key = detect_ingestor(f.name)
+            cols = st.columns([3, 3])
+            with cols[0]:
+                if auto_key:
+                    st.write(f"📄 `{f.name}` ({f.size:,} bytes)")
+                    st.caption(f"🤖 自动识别：**{INGESTOR_LABELS.get(auto_key, auto_key)}**")
+                else:
+                    st.warning(f"📄 `{f.name}` ({f.size:,} bytes) — 文件名未识别，**必须手动选**")
+            with cols[1]:
+                default_idx = all_keys.index(auto_key) if auto_key in all_keys else 0
+                chosen_key = st.selectbox(
+                    f"ingester for {f.name}",
+                    all_keys,
+                    format_func=lambda k: INGESTOR_LABELS[k],
+                    index=default_idx,
+                    key=f"__ingester_{f.name}",
+                    label_visibility="collapsed",
+                )
+            plan.append((f.name, chosen_key, f))
 
         if plan and st.button(t(f"🚀 开始导入 {len(plan)} 个文件"), type="primary"):
             INPUTS_DIR.mkdir(parents=True, exist_ok=True)
