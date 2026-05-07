@@ -96,10 +96,42 @@ def _hide_chrome_for_guest() -> None:
         st.markdown(_GUEST_HIDE_CSS, unsafe_allow_html=True)
 
 
+def _try_lark_sso() -> bool:
+    """飞书 H5 应用 SSO 入口（NAS 部署时启用，Cloud 部署时 is_configured()=False 自动跳过）。
+
+    URL 带 ?code=xxx 表示飞书 OAuth 回调，校验通过后直接以「team」角色登录。
+    返回 True 说明已登录，外层不需要再渲染密码框。
+    """
+    try:
+        from shared import lark_auth
+    except ImportError:
+        return False
+    if not lark_auth.is_configured():
+        return False
+    user = lark_auth.try_handle_oauth_callback()
+    if not user:
+        return False
+    st.session_state["__auth_ok"] = True
+    # 飞书登录的同事默认走 SmikieJapan 角色（团队成员）；
+    # 例外：飞书邮箱在 ADMIN_LARK_EMAILS（逗号分隔 secret）里的视为 admin
+    admin_emails = {
+        e.strip().lower()
+        for e in (_secret("ADMIN_LARK_EMAILS") or "").split(",")
+        if e.strip()
+    }
+    email = (user.get("email") or "").lower()
+    st.session_state["__role"] = "admin" if email in admin_emails else "guest"
+    st.session_state["__lark_user"] = user
+    return True
+
+
 def require_password() -> None:
     if st.session_state.get("__auth_ok"):
         _hide_chrome_for_guest()
         return
+    # 优先尝试飞书 SSO（仅 NAS 部署 + 配齐 LARK_* 时生效）
+    if _try_lark_sso():
+        st.rerun()
     _login_form()
 
 

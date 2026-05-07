@@ -1,0 +1,82 @@
+version: "3.9"
+
+# ============================================================
+# 一元管理系统 V2.3 · NAS Self-hosted 部署
+# Postgres 16 + Streamlit + Cloudflared Tunnel
+# ============================================================
+# 使用：
+#   1. 复制 .env.example 为 .env 并填入真实值
+#   2. docker compose up -d
+#   3. 浏览器打开 https://${PUBLIC_DOMAIN} 验证（Cloudflare Tunnel 已生效）
+# ============================================================
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: cms_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-cms}
+      POSTGRES_USER: ${POSTGRES_USER:-cms}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: Asia/Tokyo
+    volumes:
+      # 数据持久化到 NAS 卷（容器重启不丢）
+      - ${DATA_DIR:-./data}/postgres:/var/lib/postgresql/data
+      # 首次启动自动建表
+      - ./schema.postgres.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    networks:
+      - cms_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cms} -d ${POSTGRES_DB:-cms}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  streamlit:
+    build:
+      context: ../..
+      dockerfile: deploy/nas/Dockerfile
+    container_name: cms_streamlit
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Postgres 连接（shared/db.py 检测到这个会切到 Postgres 模式）
+      DATABASE_URL: postgresql://${POSTGRES_USER:-cms}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-cms}
+      # 双角色认证
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-JO043}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      GUEST_USERNAME: ${GUEST_USERNAME:-smikiejapan}
+      GUEST_PASSWORD: ${GUEST_PASSWORD}
+      # 飞书 H5 SSO（明天 Boss 给应用 credentials 后填）
+      LARK_APP_ID: ${LARK_APP_ID:-}
+      LARK_APP_SECRET: ${LARK_APP_SECRET:-}
+      LARK_REDIRECT_URI: ${LARK_REDIRECT_URI:-}
+      # 时区
+      TZ: Asia/Tokyo
+    volumes:
+      # 上传文件持久化（用户上传 xls 时落盘做审计）
+      - ${DATA_DIR:-./data}/inputs:/app/data/inputs
+      - ${DATA_DIR:-./data}/outputs:/app/data/outputs
+    networks:
+      - cms_net
+    expose:
+      - "8501"
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cms_cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - streamlit
+    networks:
+      - cms_net
+
+networks:
+  cms_net:
+    driver: bridge
