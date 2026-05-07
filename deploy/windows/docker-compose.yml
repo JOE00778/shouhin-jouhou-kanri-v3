@@ -1,0 +1,99 @@
+version: "3.9"
+
+# ============================================================
+# 一元管理系统 V2.3 · Windows 笔记本部署（影刀共存版）
+# Postgres 16 + Streamlit + Cloudflared
+# ============================================================
+# 资源严格受限，保证影刀（YingDao）RPA 不受影响：
+#   - Postgres: 512MB RAM / 0.5 CPU
+#   - Streamlit: 1GB RAM / 1.0 CPU
+#   - Cloudflared: 128MB RAM / 0.25 CPU
+#   合计：约 1.6GB RAM + 1.75 CPU 核（剩余给影刀 + Windows）
+# ============================================================
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: cms_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-cms}
+      POSTGRES_USER: ${POSTGRES_USER:-cms}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: Asia/Tokyo
+    volumes:
+      # Windows: D:\cms-v230\data\postgres → 容器内
+      - ${DATA_DIR:-./data}/postgres:/var/lib/postgresql/data
+      - ../nas/schema.postgres.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    networks:
+      - cms_net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cms} -d ${POSTGRES_DB:-cms}"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  streamlit:
+    build:
+      context: ../..
+      dockerfile: deploy/nas/Dockerfile
+    container_name: cms_streamlit
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-cms}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-cms}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-JO043}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      GUEST_USERNAME: ${GUEST_USERNAME:-smikiejapan}
+      GUEST_PASSWORD: ${GUEST_PASSWORD}
+      LARK_APP_ID: ${LARK_APP_ID:-}
+      LARK_APP_SECRET: ${LARK_APP_SECRET:-}
+      LARK_REDIRECT_URI: ${LARK_REDIRECT_URI:-}
+      ADMIN_LARK_EMAILS: ${ADMIN_LARK_EMAILS:-}
+      TZ: Asia/Tokyo
+    volumes:
+      - ${DATA_DIR:-./data}/inputs:/app/data/inputs
+      - ${DATA_DIR:-./data}/outputs:/app/data/outputs
+    networks:
+      - cms_net
+    expose:
+      - "8501"
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1024M
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cms_cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - streamlit
+    networks:
+      - cms_net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+
+networks:
+  cms_net:
+    driver: bridge

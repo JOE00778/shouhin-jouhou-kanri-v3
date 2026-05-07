@@ -1,6 +1,14 @@
 # SQLite → Postgres 迁移清单
 
-明天 NAS 部署时需要逐个改造的文件。当前 Cloud 仍跑 SQLite，本清单是切到 Postgres 时的 "to-do"。
+明天 Postgres 部署时需要逐个改造的文件。当前 Cloud 仍跑 SQLite，本清单是切到 Postgres 时的 "to-do"。
+
+适用所有 Postgres 部署目标（NAS / Windows 笔记本 / VPS）—— 业务代码改造完全相同，仅基础设施不同：
+
+| 部署目标 | 文档 | 现状 |
+|---|---|---|
+| Synology NAS（Plus 系列） | [README.md](README.md) | 等 NAS |
+| **Windows 笔记本（影刀共存）** | [../windows/README.md](../windows/README.md) | ✅ **当前选择**（Boss 办公室常开影刀机器）|
+| 云 VPS | 尚未写（跟 NAS 流程相同）| 备选 |
 
 ---
 

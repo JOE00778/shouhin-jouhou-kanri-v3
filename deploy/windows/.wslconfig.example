@@ -1,0 +1,26 @@
+# =============================================================
+# Windows WSL2 全局资源限制 · 影刀友好
+# 把这个文件放到 C:\Users\<你的用户名>\.wslconfig
+# 修改后跑 PowerShell 管理员: wsl --shutdown 然后重启 Docker Desktop
+# =============================================================
+
+[wsl2]
+# WSL2 总内存上限（Docker Desktop 默认 50% 系统内存，此处压到 2GB）
+# 系统总内存 8GB → WSL2 占 2GB → 影刀 + Windows 还有 6GB
+memory=2GB
+
+# WSL2 CPU 核心数上限（默认全部，此处压到 2 核）
+# 4 核笔记本 → WSL2 占 2 核 → 影刀 + Windows 还有 2 核
+processors=2
+
+# Swap 大小（避免影刀高峰时 OOM）
+swap=2GB
+swapFile=C:\\WSL\\swap.vhdx
+
+# 闲置时自动回收内存（低优先级 = 影刀优先）
+autoMemoryReclaim=gradual
+
+# 关闭一些用不到的功能省资源
+[experimental]
+sparseVhd=true                # SQLite/Postgres 数据库 vhd 文件按需扩展
+networkingMode=mirrored       # WSL2 网络共享 Windows，让 Cloudflare Tunnel 出站更稳
