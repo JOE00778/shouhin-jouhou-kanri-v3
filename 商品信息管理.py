@@ -68,6 +68,7 @@ modules = [
     ("💱 Shopee財務", "Phase 4", "拨款 + 订单级对账"),
     ("📝 商品登录", "Phase 5", "新品工作流 → NetSuite Item Create CSV"),
     ("📈 等级历史趋势", "Phase 3", "Sankey 图跨季度等级流向"),
+    ("🚀 Shopee上架", "Phase 5", "SPU+SKU CSV → AI 文案 → 店小秘 / Shopee mass upload xlsx"),
 ]
 
 for i in range(0, len(modules), 2):

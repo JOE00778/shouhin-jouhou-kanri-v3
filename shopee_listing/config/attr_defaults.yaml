@@ -1,0 +1,112 @@
+# T-304 共性属性默认值表
+# 11 个跨类目共性属性的 fallback 值。Boss review 后调整。
+#
+# 格式：
+#   common:                # 所有类目共用
+#     <attr_id>:
+#       name: <中文属性名>
+#       default: <值>      # 单值
+#       # 或：
+#       category_default:  # 按品类不同的默认值（key 为类目 ID）
+#         "100629": ...
+#         "100630": ...
+#       texture_map:       # 仅 100036 质地：按品类关键词推断
+#         food: 固态
+#         ...
+#
+# 缺失/无法推断 → "Not Specified"
+
+NOT_SPECIFIED: "Not Specified"
+
+common:
+  "100037":
+    name: 原产地
+    default: "Japan"
+
+  "100036":
+    name: 质地
+    # 由 fill_attributes() 按 category_id + 关键词推断；fallback 见此 map
+    category_default:
+      "100629": "Solid"     # 食品默认固态
+      "100630": "Cream"     # 化妆品默认乳霜
+      "100632": "Liquid"    # 母婴/口服默认液态
+      "100638": "Solid"     # 文具默认固态
+      "100640": "Solid"     # 综合默认固态
+    # 关键词→质地（标题/notes 命中时覆盖类目默认）
+    texture_keywords:
+      Liquid:
+        - liquid
+        - lotion
+        - toner
+        - milk
+        - drink
+        - juice
+        - serum
+        - essence
+        - oil
+      Cream:
+        - cream
+        - balm
+        - butter
+        - paste
+      Powder:
+        - powder
+        - matcha
+      Gel:
+        - gel
+        - jelly
+      Foam:
+        - foam
+        - mousse
+      Solid:
+        - bar
+        - stick
+        - tablet
+        - candy
+        - chocolate
+        - biscuit
+        - cookie
+
+  "100095":
+    name: 重量
+    # 复用 ps_weight；无变体重量时 → Not Specified
+    default: null
+
+  "100134":
+    name: 材质
+    default: "Not Specified"
+
+  "100162":
+    name: 图案
+    default: "Plain"
+
+  "100248":
+    name: 体积
+    # 由生成器从 spec_json 抽取；空 → Not Specified
+    default: null
+
+  "100999":
+    name: 数量
+    default: 1
+
+  "101029":
+    name: 包装尺寸
+    default: null
+
+  "101219":
+    name: Custom Product
+    default: "No"
+
+  "102412":
+    name: Bundle
+    default: "No"
+
+  "101081":
+    name: 产品类型
+    # 4/5 类目有此字段；按品类
+    category_default:
+      "100629": "Food"
+      "100630": "Cosmetic"
+      "100632": "Baby Care"
+      "100638": "Stationery"
+      "100640": "General"

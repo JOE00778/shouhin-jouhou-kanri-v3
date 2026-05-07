@@ -10,3 +10,12 @@ data/inputs/
 data/outputs/
 *.xlsx
 *.xls
+
+# shopee_listing/ 下的模板和缓存：模板必须入仓，缓存与运行产物不入仓
+!shopee_listing/**/*.xlsx
+!shopee_listing/**/*.xls
+shopee_listing/.cache/
+shopee_listing/exports/
+shopee_listing/drafts/
+shopee_listing/__pycache__/
+shopee_listing/**/__pycache__/

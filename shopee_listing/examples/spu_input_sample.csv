@@ -1,0 +1,13 @@
+spu_key,jan,category_hint,variant_attr_color,variant_attr_size,variant_attr_other,weight_grams,notes
+SPU-FIG-001,4901234567001,toys/figurine,Red,,,150,Hatsune Miku 标准版
+SPU-FIG-001,4901234567002,toys/figurine,Blue,,,150,Hatsune Miku 海洋限定
+SPU-FIG-001,4901234567003,toys/figurine,Pink,,,150,Hatsune Miku 樱花限定
+SPU-BAG-002,4905555000010,bags/tote,Black,M,,300,SmikieJapan tote bag M 黑
+SPU-BAG-002,4905555000011,bags/tote,Black,L,,360,SmikieJapan tote bag L 黑
+SPU-BAG-002,4905555000012,bags/tote,Beige,M,,300,SmikieJapan tote bag M 米
+SPU-CUP-003,4907777000001,kitchenware/mug,White,,300ml,250,Sanrio mug 白 300ml
+SPU-CUP-003,4907777000002,kitchenware/mug,White,,500ml,320,Sanrio mug 白 500ml
+SPU-PEN-004,4908888000001,stationery/pen,Black,,0.5mm,12,Pilot Frixion 0.5
+SPU-PEN-004,4908888000002,stationery/pen,Red,,0.5mm,12,Pilot Frixion 0.5
+SPU-PLU-005,4909999000001,toys/plush,Pink,S,,180,Sanrio plush S
+SPU-PLU-005,4909999000002,toys/plush,Pink,L,,420,Sanrio plush L

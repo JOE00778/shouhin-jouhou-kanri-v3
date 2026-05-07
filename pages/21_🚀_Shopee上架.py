@@ -34,10 +34,18 @@ from shared.auth import is_admin, require_admin
 from shared.i18n import get_lang, lang_selector, t
 
 # --------------------------------------------------------------------------- #
-# sys.path bootstrap — let us import shopee-listing pipeline modules
-# 商品信息管理 / shopee-listing 是平行目录（~/CC/{商品信息管理,shopee-listing}/）
+# sys.path bootstrap — 优先用子 repo 内嵌的 shopee_listing/（生产）
+# fallback 到 ~/CC/shopee-listing/（本地开发，原位 pipeline）
 # --------------------------------------------------------------------------- #
-SHOPEE_LISTING_ROOT = Path(__file__).resolve().parents[2] / "shopee-listing"
+_REPO_ROOT = Path(__file__).resolve().parents[1]   # 商品信息管理/
+_EMBEDDED = _REPO_ROOT / "shopee_listing"          # 部署到 Streamlit Cloud 时用这个
+_SIBLING = Path(__file__).resolve().parents[2] / "shopee-listing"  # 本地兄弟目录
+
+if _EMBEDDED.is_dir():
+    SHOPEE_LISTING_ROOT = _EMBEDDED
+else:
+    SHOPEE_LISTING_ROOT = _SIBLING
+
 for _p in (SHOPEE_LISTING_ROOT, SHOPEE_LISTING_ROOT / "scripts"):
     p_str = str(_p)
     if p_str not in sys.path:
