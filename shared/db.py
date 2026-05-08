@@ -2,18 +2,19 @@
 
 后端选择：
 - 默认（无 DATABASE_URL）→ SQLite，本地文件 data_warehouse/warehouse.db
-- 设 DATABASE_URL=postgresql://... → Postgres（NAS Self-hosted 模式）
+- 设 DATABASE_URL=postgresql://... → Postgres（Windows 笔记本 / NAS Self-hosted 模式）
 
 兼容性：
 - 返回对象始终支持 .execute(sql, params)、.executemany、.commit、.close
 - row 始终支持 row["col"] / row[index] 双重访问
 - SQL 占位符两边都接受 `?`（Postgres 模式自动转 %s）
-- 注：INSERT OR REPLACE / INSERT OR IGNORE 不会自动转，
-  迁移到 Postgres 时需手动改成 ON CONFLICT（见 deploy/nas/MIGRATION.md）
+- INSERT OR REPLACE / INSERT OR IGNORE 在 Postgres 模式下被适配层自动改写为
+  ON CONFLICT (...) DO UPDATE SET ... = EXCLUDED.* / DO NOTHING（透明，业务代码无需改动）
 """
 from __future__ import annotations
 
 import os
+import re
 import sqlite3
 from pathlib import Path
 
@@ -66,14 +67,93 @@ class _PostgresAdapter:
 
     让现有代码（用 conn.execute(sql, params)、row["col"]、? 占位符）
     在 Postgres 后端无缝工作，不改任何 ingester / page。
+
+    透明改写：
+    - `?` → `%s`
+    - `INSERT OR REPLACE INTO X (cols) VALUES (...)`
+        → `INSERT INTO X (cols) VALUES (...) ON CONFLICT (pk) DO UPDATE SET col=EXCLUDED.col, ...`
+    - `INSERT OR IGNORE INTO X (cols) VALUES (...)`
+        → `INSERT INTO X (cols) VALUES (...) ON CONFLICT DO NOTHING`
     """
+
+    # 表 → conflict 列（PK 或 UNIQUE 约束的列），用于 INSERT OR REPLACE 改写。
+    # 新增表如果用 INSERT OR REPLACE 写入，必须在此登记，否则会抛 RuntimeError。
+    _UPSERT_CONFLICT: dict[str, tuple[str, ...]] = {
+        "shopee_payouts": ("payout_id",),
+        "inventory_snapshot": ("internal_id", "location", "bin_number", "snapshot_at"),
+        "inventory_turnover": ("item_code", "period_start", "period_end"),
+        "shopee_orders_raw": ("order_no",),
+        "shopee_income_lines": ("order_no", "refund_id"),
+        "shopee_orders": ("order_no", "sku_or_jan"),
+        "supplier_cost": ("jan", "supplier_name"),
+        "supply_cycle": ("jan",),
+        "supplier_jan_list": ("jan", "supplier_name"),
+        "item": ("item_code",),
+        "item_master": ("jan",),
+        "item_master_netsuite": ("internal_id",),
+        "store_monthly": ("year_month", "market", "store_id"),
+        "nst_turnover": ("item_code", "department"),
+        "nst_store_sales": ("fb_store", "item_code"),
+        "nst_inventory_snapshot": ("internal_id", "location", "bin_number"),
+        "nst_item_summary": ("item_code",),
+        "operation_advice_monthly": ("sku", "year_month"),
+        "stock_sales_ratio_monthly": ("sku", "year_month"),
+        "cross_ratio_monthly": ("sku", "year_month"),
+        "health_grade_monthly": ("sku", "year_month"),
+        "rank_history": ("sku", "quarter"),
+        "_schema_version": ("version",),
+    }
+
+    _RE_OR_REPLACE = re.compile(
+        r"\bINSERT\s+OR\s+REPLACE\s+INTO\s+(\w+)\s*\(([^)]+)\)\s*VALUES\b",
+        re.IGNORECASE | re.DOTALL,
+    )
+    _RE_OR_IGNORE = re.compile(
+        r"\bINSERT\s+OR\s+IGNORE\s+INTO\s+(\w+)\s*\(([^)]+)\)\s*VALUES\b",
+        re.IGNORECASE | re.DOTALL,
+    )
 
     def __init__(self, raw):
         self._raw = raw
 
-    @staticmethod
-    def _adapt_sql(sql: str) -> str:
-        """`?` → `%s`。简单替换，假定字符串字面量里不含 `?`（CMS 代码确实如此）。"""
+    @classmethod
+    def _rewrite_upsert(cls, sql: str) -> str:
+        """SQLite INSERT OR REPLACE/IGNORE → Postgres ON CONFLICT 等价语法。"""
+        m = cls._RE_OR_REPLACE.search(sql)
+        if m:
+            table = m.group(1)
+            cols_raw = m.group(2)
+            cols = [c.strip() for c in cols_raw.split(",")]
+            conflict = cls._UPSERT_CONFLICT.get(table)
+            if not conflict:
+                raise RuntimeError(
+                    f"_PostgresAdapter: 未登记表 {table!r} 的 conflict 列。"
+                    f"在 _UPSERT_CONFLICT 字典加映射后再跑（PK 或 UNIQUE 约束列）。"
+                )
+            update_set = ", ".join(
+                f"{c}=EXCLUDED.{c}" for c in cols if c not in conflict
+            )
+            head = sql[: m.start()] + f"INSERT INTO {table} ({cols_raw}) VALUES"
+            rest = sql[m.end():]
+            tail = (
+                f" ON CONFLICT ({', '.join(conflict)}) DO UPDATE SET {update_set}"
+                if update_set
+                else f" ON CONFLICT ({', '.join(conflict)}) DO NOTHING"
+            )
+            return head + rest + tail
+        m = cls._RE_OR_IGNORE.search(sql)
+        if m:
+            table = m.group(1)
+            cols_raw = m.group(2)
+            head = sql[: m.start()] + f"INSERT INTO {table} ({cols_raw}) VALUES"
+            rest = sql[m.end():]
+            return head + rest + " ON CONFLICT DO NOTHING"
+        return sql
+
+    @classmethod
+    def _adapt_sql(cls, sql: str) -> str:
+        """SQLite-→-Postgres 语法适配。占位符 `?` → `%s`，UPSERT 自动改写。"""
+        sql = cls._rewrite_upsert(sql)
         return sql.replace("?", "%s")
 
     def execute(self, sql, params=None):

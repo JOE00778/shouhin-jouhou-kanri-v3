@@ -23,9 +23,34 @@
 
 ---
 
-## ❌ 还需要改的 13 个文件（INSERT OR REPLACE / INSERT OR IGNORE）
+## ✅ 改造方案（2026-05-08 落地：适配层透明改写）
 
-Postgres 没有 SQLite 的 `INSERT OR REPLACE` / `INSERT OR IGNORE` 语法，必须改成 `ON CONFLICT (...) DO UPDATE SET ...` / `ON CONFLICT DO NOTHING`。
+**最终方案不再要求逐个文件手工改造**。`shared/db.py` 的 `_PostgresAdapter._adapt_sql()`
+在执行 SQL 前自动改写：
+
+| SQLite 语法 | Postgres 等价语法 |
+|---|---|
+| `INSERT OR REPLACE INTO X (cols) VALUES (...)` | `INSERT INTO X (cols) VALUES (...) ON CONFLICT (pk) DO UPDATE SET col=EXCLUDED.col, ...` |
+| `INSERT OR IGNORE INTO X (cols) VALUES (...)` | `INSERT INTO X (cols) VALUES (...) ON CONFLICT DO NOTHING` |
+| `?` 占位符 | `%s` 占位符 |
+
+每张表的 conflict 列（PK / UNIQUE）登记在 `_PostgresAdapter._UPSERT_CONFLICT` 字典；
+新增表如果用 INSERT OR REPLACE 写入，必须在该字典添加映射，否则启动后第一次写入会
+立刻抛 `RuntimeError` 提示。
+
+**优点**：业务代码（21 处 INSERT OR REPLACE / IGNORE）一行未动；本地继续跑 SQLite，
+部署目标切到 Postgres 仅靠环境变量 `DATABASE_URL`，零代码 diff。
+
+**单元测试**：`tests/unit/test_postgres_adapter.py`（9 个 case 验证改写正确性 +
+登记字典完整性），随主测试套件一起跑。
+
+---
+
+## ❌ 历史方案（已废弃，保留供参考）
+
+> 以下是 2026-05-07 设计的"逐个文件手工改"方案，因适配层方案胜出而废弃。
+
+Postgres 没有 SQLite 的 `INSERT OR REPLACE` / `INSERT OR IGNORE` 语法，原本计划必须改成 `ON CONFLICT (...) DO UPDATE SET ...` / `ON CONFLICT DO NOTHING`。
 
 | 文件 | 出现处 | 替换方案 |
 |---|---|---|
