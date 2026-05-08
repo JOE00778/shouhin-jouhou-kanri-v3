@@ -1,0 +1,119 @@
+{
+  "name": "商品图自动生成 · 7×24 cron（每 30 分钟扫 CMS 队列）",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0,30 * * * *"
+            }
+          ]
+        }
+      },
+      "id": "n01-cron",
+      "name": "每 30 分钟触发",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.CMS_QUEUE_URL || 'https://smikie-cms.cc/api/automation/queue?module=image_gen&status=pending' }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "json",
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "n02-poll",
+      "name": "拉 CMS 待出图队列",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [400, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "has-runs",
+              "leftValue": "={{ $json.runs ? $json.runs.length : 0 }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "n03-if",
+      "name": "队列里有任务?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [600, 300]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "runs",
+        "options": {}
+      },
+      "id": "n04-split",
+      "name": "按 run 拆批",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [820, 220]
+    },
+    {
+      "parameters": {
+        "url": "=http://localhost:5678/webhook/image-gen-nano-banana",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"run_id\": \"{{ $json.run_id }}\",\n  \"category\": \"{{ $json.payload.category }}\",\n  \"product_image_url\": \"{{ $json.payload.product_image_url }}\",\n  \"reference_image_urls\": {{ JSON.stringify($json.payload.reference_image_urls || []) }},\n  \"prompt_extra\": \"{{ $json.payload.prompt_extra || '' }}\",\n  \"num_outputs\": {{ $json.payload.num_outputs || 5 }}\n}",
+        "options": {
+          "timeout": 5000,
+          "response": { "response": { "neverError": true } }
+        }
+      },
+      "id": "n05-fanout",
+      "name": "分发给 product-image-nano-banana workflow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1020, 220]
+    }
+  ],
+  "connections": {
+    "每 30 分钟触发": {
+      "main": [[{ "node": "拉 CMS 待出图队列", "type": "main", "index": 0 }]]
+    },
+    "拉 CMS 待出图队列": {
+      "main": [[{ "node": "队列里有任务?", "type": "main", "index": 0 }]]
+    },
+    "队列里有任务?": {
+      "main": [
+        [{ "node": "按 run 拆批", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "按 run 拆批": {
+      "main": [[{ "node": "分发给 product-image-nano-banana workflow", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    { "name": "image-gen" },
+    { "name": "cron-7x24" },
+    { "name": "nano-banana-2" }
+  ]
+}

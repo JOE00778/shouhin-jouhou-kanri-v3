@@ -47,6 +47,8 @@ services:
       # Anthropic / OpenAI API key（workflow 用）
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # Gemini Nano Banana 2（商品图自动生成）
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       # 暴露给 workflow 用的工作目录（Boss 可挂载 SmikieJapan 共享文件夹）
       N8N_USER_FOLDER: /data
     volumes:

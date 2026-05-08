@@ -1,0 +1,184 @@
+{
+  "name": "商品图自动生成 · Nano Banana 2（webhook 触发版）",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "image-gen-nano-banana",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "n01-trigger",
+      "name": "Webhook · CMS 触发",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 300],
+      "webhookId": "image-gen-nano-banana"
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            { "name": "run_id", "value": "={{ $json.body.run_id }}" },
+            { "name": "category", "value": "={{ $json.body.category || 'misc' }}" },
+            { "name": "product_image_url", "value": "={{ $json.body.product_image_url }}" },
+            { "name": "reference_images", "value": "={{ JSON.stringify($json.body.reference_image_urls || []) }}" },
+            { "name": "prompt_extra", "value": "={{ $json.body.prompt_extra || 'product on lifestyle scene, cinematic lighting, premium aesthetic' }}" },
+            { "name": "num_outputs", "value": "={{ $json.body.num_outputs || 5 }}" },
+            { "name": "cms_callback", "value": "={{ $env.CMS_CALLBACK_URL }}" },
+            { "name": "lark_webhook", "value": "={{ $env.LARK_WEBHOOK_URL }}" },
+            { "name": "gemini_api_key", "value": "={{ $env.GEMINI_API_KEY }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "n02-vars",
+      "name": "提取参数",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [400, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ run_id: $json.run_id, status: 'accepted', message: 'N8N 已接受图像生成任务' }) }}",
+        "options": {}
+      },
+      "id": "n03-response",
+      "name": "立即返回 CMS",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [600, 500]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.cms_callback }}",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"run_id\": \"{{ $json.run_id }}\",\n  \"module\": \"image_gen\",\n  \"status\": \"processing\",\n  \"message\": \"Nano Banana 2 出图中\"\n}",
+        "options": {
+          "response": { "response": { "neverError": true } }
+        }
+      },
+      "id": "n04-cms-ack",
+      "name": "CMS 回调 · processing",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [600, 300]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// 把参考图 URL 列表 + 商品图 + prompt 拼成 Gemini parts 数组\nconst inputs = $input.first().json;\nconst refs = JSON.parse(inputs.reference_images);\nconst productUrl = inputs.product_image_url;\nconst promptExtra = inputs.prompt_extra;\nconst numOutputs = parseInt(inputs.num_outputs);\n\nconst parts = [];\n\n// 主指令\nparts.push({\n  text: `Generate ${numOutputs} product detail images in the exact style of the reference images below. The product to feature is shown in the last image. Maintain consistent visual language: same color palette, lighting, composition logic, typography style. Each output should be high resolution, commercial-grade, e-commerce ready. Additional context: ${promptExtra}`\n});\n\n// 参考图（最多 13 张，留 1 张给商品图，14 上限）\nfor (const url of refs.slice(0, 13)) {\n  parts.push({ fileData: { mimeType: 'image/png', fileUri: url } });\n}\n\n// 商品图（白底）\nparts.push({ fileData: { mimeType: 'image/png', fileUri: productUrl } });\n\nreturn [{\n  json: {\n    run_id: inputs.run_id,\n    cms_callback: inputs.cms_callback,\n    lark_webhook: inputs.lark_webhook,\n    gemini_api_key: inputs.gemini_api_key,\n    num_outputs: numOutputs,\n    payload: {\n      contents: [{ role: 'user', parts }],\n      generationConfig: {\n        responseModalities: ['IMAGE'],\n        candidateCount: numOutputs,\n        imageConfig: { aspectRatio: '1:1' }\n      }\n    }\n  }\n}];"
+      },
+      "id": "n05-build-payload",
+      "name": "构造 Nano Banana 2 payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [800, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key={{ $json.gemini_api_key }}",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "timeout": 180000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "n06-gemini",
+      "name": "调 Gemini Nano Banana 2",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1000, 300]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Gemini 返回的 base64 图片解码 + 写入 /data/outputs/images/<run_id>/\n// (n8n 容器有 ./data/files 挂载到 /data)\nconst fs = require('fs');\nconst path = require('path');\nconst gem = $input.first().json;\nconst runId = $('提取参数').first().json.run_id;\n\nconst outDir = `/data/images/${runId}`;\nfs.mkdirSync(outDir, { recursive: true });\n\nconst urls = [];\nlet i = 0;\nfor (const cand of (gem.candidates || [])) {\n  for (const part of (cand.content?.parts || [])) {\n    if (part.inlineData?.data) {\n      i += 1;\n      const fname = path.join(outDir, `img-${i}.png`);\n      fs.writeFileSync(fname, Buffer.from(part.inlineData.data, 'base64'));\n      urls.push(fname);\n    }\n  }\n}\n\nreturn [{\n  json: {\n    run_id: runId,\n    cms_callback: $('提取参数').first().json.cms_callback,\n    lark_webhook: $('提取参数').first().json.lark_webhook,\n    output_files: urls,\n    summary: {\n      generated: urls.length,\n      cost_usd: (urls.length * 0.045).toFixed(3)\n    }\n  }\n}];"
+      },
+      "id": "n07-save",
+      "name": "保存 PNG 到共享卷",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.cms_callback }}",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"run_id\": \"{{ $json.run_id }}\",\n  \"module\": \"image_gen\",\n  \"status\": \"completed\",\n  \"summary\": {{ JSON.stringify($json.summary) }},\n  \"output_files\": {{ JSON.stringify($json.output_files) }}\n}",
+        "options": {
+          "response": { "response": { "neverError": true } }
+        }
+      },
+      "id": "n08-cms-done",
+      "name": "CMS 回调 · completed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1400, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.lark_webhook }}",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"msg_type\": \"interactive\",\n  \"card\": {\n    \"header\": {\n      \"title\": { \"tag\": \"plain_text\", \"content\": \"商品图生成完成 · Nano Banana 2\" },\n      \"template\": \"green\"\n    },\n    \"elements\": [\n      { \"tag\": \"div\", \"text\": { \"tag\": \"lark_md\", \"content\": \"**run_id**: {{ $json.run_id }}\\n**生成图数**: {{ $json.summary.generated }}\\n**成本**: $ {{ $json.summary.cost_usd }}\" } }\n    ]\n  }\n}",
+        "options": {
+          "response": { "response": { "neverError": true } }
+        }
+      },
+      "id": "n09-lark",
+      "name": "飞书通知",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1600, 300]
+    }
+  ],
+  "connections": {
+    "Webhook · CMS 触发": {
+      "main": [[
+        { "node": "提取参数", "type": "main", "index": 0 },
+        { "node": "立即返回 CMS", "type": "main", "index": 0 }
+      ]]
+    },
+    "提取参数": {
+      "main": [[{ "node": "CMS 回调 · processing", "type": "main", "index": 0 }]]
+    },
+    "CMS 回调 · processing": {
+      "main": [[{ "node": "构造 Nano Banana 2 payload", "type": "main", "index": 0 }]]
+    },
+    "构造 Nano Banana 2 payload": {
+      "main": [[{ "node": "调 Gemini Nano Banana 2", "type": "main", "index": 0 }]]
+    },
+    "调 Gemini Nano Banana 2": {
+      "main": [[{ "node": "保存 PNG 到共享卷", "type": "main", "index": 0 }]]
+    },
+    "保存 PNG 到共享卷": {
+      "main": [[{ "node": "CMS 回调 · completed", "type": "main", "index": 0 }]]
+    },
+    "CMS 回调 · completed": {
+      "main": [[{ "node": "飞书通知", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    { "name": "nano-banana-2" },
+    { "name": "image-generation" },
+    { "name": "ecommerce" }
+  ]
+}

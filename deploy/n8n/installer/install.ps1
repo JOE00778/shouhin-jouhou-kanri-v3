@@ -148,6 +148,7 @@ Add-Field "  Shopee Partner ID (可空):"        "SHOPEE_PARTNER_ID"    ""
 Add-Field "  Shopee Partner Key (可空):"       "SHOPEE_PARTNER_KEY"   ""             $true
 Add-Field "  Anthropic API Key (可空):"        "ANTHROPIC_API_KEY"    ""             $true
 Add-Field "  OpenAI API Key (可空):"           "OPENAI_API_KEY"       ""             $true
+Add-Field "  Gemini API Key (Nano Banana 2):"  "GEMINI_API_KEY"       ""             $true
 
 # 加密 keychain（自动生成，不让用户改）
 $keyLabel = New-Object System.Windows.Forms.Label
@@ -219,7 +220,8 @@ foreach ($k in @(
     "CMS_CALLBACK_URL", "LARK_WEBHOOK_URL",
     "LARK_APP_ID", "LARK_APP_SECRET",
     "SHOPEE_PARTNER_ID", "SHOPEE_PARTNER_KEY",
-    "ANTHROPIC_API_KEY", "OPENAI_API_KEY"
+    "ANTHROPIC_API_KEY", "OPENAI_API_KEY",
+    "GEMINI_API_KEY"
 )) {
     $envLines += "$k=$($config[$k])"
 }
