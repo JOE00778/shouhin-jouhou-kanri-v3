@@ -4,11 +4,12 @@ version: "3.9"
 # 一元管理系统 V2.3 · Windows 笔记本部署（影刀共存版）
 # Postgres 16 + Streamlit + Cloudflared
 # ============================================================
+# 配置依据：Dell Inspiron 5405 / Ryzen 5 4500U (6C6T) / 16GB RAM
 # 资源严格受限，保证影刀（YingDao）RPA 不受影响：
-#   - Postgres: 512MB RAM / 0.5 CPU
-#   - Streamlit: 1GB RAM / 1.0 CPU
-#   - Cloudflared: 128MB RAM / 0.25 CPU
-#   合计：约 1.6GB RAM + 1.75 CPU 核（剩余给影刀 + Windows）
+#   - Postgres: 1 GB RAM / 0.5 CPU
+#   - Streamlit: 2 GB RAM / 1.5 CPU
+#   - Cloudflared: 256 MB RAM / 0.25 CPU
+#   合计：约 3.5 GB RAM + 2.25 CPU 核（剩余 12 GB / 3.75 核给影刀 + Windows）
 # ============================================================
 
 services:
@@ -31,10 +32,10 @@ services:
       resources:
         limits:
           cpus: '0.5'
-          memory: 512M
+          memory: 1024M
         reservations:
           cpus: '0.25'
-          memory: 256M
+          memory: 512M
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cms} -d ${POSTGRES_DB:-cms}"]
       interval: 30s
@@ -71,11 +72,11 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '1.0'
-          memory: 1024M
+          cpus: '1.5'
+          memory: 2048M
         reservations:
           cpus: '0.5'
-          memory: 512M
+          memory: 1024M
 
   cloudflared:
     image: cloudflare/cloudflared:latest
@@ -92,7 +93,7 @@ services:
       resources:
         limits:
           cpus: '0.25'
-          memory: 128M
+          memory: 256M
 
 networks:
   cms_net:

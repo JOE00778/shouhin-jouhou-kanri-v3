@@ -3,18 +3,21 @@
 # 把这个文件放到 C:\Users\<你的用户名>\.wslconfig
 # 修改后跑 PowerShell 管理员: wsl --shutdown 然后重启 Docker Desktop
 # =============================================================
+# 配置依据：Dell Inspiron 5405 / Ryzen 5 4500U (6C6T) / 16GB RAM
+# 总资源分配：
+#   WSL2 (Docker + CMS): 4 GB / 3 核
+#   影刀 + Windows + 缓冲: 12 GB / 3 核
+# =============================================================
 
 [wsl2]
-# WSL2 总内存上限（Docker Desktop 默认 50% 系统内存，此处压到 2GB）
-# 系统总内存 8GB → WSL2 占 2GB → 影刀 + Windows 还有 6GB
-memory=2GB
+# WSL2 总内存上限（16GB 系统留 4GB 给 CMS 完全够用）
+memory=4GB
 
-# WSL2 CPU 核心数上限（默认全部，此处压到 2 核）
-# 4 核笔记本 → WSL2 占 2 核 → 影刀 + Windows 还有 2 核
-processors=2
+# WSL2 CPU 核心数上限（6 核 CPU 给 WSL2 用 3 核，影刀 + Windows 还有 3 核）
+processors=3
 
-# Swap 大小（避免影刀高峰时 OOM）
-swap=2GB
+# Swap 大小（双 GB 缓冲，避免高峰 OOM）
+swap=4GB
 swapFile=C:\\WSL\\swap.vhdx
 
 # 闲置时自动回收内存（低优先级 = 影刀优先）
