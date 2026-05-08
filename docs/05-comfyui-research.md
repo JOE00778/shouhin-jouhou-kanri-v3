@@ -3,6 +3,10 @@
 > 状态：调研草案 · 2026-05-08
 > 目的：评估在 Boss 现有 Windows 笔记本（Inspiron 5405）部署 ComfyUI
 >      做主图 + 详情图的可行性，并与 N8N 路线并行权衡
+>
+> **配套文件**：[06-n8n-image-generation.md](06-n8n-image-generation.md) —
+> N8N 直接调 SaaS API 的扩展工具生态（Photoroom / fal.ai / Bannerbear / Recraft / Ideogram 等），
+> 不需要 GPU 也能立即跑；本文是其中"路径 A 本机 ComfyUI"的深入分析。
 
 ---
 
