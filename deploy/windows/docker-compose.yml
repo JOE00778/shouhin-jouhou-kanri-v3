@@ -69,6 +69,8 @@ services:
       - cms_net
     expose:
       - "8501"
+    ports:
+      - "127.0.0.1:8501:8501"   # 本地浏览器访问 http://localhost:8501（仅本机；公网走 cloudflared）
     deploy:
       resources:
         limits:
