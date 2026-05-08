@@ -875,3 +875,22 @@ CREATE TABLE IF NOT EXISTS nst_item_summary (
 CREATE INDEX IF NOT EXISTS idx_nst_item_summary_upc      ON nst_item_summary(upc);
 CREATE INDEX IF NOT EXISTS idx_nst_item_summary_avg      ON nst_item_summary(avg_cost);
 CREATE INDEX IF NOT EXISTS idx_nst_item_summary_handling ON nst_item_summary(handling_status);
+
+-- ============================================================
+-- automation_runs · CMS → N8N / 影刀 自动化任务跟踪表
+-- 业务模块（shopee_mass_upload / nst_发注 / 改廃确认）通过 shared/n8n_client.py
+-- 触发任务时落 pending 一行，N8N workflow 回调更新 status / summary。
+-- ============================================================
+CREATE TABLE IF NOT EXISTS automation_runs (
+  run_id           TEXT PRIMARY KEY,         -- uuid4
+  module           TEXT NOT NULL,            -- 'shopee_mass_upload' / 'nst_order' / 'discontinue'
+  payload          TEXT,                     -- JSON · 触发时的业务参数
+  status           TEXT NOT NULL,            -- 'pending' / 'processing' / 'completed' / 'failed'
+  summary          TEXT,                     -- JSON · 结果汇总（成功/失败计数等）
+  triggered_by     TEXT,                     -- 触发者（用户邮箱或 'system'）
+  triggered_at     TEXT NOT NULL,            -- ISO8601
+  completed_at     TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_automation_runs_module    ON automation_runs(module);
+CREATE INDEX IF NOT EXISTS idx_automation_runs_status    ON automation_runs(status);
+CREATE INDEX IF NOT EXISTS idx_automation_runs_triggered ON automation_runs(triggered_at);

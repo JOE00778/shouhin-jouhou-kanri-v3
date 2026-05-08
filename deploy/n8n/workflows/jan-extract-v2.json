@@ -1,0 +1,300 @@
+{
+  "name": "Shopee自动化上架 · JAN产品信息抓取 v2",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "n01-trigger",
+      "name": "手动触发",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 400]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f-items",
+              "name": "items",
+              "value": "={{ [\n  { \"jan\": \"4902370548495\", \"weightGrams\": 120 },\n  { \"jan\": \"4901085196533\", \"weightGrams\": 85 },\n  { \"jan\": \"4902370537185\", \"weightGrams\": 150 }\n] }}",
+              "type": "array"
+            },
+            {
+              "id": "f-rakuten",
+              "name": "rakutenAppId",
+              "value": "YOUR_RAKUTEN_APPLICATION_ID",
+              "type": "string"
+            },
+            {
+              "id": "f-lang",
+              "name": "targetLanguage",
+              "value": "English",
+              "type": "string"
+            },
+            {
+              "id": "f-model",
+              "name": "anthropicModel",
+              "value": "claude-opus-4-7",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "n02-input",
+      "name": "输入参数",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [440, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 把 items 数组拆成多个 item，并携带全局参数与用户提供的重量\nconst input = $input.first().json;\nconst items = Array.isArray(input.items) ? input.items : [];\nreturn items.map(row => ({\n  json: {\n    jan: String(row.jan || '').trim(),\n    weightGrams: typeof row.weightGrams === 'number' ? row.weightGrams : null,\n    rakutenAppId: input.rakutenAppId,\n    targetLanguage: input.targetLanguage,\n    anthropicModel: input.anthropicModel\n  }\n}));"
+      },
+      "id": "n03-split",
+      "name": "拆分 JAN",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [640, 400]
+    },
+    {
+      "parameters": {
+        "url": "https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "applicationId", "value": "={{ $json.rakutenAppId }}" },
+            { "name": "keyword", "value": "={{ $json.jan }}" },
+            { "name": "hits", "value": "3" },
+            { "name": "format", "value": "json" },
+            { "name": "formatVersion", "value": "2" }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "n04-rakuten",
+      "name": "Rakuten 搜索",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [840, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 提取乐天第一个匹配结果；未命中返回占位。透传用户提供的重量\nconst items = $input.all();\nconst upstream = $('拆分 JAN').all();\nconst out = [];\n\nfor (let i = 0; i < items.length; i++) {\n  const data = items[i].json || {};\n  const ctx = upstream[i]?.json || {};\n  const list = data.Items || [];\n  const base = {\n    jan: ctx.jan,\n    weightGrams: ctx.weightGrams,\n    targetLanguage: ctx.targetLanguage,\n    anthropicModel: ctx.anthropicModel\n  };\n\n  if (!list.length) {\n    out.push({ json: { ...base, found: false, rakutenName: '', rakutenCaption: '', rakutenPrice: null, imageUrls: [], mainImage: null, shopCode: '', shopName: '', itemUrl: '' } });\n    continue;\n  }\n\n  const first = list[0].Item ? list[0].Item : list[0];\n  // 乐天 mediumImageUrls 带 ?_ex=128x128 缩略参数，去掉得原图\n  const rawImages = (first.mediumImageUrls || []).map(x => {\n    const u = typeof x === 'string' ? x : (x.imageUrl || '');\n    return u.replace(/\\?_ex=\\d+x\\d+/, '');\n  });\n\n  out.push({\n    json: {\n      ...base,\n      found: true,\n      rakutenName: first.itemName || '',\n      rakutenCaption: first.itemCaption || '',\n      rakutenPrice: first.itemPrice ?? null,\n      imageUrls: rawImages,\n      mainImage: rawImages[0] || null,\n      shopCode: first.shopCode || '',\n      shopName: first.shopName || '',\n      itemUrl: first.itemUrl || ''\n    }\n  });\n}\n\nreturn out;"
+      },
+      "id": "n05-extract",
+      "name": "提取乐天数据",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 为每个 JAN 构造 Claude 分析请求体（不再让 Claude 抽取重量，重量由用户提供）\nreturn $input.all().map(it => {\n  const d = it.json;\n  const prompt = [\n    'You are a Shopee cross-border listing assistant.',\n    'Analyze the following Japanese product and produce a structured listing.',\n    '',\n    `JAN: ${d.jan}`,\n    `FoundOnRakuten: ${d.found}`,\n    `ProductNameJP: ${d.rakutenName}`,\n    `ProductDescriptionJP: ${d.rakutenCaption}`,\n    '',\n    `Output language for shopeeTitle and shopeeDescription: ${d.targetLanguage}`,\n    '',\n    'Return ONLY valid JSON (no markdown fence, no prose) with this exact schema:',\n    '{',\n    '  \"brand\": string|null,',\n    '  \"productCoreName\": string,            // base product identity used for SPU grouping (brand + core line, no variant)',\n    '  \"variantAttributes\": { \"color\": string|null, \"size\": string|null, \"flavor\": string|null, \"other\": string|null },',\n    '  \"dimensions\": string|null,',\n    '  \"category\": string,                    // Shopee-style category path',\n    '  \"keyFeatures\": string[],               // 3-6 concise bullets',\n    '  \"shopeeTitle\": string,                 // <= 100 chars, target language',\n    '  \"shopeeDescription\": string            // 200-500 words, target language, marketing tone, Shopee-compliant'\n,\n    '}',\n    '',\n    'Rules:',\n    '- If FoundOnRakuten is false or data is insufficient, set unknown fields to null and put \"DATA NOT AVAILABLE - MANUAL REVIEW REQUIRED\" as shopeeTitle.',\n    '- Do NOT output weight; weight is supplied separately by the user.',\n    '- shopeeDescription must not contain HTML tags or emoji.'\n  ].join('\\n');\n\n  return {\n    json: {\n      ...d,\n      claudeBody: {\n        model: d.anthropicModel,\n        max_tokens: 1500,\n        messages: [{ role: 'user', content: prompt }]\n      }\n    }\n  };\n});"
+      },
+      "id": "n06-buildbody",
+      "name": "构造 Claude 分析 Body",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1240, 400]
+    },
+    {
+      "parameters": {
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.claudeBody) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "n07-claude",
+      "name": "Claude 单品分析",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1440, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 解析 Claude 响应文本为 JSON，并合并结构化字段；重量用用户提供的值\nconst items = $input.all();\nconst upstream = $('构造 Claude 分析 Body').all();\nconst out = [];\n\nfor (let i = 0; i < items.length; i++) {\n  const resp = items[i].json || {};\n  const ctx = upstream[i]?.json || {};\n  const text = resp?.content?.[0]?.text || '';\n\n  let parsed = null;\n  let parseError = null;\n  try {\n    const cleaned = text.replace(/^```(?:json)?\\s*/i, '').replace(/```\\s*$/i, '').trim();\n    parsed = JSON.parse(cleaned);\n  } catch (e) {\n    parseError = e.message;\n  }\n\n  out.push({\n    json: {\n      jan: ctx.jan,\n      weightGrams: ctx.weightGrams,              // 由用户提供\n      found: ctx.found,\n      rakutenName: ctx.rakutenName,\n      rakutenCaption: ctx.rakutenCaption,\n      rakutenPrice: ctx.rakutenPrice,\n      shopName: ctx.shopName,\n      itemUrl: ctx.itemUrl,\n      mainImage: ctx.mainImage,\n      imageUrls: ctx.imageUrls,\n      brand: parsed?.brand ?? null,\n      productCoreName: parsed?.productCoreName ?? null,\n      variantAttributes: parsed?.variantAttributes ?? null,\n      dimensions: parsed?.dimensions ?? null,\n      category: parsed?.category ?? null,\n      keyFeatures: parsed?.keyFeatures ?? [],\n      shopeeTitle: parsed?.shopeeTitle ?? null,\n      shopeeDescription: parsed?.shopeeDescription ?? null,\n      _claudeRawText: parsed ? undefined : text,\n      _parseError: parseError\n    }\n  });\n}\n\nreturn out;"
+      },
+      "id": "n08-parse",
+      "name": "解析 Claude 响应",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1640, 400]
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "products",
+        "options": {}
+      },
+      "id": "n09-aggregate",
+      "name": "汇总所有产品",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [1840, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 构造 SPU 分组请求的 Claude body\nconst d = $input.first().json;\nconst slim = (d.products || []).map(p => ({\n  jan: p.jan,\n  brand: p.brand,\n  productCoreName: p.productCoreName,\n  variantAttributes: p.variantAttributes\n}));\n\nconst modelFromFirst = (d.products && d.products[0] && d.products[0].anthropicModel) || 'claude-sonnet-4-6';\n\nconst prompt = [\n  'You are a Shopee SPU/SKU grouping assistant.',\n  'Given these products, group them into SPUs (Standard Product Units).',\n  'Rule: products sharing the same brand AND the same productCoreName, differing only by variantAttributes (color/size/flavor/other), belong to the same SPU.',\n  '',\n  `PRODUCTS: ${JSON.stringify(slim)}`,\n  '',\n  'Return ONLY valid JSON (no prose) with schema:',\n  '{',\n  '  \"spus\": [',\n  '    {',\n  '      \"spuKey\": string,              // stable slug e.g. \"kao-biore-uv-aqua-rich\"',\n  '      \"brand\": string|null,',\n  '      \"productCoreName\": string,',\n  '      \"janList\": string[]             // all JANs belonging to this SPU',\n  '    }',\n  '  ]',\n  '}'\n].join('\\n');\n\nreturn [{\n  json: {\n    products: d.products,\n    spuBody: {\n      model: modelFromFirst,\n      max_tokens: 1000,\n      messages: [{ role: 'user', content: prompt }]\n    }\n  }\n}];"
+      },
+      "id": "n10-spubody",
+      "name": "构造 SPU 分组 Body",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2040, 400]
+    },
+    {
+      "parameters": {
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.spuBody) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "n11-spuclaude",
+      "name": "Claude SPU 分组",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2240, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 按 SPU 聚合 SKU，输出结构化清单\nconst resp = $input.first().json || {};\nconst ctx = $('构造 SPU 分组 Body').first().json || {};\nconst products = ctx.products || [];\nconst text = resp?.content?.[0]?.text || '';\n\nlet spus = [];\ntry {\n  const cleaned = text.replace(/^```(?:json)?\\s*/i, '').replace(/```\\s*$/i, '').trim();\n  spus = (JSON.parse(cleaned).spus) || [];\n} catch (e) {\n  spus = products.map(p => ({\n    spuKey: (p.brand || 'unknown') + '-' + (p.productCoreName || p.jan),\n    brand: p.brand,\n    productCoreName: p.productCoreName,\n    janList: [p.jan]\n  }));\n}\n\nconst byJan = Object.fromEntries(products.map(p => [p.jan, p]));\n\nconst output = spus.map(spu => {\n  const variants = (spu.janList || [])\n    .map(j => byJan[j])\n    .filter(Boolean)\n    .map(p => ({\n      jan: p.jan,\n      variantAttributes: p.variantAttributes,\n      weightGrams: p.weightGrams,\n      dimensions: p.dimensions,\n      rakutenName: p.rakutenName,\n      rakutenPrice: p.rakutenPrice,\n      mainImage: p.mainImage,\n      imageUrls: p.imageUrls,\n      found: p.found,\n      sourceUrl: p.itemUrl\n    }));\n\n  const head = byJan[(spu.janList || [])[0]] || {};\n  return {\n    spuKey: spu.spuKey,\n    brand: spu.brand,\n    productCoreName: spu.productCoreName,\n    category: head.category || null,\n    shopeeTitle: head.shopeeTitle || null,\n    shopeeDescription: head.shopeeDescription || null,\n    keyFeatures: head.keyFeatures || [],\n    mainImage: head.mainImage || null,\n    variants\n  };\n});\n\nreturn [{ json: { spus: output, rawProducts: products } }];"
+      },
+      "id": "n12-final",
+      "name": "SPU 结构化输出",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2440, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 展开每个 SPU 的主图 URL 为独立 item，便于下一步并行下载\nconst d = $input.first().json;\nreturn (d.spus || [])\n  .filter(s => s.mainImage)\n  .map(s => ({\n    json: {\n      spuKey: s.spuKey,\n      url: s.mainImage\n    }\n  }));"
+      },
+      "id": "n13-expandimg",
+      "name": "展开 SPU 主图 URL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2640, 400]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          },
+          "timeout": 15000
+        }
+      },
+      "id": "n14-download",
+      "name": "下载主图",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2840, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 把下载好的 binary 回填到每个 SPU；输出：每个 SPU 一个 item，binary.main 为主图\nconst downloaded = $input.all();\nconst spus = $('SPU 结构化输出').first().json.spus || [];\n\nconst binMap = {};\nfor (const it of downloaded) {\n  const key = it.json?.spuKey;\n  if (key && it.binary?.data) binMap[key] = it.binary.data;\n}\n\nreturn spus.map(spu => {\n  const binary = {};\n  if (binMap[spu.spuKey]) binary.main = binMap[spu.spuKey];\n  return {\n    json: spu,\n    binary\n  };\n});"
+      },
+      "id": "n15-mergeimg",
+      "name": "合并主图到 SPU",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3040, 400]
+    }
+  ],
+  "connections": {
+    "手动触发": {
+      "main": [[{ "node": "输入参数", "type": "main", "index": 0 }]]
+    },
+    "输入参数": {
+      "main": [[{ "node": "拆分 JAN", "type": "main", "index": 0 }]]
+    },
+    "拆分 JAN": {
+      "main": [[{ "node": "Rakuten 搜索", "type": "main", "index": 0 }]]
+    },
+    "Rakuten 搜索": {
+      "main": [[{ "node": "提取乐天数据", "type": "main", "index": 0 }]]
+    },
+    "提取乐天数据": {
+      "main": [[{ "node": "构造 Claude 分析 Body", "type": "main", "index": 0 }]]
+    },
+    "构造 Claude 分析 Body": {
+      "main": [[{ "node": "Claude 单品分析", "type": "main", "index": 0 }]]
+    },
+    "Claude 单品分析": {
+      "main": [[{ "node": "解析 Claude 响应", "type": "main", "index": 0 }]]
+    },
+    "解析 Claude 响应": {
+      "main": [[{ "node": "汇总所有产品", "type": "main", "index": 0 }]]
+    },
+    "汇总所有产品": {
+      "main": [[{ "node": "构造 SPU 分组 Body", "type": "main", "index": 0 }]]
+    },
+    "构造 SPU 分组 Body": {
+      "main": [[{ "node": "Claude SPU 分组", "type": "main", "index": 0 }]]
+    },
+    "Claude SPU 分组": {
+      "main": [[{ "node": "SPU 结构化输出", "type": "main", "index": 0 }]]
+    },
+    "SPU 结构化输出": {
+      "main": [[{ "node": "展开 SPU 主图 URL", "type": "main", "index": 0 }]]
+    },
+    "展开 SPU 主图 URL": {
+      "main": [[{ "node": "下载主图", "type": "main", "index": 0 }]]
+    },
+    "下载主图": {
+      "main": [[{ "node": "合并主图到 SPU", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

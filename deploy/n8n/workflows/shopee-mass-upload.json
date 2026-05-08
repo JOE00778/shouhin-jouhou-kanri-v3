@@ -1,0 +1,142 @@
+{
+  "name": "Shopee 自动上架 · CMS XLSX → Shopee API（MVP scaffold）",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "shopee-mass-upload",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "n01-trigger",
+      "name": "Webhook · CMS 触发",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 300],
+      "webhookId": "shopee-mass-upload"
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            { "name": "run_id", "value": "={{ $json.body.run_id }}" },
+            { "name": "market", "value": "={{ $json.body.market || 'TW' }}" },
+            { "name": "cms_callback", "value": "={{ $env.CMS_CALLBACK_URL }}" },
+            { "name": "lark_webhook", "value": "={{ $env.LARK_WEBHOOK_URL }}" },
+            { "name": "shopee_partner_id", "value": "={{ $env.SHOPEE_PARTNER_ID }}" },
+            { "name": "shopee_partner_key", "value": "={{ $env.SHOPEE_PARTNER_KEY }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "n02-vars",
+      "name": "环境变量提取",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [400, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.cms_callback }}",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"run_id\": \"{{ $json.run_id }}\",\n  \"module\": \"shopee_mass_upload\",\n  \"status\": \"processing\",\n  \"message\": \"N8N 已接收，开始处理\"\n}",
+        "options": {
+          "response": { "response": { "neverError": true } }
+        }
+      },
+      "id": "n03-cms-ack",
+      "name": "CMS 回调 · processing",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [600, 300]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// TODO: 实际处理逻辑\n// 1. 从 $json.body.xlsx_urls 拉 5 个类目 + 1 dianxiaomi XLSX\n// 2. 用 spreadsheetFile 节点解析\n// 3. 按 SPU 分组 → 调 Shopee Item API → 调 Shopee Image API\n// 4. 汇总成功 / 失败 / 跳过计数\n// 当前：占位 — 直接返回 mock 结果\nreturn [{\n  json: {\n    run_id: $('环境变量提取').item.json.run_id,\n    market: $('环境变量提取').item.json.market,\n    cms_callback: $('环境变量提取').item.json.cms_callback,\n    lark_webhook: $('环境变量提取').item.json.lark_webhook,\n    summary: {\n      total_spu: 0,\n      created: 0,\n      failed: 0,\n      skipped: 0\n    },\n    note: 'MVP scaffold — 实际 Shopee API 节点待 Boss 提供 partner_id/partner_key 后充实'\n  }\n}];"
+      },
+      "id": "n04-process",
+      "name": "处理 SPU（占位）",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [800, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.cms_callback }}",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"run_id\": \"{{ $json.run_id }}\",\n  \"module\": \"shopee_mass_upload\",\n  \"status\": \"completed\",\n  \"summary\": {{ JSON.stringify($json.summary) }},\n  \"message\": \"{{ $json.note }}\"\n}",
+        "options": {
+          "response": { "response": { "neverError": true } }
+        }
+      },
+      "id": "n05-cms-done",
+      "name": "CMS 回调 · completed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1000, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.lark_webhook }}",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"msg_type\": \"interactive\",\n  \"card\": {\n    \"header\": {\n      \"title\": { \"tag\": \"plain_text\", \"content\": \"Shopee 自动上架完成\" },\n      \"template\": \"green\"\n    },\n    \"elements\": [\n      { \"tag\": \"div\", \"text\": { \"tag\": \"lark_md\", \"content\": \"**任务 ID**: {{ $json.run_id }}\\n**市场**: {{ $json.market }}\\n**总 SPU**: {{ $json.summary.total_spu }}\\n**成功**: {{ $json.summary.created }}\\n**失败**: {{ $json.summary.failed }}\\n**跳过**: {{ $json.summary.skipped }}\" } }\n    ]\n  }\n}",
+        "options": {
+          "response": { "response": { "neverError": true } }
+        }
+      },
+      "id": "n06-lark",
+      "name": "飞书通知",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1200, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ run_id: $json.run_id, status: 'accepted', message: 'N8N 已接受任务，处理结果稍后回调 CMS' }) }}",
+        "options": {}
+      },
+      "id": "n07-response",
+      "name": "返回 CMS",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [600, 500]
+    }
+  ],
+  "connections": {
+    "Webhook · CMS 触发": {
+      "main": [[
+        { "node": "环境变量提取", "type": "main", "index": 0 },
+        { "node": "返回 CMS", "type": "main", "index": 0 }
+      ]]
+    },
+    "环境变量提取": {
+      "main": [[{ "node": "CMS 回调 · processing", "type": "main", "index": 0 }]]
+    },
+    "CMS 回调 · processing": {
+      "main": [[{ "node": "处理 SPU（占位）", "type": "main", "index": 0 }]]
+    },
+    "处理 SPU（占位）": {
+      "main": [[{ "node": "CMS 回调 · completed", "type": "main", "index": 0 }]]
+    },
+    "CMS 回调 · completed": {
+      "main": [[{ "node": "飞书通知", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    { "name": "shopee" },
+    { "name": "cms-integration" },
+    { "name": "mvp" }
+  ]
+}

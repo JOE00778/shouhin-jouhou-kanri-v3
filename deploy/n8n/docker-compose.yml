@@ -1,0 +1,94 @@
+version: "3.9"
+
+# ============================================================
+# Smikie N8N · Windows 笔记本独立部署（与 CMS 同机共存）
+# n8n 主程序 + 自带 cloudflared（公网入口 https://n8n.smikie-cms.cc）
+# ============================================================
+# 资源严格限制，影刀 + CMS + N8N 三方共存：
+#   - n8n:        1 GB RAM / 0.75 CPU
+#   - cloudflared: 256 MB RAM / 0.25 CPU
+#   合计：约 1.25 GB RAM + 1 CPU 核
+#
+# 数据库：n8n 自带 SQLite（足够用，~MB 量级），不引入 Postgres 依赖。
+# 数据持久化：./data/n8n → 容器内 /home/node/.n8n
+# ============================================================
+
+services:
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: smikie_n8n
+    restart: unless-stopped
+    environment:
+      # 公网域名 + HTTPS 回调（cloudflared 终结 TLS，n8n 内部仍 HTTP）
+      N8N_HOST: ${N8N_HOST:-n8n.smikie-cms.cc}
+      N8N_PROTOCOL: https
+      N8N_PORT: 5678
+      WEBHOOK_URL: https://${N8N_HOST:-n8n.smikie-cms.cc}/
+      # 第一层守门：n8n 自带 BasicAuth
+      N8N_BASIC_AUTH_ACTIVE: "true"
+      N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER:-admin}
+      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD}
+      # 加密 keychain（修改后所有凭证失效，部署后不要动）
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+      # 时区
+      GENERIC_TIMEZONE: Asia/Tokyo
+      TZ: Asia/Tokyo
+      # 凭证密钥不写日志
+      N8N_LOG_LEVEL: info
+      # CMS 回调地址（用于 N8N workflow 内部回写状态）
+      CMS_CALLBACK_URL: ${CMS_CALLBACK_URL:-https://smikie-cms.cc/api/automation/callback}
+      # Lark webhook（飞书群机器人，所有 workflow 共用）
+      LARK_WEBHOOK_URL: ${LARK_WEBHOOK_URL:-}
+      # Shopee Open API 凭证
+      SHOPEE_PARTNER_ID: ${SHOPEE_PARTNER_ID:-}
+      SHOPEE_PARTNER_KEY: ${SHOPEE_PARTNER_KEY:-}
+      # Anthropic / OpenAI API key（workflow 用）
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # 暴露给 workflow 用的工作目录（Boss 可挂载 SmikieJapan 共享文件夹）
+      N8N_USER_FOLDER: /data
+    volumes:
+      - ./data/n8n:/home/node/.n8n
+      - ./data/files:/data
+      - ./workflows:/workflows:ro   # 预装 workflow（首次启动后由脚本导入）
+    networks:
+      - smikie_n8n_net
+    expose:
+      - "5678"
+    ports:
+      - "127.0.0.1:5678:5678"   # 本地浏览器 http://localhost:5678（仅本机；公网走 cloudflared）
+    deploy:
+      resources:
+        limits:
+          cpus: '0.75'
+          memory: 1024M
+        reservations:
+          cpus: '0.25'
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:5678/healthz", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: smikie_n8n_cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - n8n
+    networks:
+      - smikie_n8n_net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+
+networks:
+  smikie_n8n_net:
+    driver: bridge

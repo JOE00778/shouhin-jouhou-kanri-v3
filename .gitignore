@@ -19,3 +19,8 @@ shopee_listing/exports/
 shopee_listing/drafts/
 shopee_listing/__pycache__/
 shopee_listing/**/__pycache__/
+
+# n8n 安装包构建产物
+deploy/n8n/.build/
+deploy/n8n/data/
+deploy/n8n/.env

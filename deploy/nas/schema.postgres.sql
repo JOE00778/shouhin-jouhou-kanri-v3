@@ -876,3 +876,20 @@ CREATE TABLE IF NOT EXISTS nst_item_summary (
 CREATE INDEX IF NOT EXISTS idx_nst_item_summary_upc      ON nst_item_summary(upc);
 CREATE INDEX IF NOT EXISTS idx_nst_item_summary_avg      ON nst_item_summary(avg_cost);
 CREATE INDEX IF NOT EXISTS idx_nst_item_summary_handling ON nst_item_summary(handling_status);
+
+-- ============================================================
+-- automation_runs · CMS → N8N / 影刀 自动化任务跟踪表
+-- ============================================================
+CREATE TABLE IF NOT EXISTS automation_runs (
+  run_id           TEXT PRIMARY KEY,
+  module           TEXT NOT NULL,
+  payload          TEXT,
+  status           TEXT NOT NULL,
+  summary          TEXT,
+  triggered_by     TEXT,
+  triggered_at     TEXT NOT NULL,
+  completed_at     TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_automation_runs_module    ON automation_runs(module);
+CREATE INDEX IF NOT EXISTS idx_automation_runs_status    ON automation_runs(status);
+CREATE INDEX IF NOT EXISTS idx_automation_runs_triggered ON automation_runs(triggered_at);
