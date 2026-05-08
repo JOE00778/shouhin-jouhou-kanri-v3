@@ -22,7 +22,7 @@ import os
 import streamlit as st
 
 # 每次重要修复 push 时 bump，Cloud 部署后一眼能看出是不是新版
-APP_VERSION = "2.3.7 · env-vars-fix"
+APP_VERSION = "2.3.8 · cf-access-mode"
 
 
 def _secret(name: str, default: str = "") -> str:
@@ -43,15 +43,17 @@ def _check(entered: str, expected: str) -> bool:
 
 
 def _login_form() -> None:
-    admin_user = _secret("ADMIN_USERNAME", "JO043")
-    admin_pwd = _secret("ADMIN_PASSWORD")
-    guest_user = _secret("GUEST_USERNAME", "smikiejapan")
+    """单密码登录（CF Access 模式）。
+
+    上层由 Cloudflare Access 邮箱域白名单守门（仅公司邮箱能到达此页），
+    进来的都是公司员工，CMS 仅设统一密码、登录后默认 admin 角色。
+    兼容旧 GUEST_PASSWORD：如果只配了 GUEST_PASSWORD 也能登录。
+    """
+    admin_pwd = _secret("ADMIN_PASSWORD") or _secret("APP_PASSWORD")
     guest_pwd = _secret("GUEST_PASSWORD")
-    legacy_pwd = _secret("APP_PASSWORD")
-    if not admin_pwd and not guest_pwd and legacy_pwd:
-        admin_pwd = legacy_pwd  # 兼容旧 APP_PASSWORD
 
     if not admin_pwd and not guest_pwd:
+        # 完全未配密码 → 视为 CF Access 已守门，直接放行
         st.session_state["__auth_ok"] = True
         st.session_state["__role"] = "admin"
         return
@@ -60,22 +62,16 @@ def _login_form() -> None:
     st.caption(f"build {APP_VERSION}")
 
     with st.form("login", clear_on_submit=False):
-        u = st.text_input("账号", key="__login_user", placeholder="请输入账号")
-        p = st.text_input("密码", type="password", key="__login_pwd")
+        p = st.text_input("密码", type="password", key="__login_pwd",
+                          placeholder="请输入访问密码")
         if st.form_submit_button("登录", type="primary", use_container_width=True):
-            role = None
-            if u == admin_user and _check(p, admin_pwd):
-                role = "admin"
-            elif u == guest_user and _check(p, guest_pwd):
-                role = "guest"
-            if role:
+            if _check(p, admin_pwd) or _check(p, guest_pwd):
                 st.session_state["__auth_ok"] = True
-                st.session_state["__role"] = role
-                for k in ("__login_user", "__login_pwd"):
-                    st.session_state.pop(k, None)
+                st.session_state["__role"] = "admin"  # 统一 admin（CF Access 已过滤）
+                st.session_state.pop("__login_pwd", None)
                 st.rerun()
             else:
-                st.error("账号或密码错误")
+                st.error("密码错误")
 
     st.stop()
 
