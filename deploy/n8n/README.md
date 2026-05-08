@@ -1,6 +1,24 @@
-# Smikie N8N · Windows 一键安装
+# Smikie N8N · Windows All-in-One 安装包
 
-> 给 Boss 用的部署包。**不需要懂命令行**，只要跟着 1、2、3 走完即可。
+> 给 Boss 用的部署包。**全自动**：双击 → 自动启 WSL2 → 自动装 Docker Desktop →
+> 自动起 N8N + 改廃监控容器 → 自动配 cron 任务。**不需要命令行**。
+
+包含的服务：
+
+| 服务 | 用途 | 跑法 |
+|---|---|---|
+| **N8N** | 自动化工作流引擎（全套大脑） | 7×24 后台 |
+| **cloudflared** | 公网入口 `https://n8n.smikie-cms.cc` | 7×24 后台 |
+| **stock-monitor** | 改廃监控（每月 1 日 02:00 自动扫供应商） | 月度 cron |
+
+预装的 N8N workflow：
+
+| Workflow | 触发 | 状态 |
+|---|---|---|
+| Shopee JAN 提取（jan-extract-v2） | 手动 | 升级到 claude-opus-4-7 |
+| Shopee 自动上架 webhook | CMS 触发 | MVP scaffold（待 Shopee API 凭证）|
+| Shopee 自动上架 cron | 每 4 小时 | 7×24 自动扫 CMS 队列 |
+| 改廃监控月度 | 每月 1 日 02:00 JST | 生产可用 |
 
 ---
 
@@ -8,10 +26,13 @@
 
 | 项 | 说明 |
 |---|---|
-| **Docker Desktop** | 必须已安装并启动（图标常驻系统托盘且为绿色）。还没装 → https://www.docker.com/products/docker-desktop/ |
-| **Cloudflare 账号** | 需要拿 Tunnel Token（在 Zero Trust → Networks → Tunnels）|
-| **磁盘空间** | C 盘或 D 盘留 2 GB 足够 |
+| **Windows 版本** | Windows 10 build 19041+ 或 Windows 11（安装包会自动检查） |
+| **CPU 虚拟化** | BIOS 中开启 SVM (AMD) / VT-x (Intel) — 装包会检测并提示 |
+| **Cloudflare 账号** | 提前拿 Tunnel Token（Zero Trust → Networks → Tunnels → Connectors） |
+| **磁盘空间** | C 盘留 4 GB（含 Docker Desktop 600 MB + 镜像 800 MB + 数据） |
 | **影刀 / CMS** | 可同机共存；本安装不会动它们 |
+| **Docker Desktop** | **不需要预装**，安装包会自动下载并装好 |
+| **WSL2** | **不需要预装**，安装包会自动启用 |
 
 ---
 
@@ -48,16 +69,18 @@ C:\Smikie-N8N\
 
 填好 → 点 **开始安装**。
 
-### 3️⃣ 等 1-3 分钟
+### 3️⃣ 等 5-15 分钟
 
-安装脚本会自动：
-- 检查 Docker Desktop 是否在跑（不在 → 自动启动）
-- 拉 n8n + cloudflared 镜像（首次约 200 MB）
-- 启动容器
-- 导入预装 workflow（jan-extract / shopee-mass-upload）
-- 弹窗显示安装结果
+安装脚本自动跑以下 4 步（无需手工干预）：
 
-完成后可选自动打开浏览器到 `http://localhost:5678` 登录 → 输入刚设的账密。
+1. **前置依赖检查**：Windows 版本 / CPU 虚拟化 / WSL2 / Docker
+2. **WSL2 启用**（如果没启用）：可能要求重启电脑一次（首次安装通常会）
+3. **Docker Desktop 自动安装**（如果未装）：约 600 MB 下载 + 5 分钟
+4. **N8N + 改廃监控 + cloudflared 三容器启动**：约 1 分钟
+
+如果中间需要重启系统，重启后再次双击 install.bat 即可继续。
+
+完成后弹窗 → 自动开浏览器 → 登录账密就是表单里你设的那个。
 
 ---
 
@@ -101,20 +124,81 @@ C:\Smikie-N8N\
 ```
 Smikie-N8N\
 ├── installer\
-│   ├── install.bat       ← 双击安装入口
-│   ├── install.ps1       ← 安装主体
-│   ├── uninstall.bat     ← 双击卸载入口
-│   └── uninstall.ps1     ← 卸载主体
-├── workflows\            ← 预装 workflow（首次启动自动导入）
+│   ├── install.bat              ← 双击安装入口
+│   ├── install.ps1              ← N8N 部署主体
+│   ├── check-prerequisites.ps1  ← 前置依赖检查
+│   ├── enable-wsl.ps1           ← WSL2 启用
+│   ├── install-docker.ps1       ← Docker Desktop 自动安装
+│   ├── uninstall.bat            ← 双击卸载入口
+│   └── uninstall.ps1            ← 卸载主体
+├── workflows\                   ← 预装 workflow（首次启动自动导入）
 │   ├── jan-extract-v2.json
-│   └── shopee-mass-upload.json
-├── data\                 ← 容器数据（首次启动后自动生成；卸载默认保留）
-│   └── n8n\              ← N8N 配置 + 凭证 + workflow 数据库
-├── docker-compose.yml    ← Docker 编排
-├── .env.template         ← 配置模板（不要直接改）
-├── .env                  ← 真实配置（install.ps1 自动生成；勿提交 git）
-└── README.md             ← 本文件
+│   ├── shopee-mass-upload.json       ← CMS webhook 触发
+│   ├── shopee-mass-upload-cron.json  ← 每 4 小时 7×24 cron
+│   └── stock-monitor-monthly.json    ← 改廃监控月度 cron
+├── stock_monitor\               ← 改廃监控容器源码
+│   ├── Dockerfile
+│   ├── webhook_server.py
+│   ├── scripts\                 ← scraper + check_products + notify_lark
+│   ├── cookies\                 ← Boss 放供应商登录 cookie（自填）
+│   ├── state\                   ← 上次扫描状态（运行时生成）
+│   └── reports\                 ← 月度报告（运行时生成）
+├── data\                        ← 容器数据（首次启动后自动生成）
+│   ├── n8n\                     ← N8N 配置 + 凭证 + workflow 数据库
+│   └── files\                   ← Boss 放 item_master_bilingual.csv 这里
+├── docker-compose.yml           ← Docker 编排（n8n + cloudflared + stock-monitor）
+├── .env.template                ← 配置模板
+├── .env                         ← 真实配置（install.ps1 自动生成；勿提交 git）
+└── README.md                    ← 本文件
 ```
+
+---
+
+## 📊 改廃监控 数据准备（一次性）
+
+stock-monitor 容器需要两份外部数据，安装包不内置（属于 Boss 业务数据）：
+
+### A. JAN 列表 CSV
+
+从 CMS 导出 `item_master_bilingual.csv`（含 JAN + 日中双语商品名）→ 放到：
+
+```
+C:\Smikie-N8N\data\files\item_master_bilingual.csv
+```
+
+> CMS page 99 数据导入与设置 → 导出工具中提供（如未提供，可从 `item_master` 表 SQL 导出）
+
+### B. 供应商登录 cookies（如果抓取的网站需要登录）
+
+如果 stock_monitor 监控的供应商网站需要登录（如 NEW WIND 经销商专区），把
+浏览器导出的 cookies 文件放到：
+
+```
+C:\Smikie-N8N\stock_monitor\cookies\
+```
+
+具体文件名格式见 [scripts/scraper.py](stock_monitor/scripts/scraper.py) 顶部说明。
+
+放好后跑：`docker compose restart stock-monitor`
+
+### C. 飞书 OpenAPI（写飞书表格）
+
+stock-monitor 把月度扫描结果写到飞书表格，需要 LARK_APP_ID + LARK_APP_SECRET（在
+飞书开发者后台 → 自建应用 → 凭证与基础信息）。已经在 install.ps1 表单里收集，
+也可以装完后编辑 `.env` 补上后 `docker compose restart stock-monitor`。
+
+---
+
+## ⏰ 7×24 cron 任务清单
+
+安装包预装两个长期跑的定时任务：
+
+| Workflow | Cron 表达式 | 频率 | 用途 |
+|---|---|---|---|
+| Shopee 自动上架 cron | `0 */4 * * *` | 每 4 小时 | 拉 CMS 队列里 pending 的上架任务 → Shopee API → 飞书 |
+| 改廃监控月度 | `0 2 1 * *` | 每月 1 日 02:00 JST | 扫供应商 → 找停产信号 → 飞书 |
+
+> 默认 `active: false`（防止首次启动就乱跑）。Boss 在 N8N UI 里点开 workflow → 右上角 toggle "Active" 才生效。改 cron 表达式直接在 UI 里编辑 Schedule Trigger 节点。
 
 ---
 

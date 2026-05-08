@@ -1,0 +1,75 @@
+{
+  "name": "改廃监控 · 月度 cron（每月 1 日 02:00 JST）",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 2 1 * *"
+            }
+          ]
+        }
+      },
+      "id": "n01-cron",
+      "name": "每月 1 日 02:00 JST",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://stock-monitor:8787/run",
+        "options": {
+          "timeout": 21600000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "n02-scan",
+      "name": "调 stock-monitor /run",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.LARK_WEBHOOK_URL }}",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"msg_type\": \"interactive\",\n  \"card\": {\n    \"header\": {\n      \"title\": { \"tag\": \"plain_text\", \"content\": \"改廃监控 · 月度扫描完成\" },\n      \"template\": \"{{ $json.diff && Object.keys($json.diff).length > 0 ? 'orange' : 'green' }}\"\n    },\n    \"elements\": [\n      { \"tag\": \"div\", \"text\": { \"tag\": \"lark_md\", \"content\": \"**扫描日期**: {{ $json.run_date }}\\n**总 SKU**: {{ $json.total }}\\n**变动数**: {{ $json.diff ? Object.keys($json.diff).length : 0 }}\\n**报告**: {{ $json.report_path }}\" } }\n    ]\n  }\n}",
+        "options": {
+          "response": { "response": { "neverError": true } }
+        }
+      },
+      "id": "n03-lark",
+      "name": "飞书群机器人通知",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300]
+    }
+  ],
+  "connections": {
+    "每月 1 日 02:00 JST": {
+      "main": [[{ "node": "调 stock-monitor /run", "type": "main", "index": 0 }]]
+    },
+    "调 stock-monitor /run": {
+      "main": [[{ "node": "飞书群机器人通知", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    { "name": "discontinue" },
+    { "name": "monthly-cron" },
+    { "name": "production-ready" }
+  ]
+}

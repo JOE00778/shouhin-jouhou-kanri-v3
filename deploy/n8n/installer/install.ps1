@@ -94,7 +94,7 @@ Write-OK "Docker Desktop 就绪"
 # ------------------------------------------------------------
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "Smikie N8N Installer · 配置"
-$form.Size = New-Object System.Drawing.Size(640, 600)
+$form.Size = New-Object System.Drawing.Size(640, 700)
 $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = "FixedDialog"
 $form.MaximizeBox = $false
@@ -142,6 +142,8 @@ Add-Field "* N8N 管理员账号:"                  "N8N_BASIC_AUTH_USER"  "admi
 Add-Field "* N8N 管理员密码:"                  "N8N_BASIC_AUTH_PASSWORD" ""          $true
 Add-Field "  CMS 回调地址:"                    "CMS_CALLBACK_URL"     "https://smikie-cms.cc/api/automation/callback"
 Add-Field "  飞书群机器人 Webhook (可空):"     "LARK_WEBHOOK_URL"     ""
+Add-Field "  飞书 App ID (改廃监控用):"        "LARK_APP_ID"          ""
+Add-Field "  飞书 App Secret (改廃监控用):"    "LARK_APP_SECRET"      ""             $true
 Add-Field "  Shopee Partner ID (可空):"        "SHOPEE_PARTNER_ID"    ""
 Add-Field "  Shopee Partner Key (可空):"       "SHOPEE_PARTNER_KEY"   ""             $true
 Add-Field "  Anthropic API Key (可空):"        "ANTHROPIC_API_KEY"    ""             $true
@@ -215,6 +217,7 @@ foreach ($k in @(
     "N8N_HOST", "CLOUDFLARE_TUNNEL_TOKEN",
     "N8N_BASIC_AUTH_USER", "N8N_BASIC_AUTH_PASSWORD", "N8N_ENCRYPTION_KEY",
     "CMS_CALLBACK_URL", "LARK_WEBHOOK_URL",
+    "LARK_APP_ID", "LARK_APP_SECRET",
     "SHOPEE_PARTNER_ID", "SHOPEE_PARTNER_KEY",
     "ANTHROPIC_API_KEY", "OPENAI_API_KEY"
 )) {

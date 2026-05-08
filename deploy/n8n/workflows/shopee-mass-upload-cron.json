@@ -1,0 +1,159 @@
+{
+  "name": "Shopee 自动上架 · 7×24 cron（每 4 小时扫队列）",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 */4 * * *"
+            }
+          ]
+        }
+      },
+      "id": "n01-cron",
+      "name": "每 4 小时触发",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.CMS_QUEUE_URL || 'https://smikie-cms.cc/api/automation/queue?module=shopee_mass_upload&status=pending' }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "json",
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "n02-poll-queue",
+      "name": "拉 CMS 待上架队列",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [400, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-tasks",
+              "leftValue": "={{ $json.runs ? $json.runs.length : 0 }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "n03-if-empty",
+      "name": "队列里有任务?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [620, 300]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "runs",
+        "options": {}
+      },
+      "id": "n04-split",
+      "name": "按 run 拆批",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [840, 220]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// TODO: 实际处理逻辑\n// 1. 用 $json.run_id + $json.payload.files 拉 XLSX\n// 2. 解析 → Shopee Item API + Image API\n// 3. 汇总 summary {created, failed, skipped}\n// 当前：占位（待 Boss 提供 SHOPEE_PARTNER_ID/KEY 后充实）\nreturn [{\n  json: {\n    run_id: $json.run_id,\n    market: $json.payload?.market || 'TW',\n    cms_callback: $env.CMS_CALLBACK_URL,\n    summary: {\n      total_spu: 0,\n      created: 0,\n      failed: 0,\n      skipped: 0\n    },\n    note: 'Cron MVP scaffold — 待 Shopee API 节点充实'\n  }\n}];"
+      },
+      "id": "n05-process",
+      "name": "处理一个 run（占位）",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, 220]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.CMS_CALLBACK_URL }}",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"run_id\": \"{{ $json.run_id }}\",\n  \"module\": \"shopee_mass_upload\",\n  \"status\": \"completed\",\n  \"summary\": {{ JSON.stringify($json.summary) }},\n  \"message\": \"{{ $json.note }}\"\n}",
+        "options": {
+          "response": { "response": { "neverError": true } }
+        }
+      },
+      "id": "n06-callback",
+      "name": "CMS 回调 · completed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1240, 220]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.LARK_WEBHOOK_URL }}",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"msg_type\": \"interactive\",\n  \"card\": {\n    \"header\": {\n      \"title\": { \"tag\": \"plain_text\", \"content\": \"Shopee 自动上架 · cron 完成\" },\n      \"template\": \"green\"\n    },\n    \"elements\": [\n      { \"tag\": \"div\", \"text\": { \"tag\": \"lark_md\", \"content\": \"**run_id**: {{ $json.run_id }}\\n**市场**: {{ $json.market }}\\n**成功**: {{ $json.summary.created }}\\n**失败**: {{ $json.summary.failed }}\" } }\n    ]\n  }\n}",
+        "options": {
+          "response": { "response": { "neverError": true } }
+        }
+      },
+      "id": "n07-lark",
+      "name": "飞书通知",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1440, 220]
+    }
+  ],
+  "connections": {
+    "每 4 小时触发": {
+      "main": [[{ "node": "拉 CMS 待上架队列", "type": "main", "index": 0 }]]
+    },
+    "拉 CMS 待上架队列": {
+      "main": [[{ "node": "队列里有任务?", "type": "main", "index": 0 }]]
+    },
+    "队列里有任务?": {
+      "main": [
+        [{ "node": "按 run 拆批", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "按 run 拆批": {
+      "main": [[{ "node": "处理一个 run（占位）", "type": "main", "index": 0 }]]
+    },
+    "处理一个 run（占位）": {
+      "main": [[{ "node": "CMS 回调 · completed", "type": "main", "index": 0 }]]
+    },
+    "CMS 回调 · completed": {
+      "main": [[{ "node": "飞书通知", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    { "name": "shopee" },
+    { "name": "cron-7x24" },
+    { "name": "scaffold" }
+  ]
+}

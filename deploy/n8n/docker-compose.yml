@@ -2,12 +2,14 @@ version: "3.9"
 
 # ============================================================
 # Smikie N8N · Windows 笔记本独立部署（与 CMS 同机共存）
-# n8n 主程序 + 自带 cloudflared（公网入口 https://n8n.smikie-cms.cc）
+# 三个服务： n8n + cloudflared + stock-monitor（改廃监控）
+# 公网入口： https://n8n.smikie-cms.cc
 # ============================================================
 # 资源严格限制，影刀 + CMS + N8N 三方共存：
-#   - n8n:        1 GB RAM / 0.75 CPU
-#   - cloudflared: 256 MB RAM / 0.25 CPU
-#   合计：约 1.25 GB RAM + 1 CPU 核
+#   - n8n:           1 GB RAM / 0.75 CPU
+#   - cloudflared:   256 MB RAM / 0.25 CPU
+#   - stock-monitor: 512 MB RAM / 0.5 CPU（月度跑一次，平时几乎不占）
+#   合计：约 1.75 GB RAM + 1.5 CPU 核
 #
 # 数据库：n8n 自带 SQLite（足够用，~MB 量级），不引入 Postgres 依赖。
 # 数据持久化：./data/n8n → 容器内 /home/node/.n8n
@@ -88,6 +90,40 @@ services:
         limits:
           cpus: '0.25'
           memory: 256M
+
+  # ============================================================
+  # 改廃监控（stock-monitor）· N8N 月度 cron 调用其 /run 端点
+  # N8N workflow: stock-monitor-monthly.json → HTTP GET stock-monitor:8787/run
+  # ============================================================
+  stock-monitor:
+    build:
+      context: ./stock_monitor
+      dockerfile: Dockerfile
+    container_name: smikie_stock_monitor
+    restart: unless-stopped
+    environment:
+      PORT: "8787"
+      STOCK_MONITOR_CSV: /data/item_master_bilingual.csv
+      LARK_APP_ID: ${LARK_APP_ID:-}
+      LARK_APP_SECRET: ${LARK_APP_SECRET:-}
+      TZ: Asia/Tokyo
+    volumes:
+      # 项目运行时状态 + 报告 + cookies
+      - ./stock_monitor/state:/app/state
+      - ./stock_monitor/reports:/app/reports
+      - ./stock_monitor/logs:/app/logs
+      - ./stock_monitor/cookies:/app/cookies
+      # JAN 列表 CSV（Boss 从 CMS 导出后放到 ./data/files/）
+      - ./data/files/item_master_bilingual.csv:/data/item_master_bilingual.csv:ro
+    networks:
+      - smikie_n8n_net
+    expose:
+      - "8787"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
 
 networks:
   smikie_n8n_net:

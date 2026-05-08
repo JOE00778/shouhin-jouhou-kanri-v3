@@ -3,7 +3,7 @@
 # 用法：./build-installer.sh [version]   (默认 1.0)
 set -euo pipefail
 
-VERSION="${1:-1.0}"
+VERSION="${1:-1.1}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PKG_NAME="Smikie-N8N-Installer-v${VERSION}"
 STAGING="${SCRIPT_DIR}/.build/${PKG_NAME}"
@@ -22,11 +22,30 @@ cp -v "${SCRIPT_DIR}/README.md" "${STAGING}/"
 mkdir -p "${STAGING}/installer"
 cp -v "${SCRIPT_DIR}/installer/install.bat" "${STAGING}/installer/"
 cp -v "${SCRIPT_DIR}/installer/install.ps1" "${STAGING}/installer/"
+cp -v "${SCRIPT_DIR}/installer/check-prerequisites.ps1" "${STAGING}/installer/"
+cp -v "${SCRIPT_DIR}/installer/enable-wsl.ps1" "${STAGING}/installer/"
+cp -v "${SCRIPT_DIR}/installer/install-docker.ps1" "${STAGING}/installer/"
 cp -v "${SCRIPT_DIR}/installer/uninstall.bat" "${STAGING}/installer/"
 cp -v "${SCRIPT_DIR}/installer/uninstall.ps1" "${STAGING}/installer/"
 
 mkdir -p "${STAGING}/workflows"
 cp -v "${SCRIPT_DIR}"/workflows/*.json "${STAGING}/workflows/" 2>/dev/null || echo "  (no workflows yet)"
+
+# stock_monitor 容器源码（改廃监控）
+echo "==> 复制 stock_monitor 源码"
+mkdir -p "${STAGING}/stock_monitor/scripts"
+mkdir -p "${STAGING}/stock_monitor/cookies"
+mkdir -p "${STAGING}/stock_monitor/state"
+mkdir -p "${STAGING}/stock_monitor/reports"
+mkdir -p "${STAGING}/stock_monitor/logs"
+cp -v "${SCRIPT_DIR}/stock_monitor/Dockerfile" "${STAGING}/stock_monitor/"
+cp -v "${SCRIPT_DIR}/stock_monitor/webhook_server.py" "${STAGING}/stock_monitor/"
+cp -v "${SCRIPT_DIR}"/stock_monitor/scripts/*.py "${STAGING}/stock_monitor/scripts/" 2>/dev/null || true
+cat > "${STAGING}/stock_monitor/cookies/README.txt" <<'EOF'
+把供应商登录 cookies 放在这里。
+具体文件命名见 ../scripts/scraper.py 顶部说明。
+没有 cookies 也能跑，仅免登录公开页可访问。
+EOF
 
 # 占位空目录（首次启动后会填充；要让 Windows 上 zip 能解出空目录）
 mkdir -p "${STAGING}/data/n8n"
