@@ -17,18 +17,25 @@ Page 顶部用法：
 from __future__ import annotations
 
 import hmac
+import os
 
 import streamlit as st
 
 # 每次重要修复 push 时 bump，Cloud 部署后一眼能看出是不是新版
-APP_VERSION = "2.3.6 · asean_daily-fix"
+APP_VERSION = "2.3.7 · env-vars-fix"
 
 
 def _secret(name: str, default: str = "") -> str:
+    """优先读 streamlit secrets（Cloud 部署），fallback 到环境变量（Docker / NAS 部署）。"""
+    # 1. Streamlit Cloud secrets.toml
     try:
-        return str(st.secrets.get(name, default) or default)
+        v = st.secrets.get(name, None)
+        if v:
+            return str(v)
     except (FileNotFoundError, KeyError):
-        return default
+        pass
+    # 2. 环境变量（docker-compose 注入）
+    return os.environ.get(name, "") or default
 
 
 def _check(entered: str, expected: str) -> bool:
