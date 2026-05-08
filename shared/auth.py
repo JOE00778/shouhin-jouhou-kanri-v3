@@ -22,7 +22,7 @@ import os
 import streamlit as st
 
 # 每次重要修复 push 时 bump，Cloud 部署后一眼能看出是不是新版
-APP_VERSION = "2.3.8 · cf-access-mode"
+APP_VERSION = "2.3.9 · page99-extra-password"
 
 
 def _secret(name: str, default: str = "") -> str:
@@ -154,3 +154,40 @@ def require_admin() -> None:
 def show_role_badge() -> None:
     """已废弃：保留空实现兼容主入口已有调用。"""
     return
+
+
+def require_extra_password(scope: str, env_var: str) -> None:
+    """页面级独立二级密码守门（page 99 数据导入用）。
+
+    用例：page 99 涉及数据库写入，需要比一级密码更高权限。
+    一级密码登录后，访问该 page 时再单独验证二级密码。
+
+    Args:
+        scope: 密码作用域名（如 "page99"），用于隔离不同 page 的 session 状态
+        env_var: 环境变量名，存储该 page 的密码（如 "PAGE99_PASSWORD"）
+    """
+    expected = _secret(env_var)
+    if not expected:
+        return  # 未配密码 = 不启用此层守门，直接放行
+
+    state_key = f"__extra_auth_{scope}"
+    if st.session_state.get(state_key):
+        return  # 本 session 已通过该 scope 的二级密码
+
+    st.title("🔐 此页面需要二级密码")
+    st.caption("数据底盘操作（导入 / 写库）需要二级密码授权")
+
+    with st.form(f"extra_auth_{scope}", clear_on_submit=False):
+        p = st.text_input(
+            "二级密码", type="password",
+            key=f"__extra_pwd_{scope}",
+            placeholder="请输入二级密码",
+        )
+        if st.form_submit_button("授权进入", type="primary", use_container_width=True):
+            if _check(p, expected):
+                st.session_state[state_key] = True
+                st.session_state.pop(f"__extra_pwd_{scope}", None)
+                st.rerun()
+            else:
+                st.error("二级密码错误")
+    st.stop()
