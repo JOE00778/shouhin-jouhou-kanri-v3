@@ -1,0 +1,583 @@
+"""模块 ④ 財務 v4 · 与 NST 上传颗粒度对齐.
+
+业务约定 (NST 上传规则):
+- 按【订单成立时间】月份切分文件 (不是拨款日, 不是按周)
+- 上传文件统一 6 列: 编号 / 订单编号 / 拨款完成日期 / 付款金额 / 退款金额 / 账单金额
+- 单文件 ≤899 行, 超限按 (1)(2)... 拆分
+
+NST 列计算:
+- 付款金额 = 商品原价 + 商品折扣 + 退款金额  (gross_price + product_discount + refund_amount)
+- 退款金额 = refund_amount
+- 账单金额 = sum(refund_amount 右侧到 payout_amount 左侧的费用列)
+            = shopee_rebate + seller_voucher + ... + service_fee + transaction_fee + fbs_fee 等
+
+数据源:
+- shopee_orders_raw   ← 订单导出.xlsx (订单 ID + SKU + 店铺)
+- shopee_income_lines ← *.income.已拨款.*.xlsx (拨款扣费, 含 seller_account / order_created_at)
+"""
+from __future__ import annotations
+
+import io
+import re
+import zipfile
+from datetime import datetime
+
+import pandas as pd
+import streamlit as st
+
+from shared.db import get_connection
+from shared.forex import FX_TO_JPY
+from shared.i18n import lang_selector, t
+
+st.set_page_config(page_title=t("財務"), page_icon="💱", layout="wide")
+from shared.auth import require_password
+require_password()
+lang_selector()
+conn = get_connection()
+
+st.title(t("💱 財務"))
+st.caption(t(
+    "颗粒度对齐 NST 上传: 订单成立时间月份 × 6 列 · "
+    "数据源: 订单导出.xlsx + *.income.已拨款.*.xlsx"
+))
+
+
+# ============================================================
+# 常量
+# ============================================================
+NST_MAX_ROWS = 899  # NST 单文件上限
+
+# 账单金额 = 退款金额右侧到拨款金额左侧之间的所有费用列 (来自 schema 顺序)
+BILL_FEE_COLS = [
+    "shopee_rebate", "seller_voucher", "seller_voucher_jv",
+    "seller_shopee_coin", "seller_shopee_coin_jv",
+    "buyer_shipping", "shopee_shipping_subsidy",
+    "seller_shipping", "return_shipping", "return_to_seller_ship",
+    "shipping_insurance_save", "affiliate_commission", "commission",
+    "fbs_overseas_fail", "fbs_overseas_return",
+    "service_fee", "shipping_insurance_fee",
+    "transaction_fee", "fbs_fee",
+]
+
+
+# ============================================================
+# 工具
+# ============================================================
+def _df(sql: str, params=None) -> pd.DataFrame:
+    rs = conn.execute(sql, params or {}).fetchall()
+    return pd.DataFrame([dict(r) for r in rs])
+
+
+def _country_from_shop(shop: str | None) -> str:
+    if not shop:
+        return "?"
+    s = str(shop).lower()
+    m = re.search(r"\.([a-z]{2,3})\b", s)
+    if m:
+        return m.group(1).upper()
+    s_orig = str(shop)
+    if "日本直" in s_orig or "直郵" in s_orig or "旗艦" in s_orig or "台灣" in s_orig:
+        return "TW"
+    return "OTHER"
+
+
+def _country_from_seller(seller: str | None) -> str:
+    if not seller:
+        return "?"
+    s = str(seller).lower()
+    m = re.search(r"\.([a-z]{2,3})$", s)
+    return m.group(1).upper() if m else s.upper()
+
+
+def _to_yyyy_mm(dt) -> str | None:
+    if dt is None or pd.isna(dt):
+        return None
+    try:
+        return pd.to_datetime(dt).strftime("%Y-%m")
+    except Exception:
+        return None
+
+
+def _to_yyyy_mm_dd_slash(dt) -> str:
+    """NST 拨款完成日期格式: YYYY/MM/DD."""
+    if dt is None or pd.isna(dt):
+        return ""
+    try:
+        return pd.to_datetime(dt).strftime("%Y/%m/%d")
+    except Exception:
+        return ""
+
+
+def _safe_order_no(x) -> str:
+    """文本保护订单号 (避免科学计数法)."""
+    if pd.isna(x):
+        return ""
+    s = str(x).strip()
+    if not s:
+        return ""
+    if re.search(r"e[+-]?\d+", s, flags=re.I):
+        try:
+            from decimal import Decimal
+            s = format(Decimal(s), "f")
+        except Exception:
+            pass
+    if s.endswith(".0"):
+        s = s[:-2]
+    return s
+
+
+def _fmt_money(x):
+    try:
+        return f"{int(round(float(x))):,}"
+    except Exception:
+        return x
+
+
+# ============================================================
+# 数据加载
+# ============================================================
+df_orders = _df("SELECT * FROM shopee_orders_raw")
+df_income = _df("SELECT * FROM shopee_income_lines")
+
+if df_orders.empty and df_income.empty:
+    st.warning(t(
+        "⚠️ 数据为空。请到「⚙️ 数据导入与设置」上传:\n"
+        "1) 订单导出-*.xlsx\n"
+        "2) *.income.已拨款.*.xlsx"
+    ))
+    st.stop()
+
+# 数值化 + 派生列
+fee_cols_all = [
+    "gross_price", "product_discount", "refund_amount",
+    *BILL_FEE_COLS, "payout_amount",
+]
+
+if not df_income.empty:
+    for c in fee_cols_all:
+        if c in df_income.columns:
+            df_income[c] = pd.to_numeric(df_income[c], errors="coerce").fillna(0.0)
+
+    # NST 颗粒度: 按【订单成立时间】月份切分
+    df_income["order_create_month"] = df_income["order_created_at"].apply(_to_yyyy_mm)
+    df_income["payout_month"] = df_income["payout_date"].apply(_to_yyyy_mm)
+
+    df_income["country"] = df_income["seller_account"].apply(_country_from_seller)
+    if "platform" not in df_income.columns:
+        df_income["platform"] = "Shopee"
+
+    # NST 三个金额
+    df_income["nst_payment"] = (
+        df_income.get("gross_price", 0.0)
+        + df_income.get("product_discount", 0.0)
+        + df_income.get("refund_amount", 0.0)
+    ).round(2)
+    df_income["nst_refund"] = df_income.get("refund_amount", 0.0).round(2)
+    bill_present = [c for c in BILL_FEE_COLS if c in df_income.columns]
+    if bill_present:
+        df_income["nst_bill"] = df_income[bill_present].sum(axis=1).round(2)
+    else:
+        df_income["nst_bill"] = 0.0
+
+    # JPY 换算系数
+    df_income["_jpy_rate"] = df_income["country"].map(FX_TO_JPY).fillna(1.0)
+
+if not df_orders.empty:
+    df_orders["country"] = df_orders["shop_name"].apply(_country_from_shop)
+    if "platform" not in df_orders.columns:
+        df_orders["platform"] = "Shopee"
+    if not df_income.empty:
+        df_orders = df_orders.merge(
+            df_income[["order_no", "order_create_month", "payout_month"]]
+            .drop_duplicates("order_no"),
+            on="order_no", how="left",
+        )
+
+
+# ============================================================
+# 期间筛选 (按订单成立时间月份, 与 NST 一致)
+# ============================================================
+months = []
+if not df_income.empty:
+    months = sorted(
+        df_income["order_create_month"].dropna().unique().tolist(),
+        reverse=True,
+    )
+
+c0, c1, c2 = st.columns([1.5, 1, 1])
+with c0:
+    sel_month = st.selectbox(
+        t("订单成立月份 (NST 文件切分依据)"),
+        [t("全部")] + months,
+    )
+with c1:
+    countries = []
+    if not df_income.empty:
+        countries = sorted(df_income["country"].dropna().unique().tolist())
+    sel_country = st.selectbox(t("国家"), [t("全部")] + countries)
+with c2:
+    sellers = []
+    if not df_income.empty and "seller_account" in df_income.columns:
+        sellers = sorted(df_income["seller_account"].dropna().unique().tolist())
+    sel_seller = st.selectbox(t("店铺账号 (seller_account)"), [t("全部")] + sellers)
+
+# 应用筛选 (income 表)
+if not df_income.empty:
+    if sel_month != t("全部"):
+        df_income = df_income[df_income["order_create_month"] == sel_month]
+    if sel_country != t("全部"):
+        df_income = df_income[df_income["country"] == sel_country]
+    if sel_seller != t("全部") and "seller_account" in df_income.columns:
+        df_income = df_income[df_income["seller_account"] == sel_seller]
+
+# 应用筛选 (orders 表)
+if not df_orders.empty:
+    if sel_month != t("全部") and "order_create_month" in df_orders.columns:
+        df_orders = df_orders[
+            (df_orders["order_create_month"] == sel_month)
+            | df_orders["order_create_month"].isna()
+        ]
+    if sel_country != t("全部") and "country" in df_orders.columns:
+        df_orders = df_orders[df_orders["country"] == sel_country]
+
+
+# ============================================================
+# JPY 副本 (用于跨国汇总)
+# ============================================================
+if not df_income.empty:
+    df_income_jpy = df_income.copy()
+    for c in fee_cols_all + ["nst_payment", "nst_refund", "nst_bill"]:
+        if c in df_income_jpy.columns:
+            df_income_jpy[c] = df_income_jpy[c] * df_income_jpy["_jpy_rate"]
+else:
+    df_income_jpy = df_income
+
+
+# ============================================================
+# KPI (NST 4 指标 + 实拨)
+# ============================================================
+n_orders = int(df_income["order_no"].nunique()) if not df_income.empty else 0
+n_months = int(df_income["order_create_month"].nunique()) if not df_income.empty else 0
+
+if not df_income_jpy.empty:
+    sum_payment = float(df_income_jpy["nst_payment"].sum())
+    sum_refund = float(df_income_jpy["nst_refund"].sum())
+    sum_bill = float(df_income_jpy["nst_bill"].sum())
+    sum_payout = float(df_income_jpy.get("payout_amount", pd.Series([0.0])).sum())
+else:
+    sum_payment = sum_refund = sum_bill = sum_payout = 0.0
+
+c1, c2, c3, c4, c5 = st.columns(5)
+c1.metric(t("覆盖月份"), f"{n_months:,}")
+c2.metric(t("订单数"), f"{n_orders:,}")
+c3.metric(t("付款金额合计 (¥)"), f"¥{sum_payment:,.0f}")
+c4.metric(t("账单金额合计 (¥)"), f"¥{sum_bill:,.0f}")
+c5.metric(t("拨款金额合计 (¥)"), f"¥{sum_payout:,.0f}")
+
+st.info(t(
+    "📍 颗粒度: 订单成立月份 × 店铺账号 (与 NST 上传文件一致) · "
+    "💴 跨国汇总按 country × 公司固定汇率换算为日元 · "
+    "PHP=2.4 / TWD=4.57 / MYR=36.48 / SGD=113.44 / USD=145"
+))
+st.divider()
+
+
+# ============================================================
+# Tabs
+# ============================================================
+tab_nst, tab_month, tab_shop, tab_market, tab_raw_i, tab_raw_o = st.tabs([
+    t("📤 NST 上传明细 (6 列)"),
+    t("📅 月份 × 国家 汇总"),
+    t("🏪 月份 × 店铺 汇总"),
+    t("🌐 月份 × 平台 汇总"),
+    t("💰 拨款明细 (原始)"),
+    t("📦 订单导出 (原始)"),
+])
+
+
+# ----- Tab 1: NST 6 列上传明细 -----
+with tab_nst:
+    if df_income.empty:
+        st.info(t("无数据。"))
+    else:
+        st.caption(t(
+            "🎯 与 NST 上传文件 1:1 对齐 · 单文件 ≤899 行 · "
+            "金额保留 2 位小数 · 原币种 (未换汇)"
+        ))
+
+        # 按 seller_account + order_create_month 分组, 模拟 NST 文件切分
+        nst_df = df_income.copy()
+        nst_df = nst_df[nst_df["order_create_month"].notna()]
+        nst_df["编号"] = pd.to_numeric(nst_df.get("seq"), errors="coerce").fillna(0).astype(int)
+        nst_df["订单编号"] = nst_df["order_no"].apply(_safe_order_no)
+        nst_df["拨款完成日期"] = nst_df["payout_date"].apply(_to_yyyy_mm_dd_slash)
+        nst_df["付款金额"] = nst_df["nst_payment"]
+        nst_df["退款金额"] = nst_df["nst_refund"]
+        nst_df["账单金额"] = nst_df["nst_bill"]
+
+        # 按 seller × month 分组, 显示文件清单
+        groups = nst_df.groupby(
+            ["seller_account", "order_create_month"], dropna=False, as_index=False,
+        )
+        file_rows = []
+        for (seller, month), g in groups:
+            n_rows = len(g)
+            n_files = (n_rows + NST_MAX_ROWS - 1) // NST_MAX_ROWS if n_rows else 0
+            month_label_n = int(month.split("-")[1]) if month else 0
+            file_rows.append({
+                t("店铺账号"): seller or "?",
+                t("订单成立月份"): month or "?",
+                t("月标签"): f"{month_label_n}月" if month_label_n else "",
+                t("行数"): n_rows,
+                t("文件数 (899/份)"): n_files,
+                t("付款合计"): round(float(g["付款金额"].sum()), 2),
+                t("退款合计"): round(float(g["退款金额"].sum()), 2),
+                t("账单合计"): round(float(g["账单金额"].sum()), 2),
+            })
+        files_df = pd.DataFrame(file_rows).sort_values(
+            [t("店铺账号"), t("订单成立月份")],
+            ascending=[True, False],
+        )
+
+        st.subheader(t("📂 NST 文件清单 (按店铺 × 月份)"))
+        st.dataframe(files_df, use_container_width=True, hide_index=True, height=280)
+
+        st.subheader(t("📋 NST 6 列明细"))
+        nst_6cols = nst_df[[
+            "seller_account", "order_create_month",
+            "编号", "订单编号", "拨款完成日期",
+            "付款金额", "退款金额", "账单金额",
+        ]].rename(columns={
+            "seller_account": t("店铺账号"),
+            "order_create_month": t("订单成立月份"),
+        }).sort_values(
+            [t("店铺账号"), t("订单成立月份"), "编号"],
+            ascending=[True, False, True],
+        )
+        st.dataframe(nst_6cols, use_container_width=True, hide_index=True, height=420)
+        st.caption(t(f"共 {len(nst_6cols):,} 行"))
+
+        # 单文件 CSV 下载
+        single_csv_cols = ["编号", "订单编号", "拨款完成日期", "付款金额", "退款金额", "账单金额"]
+        st.download_button(
+            t("📥 全部明细 CSV (NST 6 列, 未拆分)"),
+            data=nst_6cols[single_csv_cols].to_csv(index=False).encode("utf-8-sig"),
+            file_name="nst_shopee_all.csv",
+            mime="text/csv",
+            key="dl_nst_all",
+        )
+
+        # ZIP 打包: 模拟 NST 文件切分
+        st.markdown(t("##### 📦 ZIP 打包下载 (按 NST 规则切分)"))
+        if st.button(t("生成 ZIP (店铺 × 月 × 899行)"), key="btn_nst_zip"):
+            zip_buf = io.BytesIO()
+            with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+                for (seller, month), g in groups:
+                    if not seller or not month:
+                        continue
+                    g = g.sort_values("编号")
+                    month_label_n = int(month.split("-")[1])
+                    base_name = f"shopee-{seller}-{month}-{month_label_n}月"
+
+                    rows = g[single_csv_cols].copy()
+                    if len(rows) <= NST_MAX_ROWS:
+                        zf.writestr(
+                            f"{base_name}.csv",
+                            rows.to_csv(index=False).encode("utf-8-sig"),
+                        )
+                    else:
+                        n_parts = (len(rows) + NST_MAX_ROWS - 1) // NST_MAX_ROWS
+                        for i in range(n_parts):
+                            part = rows.iloc[i * NST_MAX_ROWS:(i + 1) * NST_MAX_ROWS]
+                            zf.writestr(
+                                f"{base_name}({i + 1}).csv",
+                                part.to_csv(index=False).encode("utf-8-sig"),
+                            )
+            zip_buf.seek(0)
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            st.download_button(
+                t("⬇️ 下载 ZIP"),
+                data=zip_buf.getvalue(),
+                file_name=f"nst_shopee_{ts}.zip",
+                mime="application/zip",
+                key="dl_nst_zip",
+            )
+
+
+# ----- 通用聚合 -----
+def _agg_by(df, *dims):
+    return df.groupby(list(dims), as_index=False).agg(
+        n_orders=("order_no", "nunique"),
+        gross_price=("gross_price", "sum"),
+        product_discount=("product_discount", "sum"),
+        refund_amount=("refund_amount", "sum"),
+        nst_payment=("nst_payment", "sum"),
+        nst_refund=("nst_refund", "sum"),
+        nst_bill=("nst_bill", "sum"),
+        payout_amount=("payout_amount", "sum"),
+    )
+
+
+def _format_agg(agg, dim_cols, dim_labels):
+    show = agg.copy()
+    rename_map = dict(zip(dim_cols, dim_labels))
+    rename_map.update({
+        "n_orders": t("订单数"),
+        "gross_price": t("商品原价"),
+        "product_discount": t("商品折扣"),
+        "refund_amount": t("退款"),
+        "nst_payment": t("付款金额"),
+        "nst_refund": t("退款金额"),
+        "nst_bill": t("账单金额"),
+        "payout_amount": t("拨款金额"),
+    })
+    show = show.rename(columns=rename_map)
+    money_cols = [
+        t("商品原价"), t("商品折扣"), t("退款"),
+        t("付款金额"), t("退款金额"), t("账单金额"), t("拨款金额"),
+    ]
+    for col in money_cols:
+        if col in show.columns:
+            show[col] = show[col].map(_fmt_money)
+    return show
+
+
+# ----- Tab 2: 月份 × 国家 -----
+with tab_month:
+    if df_income_jpy.empty:
+        st.info(t("拨款明细未上传, 无法汇总。"))
+    else:
+        agg = _agg_by(df_income_jpy, "order_create_month", "country")
+        show = _format_agg(
+            agg,
+            ["order_create_month", "country"],
+            [t("订单成立月份"), t("国家")],
+        )
+        show = show.sort_values(
+            [t("订单成立月份"), t("国家")],
+            ascending=[False, True],
+        )
+        st.dataframe(show, use_container_width=True, hide_index=True, height=460)
+        st.caption(t(f"共 {len(agg):,} 行"))
+        st.download_button(
+            t("📥 月份×国家 CSV"),
+            data=agg.to_csv(index=False).encode("utf-8-sig"),
+            file_name="nst_shopee_month_country.csv",
+            mime="text/csv",
+            key="dl_month_country",
+        )
+
+
+# ----- Tab 3: 月份 × 店铺 -----
+with tab_shop:
+    if df_income_jpy.empty or df_orders.empty:
+        st.info(t("订单导出 + 拨款明细 都需上传 (店铺信息来自订单导出)。"))
+    else:
+        joined = df_income_jpy.merge(
+            df_orders[["order_no", "shop_name"]].drop_duplicates("order_no"),
+            on="order_no", how="left",
+        )
+        joined["shop_name"] = joined["shop_name"].fillna(t("(无店铺信息)"))
+        agg = _agg_by(joined, "order_create_month", "shop_name")
+        show = _format_agg(
+            agg,
+            ["order_create_month", "shop_name"],
+            [t("订单成立月份"), t("店铺")],
+        )
+        show = show.sort_values(
+            [t("订单成立月份"), t("拨款金额")],
+            ascending=[False, False],
+        )
+        st.dataframe(show, use_container_width=True, hide_index=True, height=460)
+        st.caption(t(f"共 {len(agg):,} 行"))
+        st.download_button(
+            t("📥 月份×店铺 CSV"),
+            data=agg.to_csv(index=False).encode("utf-8-sig"),
+            file_name="nst_shopee_month_shop.csv",
+            mime="text/csv",
+            key="dl_month_shop",
+        )
+
+
+# ----- Tab 4: 月份 × 平台 -----
+with tab_market:
+    if df_income_jpy.empty:
+        st.info(t("拨款明细未上传, 无法汇总。"))
+    else:
+        agg = _agg_by(df_income_jpy, "order_create_month", "platform")
+        show = _format_agg(
+            agg,
+            ["order_create_month", "platform"],
+            [t("订单成立月份"), t("平台")],
+        )
+        show = show.sort_values(
+            [t("订单成立月份"), t("平台")],
+            ascending=[False, True],
+        )
+        st.dataframe(show, use_container_width=True, hide_index=True, height=460)
+        st.caption(t(f"共 {len(agg):,} 行"))
+        st.download_button(
+            t("📥 月份×平台 CSV"),
+            data=agg.to_csv(index=False).encode("utf-8-sig"),
+            file_name="nst_shopee_month_platform.csv",
+            mime="text/csv",
+            key="dl_month_platform",
+        )
+
+
+# ----- Tab 5: 拨款原始 -----
+with tab_raw_i:
+    if df_income_jpy.empty:
+        st.info(t("拨款明细未上传。"))
+    else:
+        st.caption(t(
+            "💴 金额已按 country × 公司固定汇率换算为日元。"
+        ))
+        cols = [
+            "order_create_month", "payout_month", "country", "_jpy_rate",
+            "seller_account", "order_no", "buyer_account",
+            "order_created_at", "payout_date",
+            "gross_price", "product_discount", "refund_amount",
+            "nst_payment", "nst_refund", "nst_bill",
+            "commission", "service_fee", "transaction_fee",
+            "buyer_shipping", "seller_shipping",
+            "payout_amount",
+        ]
+        cols = [c for c in cols if c in df_income_jpy.columns]
+        st.dataframe(
+            df_income_jpy[cols],
+            use_container_width=True, hide_index=True, height=460,
+        )
+        st.caption(t(f"共 {len(df_income_jpy):,} 行 (JPY)"))
+        st.download_button(
+            t("📥 拨款明细 CSV (JPY)"),
+            data=df_income_jpy[cols].to_csv(index=False).encode("utf-8-sig"),
+            file_name="shopee_income_lines_jpy.csv",
+            mime="text/csv",
+            key="dl_i",
+        )
+
+
+# ----- Tab 6: 订单原始 -----
+with tab_raw_o:
+    if df_orders.empty:
+        st.info(t("订单导出.xlsx 未上传。"))
+    else:
+        cols = [
+            "order_no", "platform", "shop_name", "country",
+            "order_create_month",
+            "currency", "local_sku", "unit_price", "ship_qty", "payment_amount",
+        ]
+        cols = [c for c in cols if c in df_orders.columns]
+        st.dataframe(
+            df_orders[cols],
+            use_container_width=True, hide_index=True, height=460,
+        )
+        st.caption(t(f"共 {len(df_orders):,} 条订单"))
+        st.download_button(
+            t("📥 订单导出 CSV"),
+            data=df_orders[cols].to_csv(index=False).encode("utf-8-sig"),
+            file_name="shopee_orders_raw.csv",
+            mime="text/csv",
+            key="dl_o",
+        )
