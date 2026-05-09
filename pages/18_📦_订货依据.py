@@ -96,12 +96,13 @@ months_total = df_all["year_month"].nunique()
 sku_total = df_all["item_code"].nunique()
 risk_counts = df_all["risk_label"].value_counts()
 
-c1, c2, c3, c4, c5 = st.columns(5)
+c1, c2, c3, c4, c5, c6 = st.columns(6)
 c1.metric(t("覆盖月数"), int(months_total))
 c2.metric(t("SKU 总数"), int(sku_total))
 c3.metric(t("🔴 断货风险"), int(risk_counts.get("断货风险", 0)))
 c4.metric(t("🟢 正常"), int(risk_counts.get("正常", 0)))
 c5.metric(t("🟡 压库存"), int(risk_counts.get("压库存", 0)))
+c6.metric(t("⚪ 数据不足"), int(risk_counts.get("数据不足", 0)))
 
 st.divider()
 
@@ -111,7 +112,7 @@ st.divider()
 # ============================================================
 months = sorted(df_all["year_month"].dropna().unique().tolist(), reverse=True)
 locations_all = sorted([x for x in df_all["location"].dropna().unique().tolist() if str(x).strip()])
-risk_options = ["断货风险", "正常", "压库存", "无数据"]
+risk_options = ["断货风险", "正常", "压库存", "数据不足", "无数据"]
 
 f1, f2, f3, f4 = st.columns([1.2, 2, 2, 2])
 
