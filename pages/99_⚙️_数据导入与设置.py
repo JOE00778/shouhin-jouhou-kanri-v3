@@ -270,10 +270,10 @@ with tab_legacy:
 with tab_lark:
     from shared import lark_notify, lark_openapi
 
-    st.subheader(t("🔔 飞书集成 · CMS 自建应用 + 机器人"))
+    st.subheader(t("🔔 飞书集成 · 机器人通知"))
     st.caption(
-        "推荐方案：一个自建应用 (LARK_APP_ID/SECRET) 启用「机器人」能力 → "
-        "既能推消息（替代群机器人 webhook），也能写表格 / 文档"
+        "用 CMS 自建应用启用「机器人」能力 → 推卡片通知到群 / 单人。"
+        "（写飞书表格 API 代码保留备用，stock_monitor 仍在用；CMS 暂不需要）"
     )
 
     # ─────────────────── 当前状态总览 ───────────────────
@@ -303,14 +303,11 @@ with tab_lark:
 
     st.divider()
 
-    # ─────────────────── 方案 A · 自建应用 + 机器人（推荐） ───────────────────
-    st.markdown("### 🤖 方案 A · 自建应用 + 机器人（推荐）")
-    st.caption("一个 App 全包：发消息 / 写表格 / 写文档 / 双向交互")
-
-    with st.expander(t("📖 启用机器人能力 + 配置完整步骤"), expanded=not health["configured"]):
+    # ─────────────────── 配置步骤 ───────────────────
+    with st.expander(t("📖 配置步骤（Boss 操作清单 · 约 8 分钟）"), expanded=not health["configured"]):
         st.markdown(
             """
-**Step 1**：飞书开发者后台 → https://open.feishu.cn/app
+**Step 1**：打开 https://open.feishu.cn/app
 
 - 如果 stock_monitor 已经在用某个 App → **直接复用同一个**（不要再新建）
 - 没有就「**创建企业自建应用**」起名 `SmikieJapan CMS`
@@ -321,35 +318,30 @@ LARK_APP_ID=cli_xxxxxxxx
 LARK_APP_SECRET=xxxxxxxxxxxxxxxx
 ```
 
-**Step 3**：左栏「**应用功能**」→「**机器人**」→ 启用 ⭐
-（这一步是 Boss 这次想加的「机器人功能」关键 — 默认是关着的）
+**Step 3**：左栏「**应用功能 → 机器人 → 启用**」⭐
 
-**Step 4**：左栏「**权限管理**」→ 申请权限：
+**Step 4**：左栏「**权限管理**」→ 仅申请这 3 项核心权限即可：
 
 | 权限 | 用途 |
 |---|---|
-| `im:message:send_as_bot` | 主动给群 / 用户发消息 ⭐ |
-| `im:message` | 接收用户发给机器人的消息（双向用） |
-| `im:chat` | 列出 / 搜索机器人加入的群 |
-| `im:chat.members:read` | 读群成员 |
-| `sheets:spreadsheet` | 写飞书表格（stock_monitor / 月度报告）|
-| `docs:document` | 写云文档（自动报告）|
-| `contact:user.id:readonly` | 按 union_id 查用户 |
+| `im:message:send_as_bot` ⭐ | 给群 / 用户发卡片消息 |
+| `im:chat` | 列出机器人加入的所有群（拉 chat_id 用） |
+| `im:chat.members:read` | 读群成员（可选） |
 
-**Step 5**：「**版本管理与发布**」→ 创建版本 → 提交 → 管理员审批通过
+> stock_monitor 仍在用 `sheets:spreadsheet` 写飞书表格 — 那个权限保持不动；
+> CMS 端通知功能不需要写表格权限。
 
-**Step 6**：**把机器人加进群**（关键）
+**Step 5**：「**版本管理与发布**」→ 创建版本 → 提审
 
-把机器人添加到目标群有 2 种方式：
-1. 群设置 → 群机器人 → 「添加机器人」搜索应用名 → 添加
-2. 群里直接 @ 机器人名字（首次会自动加入）
+**Step 6**：**把机器人加进群** — 群设置 → 添加机器人 → 搜索应用名 → 添加
+（或群里直接 @机器人名字，首次会自动加入）
 
-**Step 7**：拉 chat_id（用下面「列出我的群」按钮，或在 N8N 飞书节点里看）
+**Step 7**：用下面「📋 拉取群列表」按钮拿 chat_id
 
 **Step 8**：写到 `.env`：
 ```
 LARK_DEFAULT_CHAT_ID=oc_xxxxxxxxxxxxxxxxxxxxxxxx       # 默认群
-LARK_CHAT_ROUTES={"_error": "oc_yyy", "shopee_mass_upload": "oc_zzz"}  # 可选 module 路由
+LARK_CHAT_ROUTES={"_error": "oc_yyy", "shopee_mass_upload": "oc_zzz"}  # 可选
 ```
 """
         )
@@ -399,27 +391,6 @@ LARK_CHAT_ROUTES={"_error": "oc_yyy", "shopee_mass_upload": "oc_zzz"}  # 可选 
             )
             st.success("✅ 已发送，去飞书群看") if ok else st.error(
                 "❌ 失败（看上面状态：App 配置 / 权限 / 机器人是否在群里 / chat_id 是否对）")
-
-        st.divider()
-        st.markdown("#### 📋 测试写飞书表格")
-        col_a, col_b = st.columns(2)
-        with col_a:
-            test_token = st.text_input("电子表格 token（URL /sheets/<token>）", key="lark_sheet_token")
-        with col_b:
-            test_sheet_id = st.text_input("子表 ID（URL ?sheet=xxx）", key="lark_sheet_id")
-        if st.button("追加一行测试数据", key="lark_test_sheet"):
-            if not (test_token and test_sheet_id):
-                st.warning("先填表格 token 和 sheet_id")
-            else:
-                try:
-                    n = lark_openapi.sheet_append_rows(
-                        test_token, test_sheet_id,
-                        [["CMS 测试", datetime.now().isoformat(timespec="seconds"), "OK"]],
-                        column_range="A:C",
-                    )
-                    st.success(f"✅ 已追加 {n} 行（去飞书表格刷新看）")
-                except Exception as e:
-                    st.error(f"❌ {e}")
 
     # ─────────────────── 当前路由配置 ───────────────────
     st.divider()
