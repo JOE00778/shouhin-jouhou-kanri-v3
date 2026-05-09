@@ -1175,3 +1175,51 @@ SELECT
   case_qty, order_lot, weight,
   '' AS source_file, imported_at
 FROM item_v2;
+
+
+-- ============================================================
+-- 月度完売率 · アイテム月完売率300 → 库存健康度 + 订货依据数据源
+-- 用于:
+--   · sell_through_rate >= 0.9 → 断货风险 → 加大订货
+--   · 0.5 <= rate < 0.9         → 正常
+--   · rate < 0.5                → 压库存 → 减少订货
+-- 来源: 【輸出】アイテム月完売率300.xls (NST 月度报表, 19 字段)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS item_monthly_turnover (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  item_code         TEXT NOT NULL,           -- アイテム (NetSuite item_code, 例 '01-0641-134' 或 JAN)
+  jan               TEXT,                    -- 通过 item_v2 lookup 补齐 (可空)
+  location          TEXT,                    -- 場所 (仓库:子库)
+  department        TEXT,                    -- 部門
+  year_month        TEXT NOT NULL,           -- YYYYMM
+  -- 期初
+  open_qty          REAL,                    -- 開始時の手持在庫数量
+  open_avg_cost    REAL,                    -- 開始平均原価
+  open_amount       REAL,                    -- 開始時の手持在庫額
+  -- 入库
+  qty_received      REAL,                    -- 受領
+  qty_other_in      REAL,                    -- その他の在庫入庫
+  qty_total_in      REAL,                    -- 合計入庫数量
+  manual_input      REAL,                    -- 入力値
+  last_received_at  TEXT,                    -- 前回の受領日
+  -- 出库
+  qty_sold          REAL,                    -- 売上 (出庫数量)
+  qty_other_out     REAL,                    -- その他の在庫出庫
+  qty_total_out     REAL,                    -- 合計出庫数量
+  out_amount        REAL,                    -- 出庫価額
+  last_sold_at      TEXT,                    -- 前回の売上日
+  -- 期末
+  close_qty         REAL,                    -- 終了時の手持在庫数量
+  close_avg_cost    REAL,                    -- 期末平均原価
+  close_amount      REAL,                    -- 終了時の手持在庫額
+  -- 派生指标 (ingest 端计算)
+  sell_through_rate REAL,                    -- 完売率 = qty_sold / (open_qty + qty_total_in)
+  risk_label        TEXT,                    -- '断货风险' / '正常' / '压库存'
+  imported_at       TEXT NOT NULL,
+  UNIQUE(item_code, location, year_month)
+);
+CREATE INDEX IF NOT EXISTS idx_imt_item     ON item_monthly_turnover(item_code);
+CREATE INDEX IF NOT EXISTS idx_imt_jan      ON item_monthly_turnover(jan);
+CREATE INDEX IF NOT EXISTS idx_imt_ym       ON item_monthly_turnover(year_month);
+CREATE INDEX IF NOT EXISTS idx_imt_rate     ON item_monthly_turnover(sell_through_rate);
+CREATE INDEX IF NOT EXISTS idx_imt_risk     ON item_monthly_turnover(risk_label);

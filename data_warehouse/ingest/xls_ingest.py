@@ -879,6 +879,145 @@ def ingest_item_summary(path, conn, *, source_name: str | None = None) -> dict:
 
 
 # ============================================================
+# Ingestor 10：item_monthly_turnover（アイテム月完売率300）
+# ============================================================
+def ingest_monthly_turnover(
+    path, conn, *, source_name: str | None = None
+) -> dict:
+    """アイテム月完売率300.xls → item_monthly_turnover (按 item_code × location × month UPSERT).
+
+    19 列, header_row=7, period 在 row 4.
+    sell_through_rate = qty_sold / (open_qty + qty_total_in)
+    risk_label: ≥0.9 断货风险 / 0.5-0.9 正常 / <0.5 压库存
+    """
+    path = Path(path)
+    source_name = source_name or path.name
+    period_start, period_end = _extract_period(path)
+    # year_month: 取 period_start 的 YYYYMM
+    year_month = period_start.replace("-", "")[:6] if period_start else ""
+
+    run_id = _start_run(conn, "monthly_turnover", source_name)
+
+    # 同 (period_start, period_end) 重新上传 → 删旧再插
+    if year_month:
+        conn.execute(
+            "DELETE FROM item_monthly_turnover WHERE year_month = ?",
+            (year_month,),
+        )
+
+    rows = parse_to_dicts(path, header_row=7)
+
+    # 预读 item_code → jan 映射 (从 item_v2)
+    item_to_jan: dict[str, str] = {}
+    try:
+        cur = conn.execute("SELECT item_code, jan FROM item_v2 WHERE item_code IS NOT NULL")
+        for row in cur.fetchall():
+            ic = row[0] if not hasattr(row, "keys") else row["item_code"]
+            j = row[1] if not hasattr(row, "keys") else row["jan"]
+            if ic and j:
+                item_to_jan[str(ic)] = str(j)
+    except Exception:
+        item_to_jan = {}
+
+    sql = """
+        INSERT INTO item_monthly_turnover (
+            item_code, jan, location, department, year_month,
+            open_qty, open_avg_cost, open_amount,
+            qty_received, qty_other_in, qty_total_in,
+            manual_input, last_received_at,
+            qty_sold, qty_other_out, qty_total_out, out_amount, last_sold_at,
+            close_qty, close_avg_cost, close_amount,
+            sell_through_rate, risk_label,
+            imported_at
+        ) VALUES (
+            :item_code, :jan, :location, :department, :year_month,
+            :open_qty, :open_avg_cost, :open_amount,
+            :qty_received, :qty_other_in, :qty_total_in,
+            :manual_input, :last_received_at,
+            :qty_sold, :qty_other_out, :qty_total_out, :out_amount, :last_sold_at,
+            :close_qty, :close_avg_cost, :close_amount,
+            :sell_through_rate, :risk_label,
+            :imported_at
+        )
+    """
+    now = _now_iso()
+    inserted = errors = 0
+    for n, raw in enumerate(rows, start=1):
+        try:
+            item_code = _to_str(raw.get("アイテム"))
+            # 跳过分组行 (アイテム 为空 或 値是分类标签)
+            if not item_code:
+                continue
+            if item_code in {"在庫アイテム", "合計", "総合計", "総計"}:
+                continue
+
+            location = _to_str(raw.get("場所"))
+            department = _to_str(raw.get("部門"))
+
+            open_qty = _to_float(raw.get("開始時の手持在庫数量"))
+            qty_total_in = _to_float(raw.get("合計入庫数量"))
+            qty_sold = _to_float(raw.get("売上"))
+
+            # 派生 sell-through rate
+            denom = (open_qty or 0.0) + (qty_total_in or 0.0)
+            rate = (qty_sold or 0.0) / denom if denom > 0 else None
+
+            if rate is None:
+                risk_label = "无数据"
+            elif rate >= 0.9:
+                risk_label = "断货风险"
+            elif rate < 0.5:
+                risk_label = "压库存"
+            else:
+                risk_label = "正常"
+
+            payload = {
+                "item_code": item_code,
+                "jan": item_to_jan.get(item_code),
+                "location": location,
+                "department": department,
+                "year_month": year_month,
+                "open_qty": open_qty,
+                "open_avg_cost": _to_float(raw.get("開始平均原価")),
+                "open_amount": _to_float(raw.get("開始時の手持在庫額")),
+                "qty_received": _to_float(raw.get("受領")),
+                "qty_other_in": _to_float(raw.get("その他の在庫入庫")),
+                "qty_total_in": qty_total_in,
+                "manual_input": _to_float(raw.get("入力値")),
+                "last_received_at": _to_str(raw.get("前回の受領日")),
+                "qty_sold": qty_sold,
+                "qty_other_out": _to_float(raw.get("その他の在庫出庫")),
+                "qty_total_out": _to_float(raw.get("合計出庫数量")),
+                "out_amount": _to_float(raw.get("出庫価額")),
+                "last_sold_at": _to_str(raw.get("前回の売上日")),
+                "close_qty": _to_float(raw.get("終了時の手持在庫数量")),
+                "close_avg_cost": _to_float(raw.get("期末平均原価")),
+                "close_amount": _to_float(raw.get("終了時の手持在庫額")),
+                "sell_through_rate": rate,
+                "risk_label": risk_label,
+                "imported_at": now,
+            }
+            conn.execute(sql, payload)
+            inserted += 1
+        except Exception as e:
+            errors += 1
+            try:
+                _record_error(conn, run_id, n, str(e), raw)
+            except Exception:
+                pass
+
+    _finalize_run(conn, run_id, total=len(rows), inserted=inserted, errors=errors)
+    return {
+        "run_id": run_id,
+        "total": len(rows),
+        "inserted": inserted,
+        "errors": errors,
+        "period_start": period_start,
+        "period_end": period_end,
+    }
+
+
+# ============================================================
 # 自动派发：根据文件名启发式选择 ingestor
 # ============================================================
 INGESTOR_REGISTRY: dict[str, callable] = {
@@ -891,14 +1030,17 @@ INGESTOR_REGISTRY: dict[str, callable] = {
     "shopee_orders": ingest_shopee_orders_raw,
     "shopee_income": ingest_shopee_income,
     "item_summary": ingest_item_summary,
+    "monthly_turnover": ingest_monthly_turnover,
 }
 
 
 def detect_ingestor(filename: str) -> str | None:
     """根据文件名启发式判断使用哪个 ingestor。"""
     n = filename
-    if "在庫数残数" in n or "通常在庫" in n:
+    if "在庫数残数" in n or "通常在庫" in n or "在庫のスナップショット" in n:
         return "inventory"
+    if "月完売率" in n or "完売率" in n:
+        return "monthly_turnover"
     if "在庫回転率" in n or "回転率" in n:
         return "turnover"
     if "ASEAN" in n and "前日" in n:
