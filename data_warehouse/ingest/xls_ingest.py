@@ -83,6 +83,58 @@ def _record_error(
     )
 
 
+# Phase 4 · 通用 v2 helper
+def _is_valid_jan(jan) -> bool:
+    """JAN 必须是 8-13 位数字字符串。"""
+    if not jan:
+        return False
+    s = str(jan).strip()
+    return s.isdigit() and 8 <= len(s) <= 13
+
+
+def _ensure_shop(conn, shop_id: str, market: str = "JP", platform: str = "unknown") -> None:
+    """ingest 销售时自动 upsert shop 主档（避免 shop 表缺该 shop_id）。"""
+    if not shop_id:
+        return
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO shop "
+            "(shop_id, market_id, platform, display_name, currency, owner, active, created_at) "
+            "VALUES (?, ?, ?, ?, NULL, NULL, 1, ?) ",
+            (shop_id, market, platform, shop_id, _now_iso()),
+        )
+    except Exception:
+        pass
+
+
+def _infer_shop_meta(shop_id: str) -> tuple[str, str]:
+    """从 shop_id 字符串推断 (market, platform)。规则尽量保守。"""
+    if not shop_id:
+        return "JP", "unknown"
+    s = shop_id.lower()
+    # 平台
+    if any(k in s for k in ("shopee", "smkj", "mtkshop")):
+        platform = "shopee"
+    elif "lazada" in s or "lzd" in s:
+        platform = "lazada"
+    elif "tokopedia" in s or "tpd" in s:
+        platform = "tokopedia"
+    elif "amazon" in s or "amzn" in s:
+        platform = "amazon"
+    elif "coupang" in s or "クーパン" in shop_id:
+        platform = "coupang"
+    elif "rakuten" in s or "楽天" in shop_id:
+        platform = "rakuten"
+    else:
+        platform = "unknown"
+    # 市场
+    for code in ("tw", "sg", "my", "ph", "th", "vn", "id", "jp", "us", "kr", "cn", "br"):
+        if (f" {code} " in f" {s} " or f"_{code}" in s or f"-{code}" in s
+                or s.endswith(code) or s.startswith(code + "_")):
+            return code.upper(), platform
+    return "JP", platform
+
+
 # ============================================================
 # Period 解析（从 NetSuite 报表第 3 行 "2026年04月01日 - 2026年04月30日"）
 # ============================================================
@@ -111,73 +163,125 @@ def _extract_period(path: Path) -> tuple[str, str]:
 def ingest_inventory_snapshot(
     path: Path, conn: sqlite3.Connection, *, source_name: str | None = None
 ) -> dict:
-    """喂 inventory_snapshot 表。每次导入用「文件 mtime」作为 snapshot_at。"""
+    """直写 item_inventory_snapshot_v2（Phase 4.2）· jan 强制 8-13 位数字。
+
+    数据流：xls → item_inventory_snapshot_v2（覆盖快照）+ 同步 item_v2.汇总字段
+    """
     path = Path(path)
     source_name = source_name or path.name
     snapshot_at = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).isoformat()
 
-    run_id = _start_run(conn, "inventory_snapshot", source_name)
-    inserted = 0
-    errors = 0
+    run_id = _start_run(conn, "item_inventory_snapshot_v2", source_name)
+    inserted = errors = skipped_no_jan = skipped_other_loc = 0
 
-    # 在库快照只关心最新一份 → 整表 truncate 再 INSERT (避免累积)
-    conn.execute("DELETE FROM inventory_snapshot")
+    # 整表覆盖（最新快照）
+    conn.execute("DELETE FROM item_inventory_snapshot_v2")
 
     rows = parse_to_dicts(path, header_row=0)
     sql = """
-        INSERT OR REPLACE INTO inventory_snapshot (
-            internal_id, item_code, upc, display_name, status, bin_number, location,
-            handling_status, qty_on_hand, qty_committed, qty_backorder,
-            std_cost, total_amount, avg_cost, owner, department,
-            snapshot_at, source_file, imported_at
+        INSERT OR REPLACE INTO item_inventory_snapshot_v2 (
+            jan, item_code, internal_id, display_name,
+            location, bin_number, snapshot_at,
+            qty_on_hand, qty_committed, qty_backorder,
+            std_cost, avg_cost, total_amount,
+            handling_status, status, owner, department,
+            imported_at
         ) VALUES (
-            :internal_id, :item_code, :upc, :display_name, :status, :bin_number, :location,
-            :handling_status, :qty_on_hand, :qty_committed, :qty_backorder,
-            :std_cost, :total_amount, :avg_cost, :owner, :department,
-            :snapshot_at, :source_file, :imported_at
+            :jan, :item_code, :internal_id, :display_name,
+            :location, :bin_number, :snapshot_at,
+            :qty_on_hand, :qty_committed, :qty_backorder,
+            :std_cost, :avg_cost, :total_amount,
+            :handling_status, :status, :owner, :department,
+            :imported_at
         )
     """
     now = _now_iso()
-    skipped_other_loc = 0
+
     for n, raw in enumerate(rows, start=1):
         try:
+            jan = _to_str(raw.get("UPCコード"))
+            internal_id = _to_str(raw.get("内部ID"))
+            item_code = _to_str(raw.get("アイテム"))
+            # 跳过空行 / 汇总行
+            if not internal_id or not item_code:
+                continue
+            if internal_id in ("総合計", "合計"):
+                continue
+            # JAN 强制
+            if not _is_valid_jan(jan):
+                skipped_no_jan += 1
+                continue
+            # 仓库白名单
+            location = _to_str(raw.get("場所"))
+            if location not in ALLOWED_INVENTORY_LOCATIONS:
+                skipped_other_loc += 1
+                continue
+
             payload = {
-                "internal_id": _to_str(raw.get("内部ID")),
-                "item_code": _to_str(raw.get("アイテム")),
-                "upc": _to_str(raw.get("UPCコード")),
+                "jan": jan,
+                "item_code": item_code,
+                "internal_id": internal_id,
                 "display_name": _to_str(raw.get("表示名")),
-                "status": _to_str(raw.get("ステータス")),
+                "location": location,
                 "bin_number": _to_str(raw.get("保管棚番号")),
-                "location": _to_str(raw.get("場所")),
-                "handling_status": _to_str(raw.get("取扱区分")),
+                "snapshot_at": snapshot_at,
                 "qty_on_hand": _to_float(raw.get("手持合計")),
                 "qty_committed": _to_float(raw.get("確保済合計")),
                 "qty_backorder": _to_float(raw.get("バック・オーダー合計")),
                 "std_cost": _to_float(raw.get("アイテム定義原価")),
                 "total_amount": _to_float(raw.get("合計金額")),
                 "avg_cost": _to_float(raw.get("平均原価合計")),
+                "handling_status": _to_str(raw.get("取扱区分")),
+                "status": _to_str(raw.get("ステータス")),
                 "owner": _to_str(raw.get("商品担当者")),
                 "department": _to_str(raw.get("部門")),
-                "snapshot_at": snapshot_at,
-                "source_file": source_name,
                 "imported_at": now,
             }
-            if not payload["internal_id"] or not payload["item_code"]:
-                continue  # 空行 或 「総合計」/「合計」等汇总行
-            if payload["internal_id"] in ("総合計", "合計"):
-                continue
-            # 仓库白名单：只保留 JD-物流-千葉 + 弁天倉庫
-            if payload["location"] not in ALLOWED_INVENTORY_LOCATIONS:
-                skipped_other_loc += 1
-                continue
             conn.execute(sql, payload)
             inserted += 1
         except Exception as e:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
             errors += 1
-            _record_error(conn, run_id, n, str(e), raw)
+            try:
+                _record_error(conn, run_id, n, str(e), raw)
+                conn.commit()
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+
+    # 同步 item_v2 库存汇总字段（按 jan 聚合）
+    try:
+        conn.execute(
+            """
+            UPDATE item_v2 SET
+              on_hand_total = COALESCE((
+                SELECT SUM(qty_on_hand) FROM item_inventory_snapshot_v2 i WHERE i.jan = item_v2.jan
+              ), 0),
+              qty_committed_total = COALESCE((
+                SELECT SUM(qty_committed) FROM item_inventory_snapshot_v2 i WHERE i.jan = item_v2.jan
+              ), 0),
+              total_amount = COALESCE((
+                SELECT SUM(total_amount) FROM item_inventory_snapshot_v2 i WHERE i.jan = item_v2.jan
+              ), 0),
+              updated_at = ?
+            WHERE jan IN (SELECT DISTINCT jan FROM item_inventory_snapshot_v2)
+            """,
+            (now,),
+        )
+    except Exception:
+        pass  # item_v2 还没建（首次 ingest）则跳过
 
     _finalize_run(conn, run_id, total=len(rows), inserted=inserted, errors=errors)
-    return {"run_id": run_id, "total": len(rows), "inserted": inserted, "errors": errors}
+    return {
+        "run_id": run_id, "total": len(rows),
+        "inserted": inserted, "errors": errors,
+        "period_start": None, "period_end": None,
+    }
 
 
 # ============================================================
@@ -216,160 +320,169 @@ def _ingest_sales(
     conn: sqlite3.Connection,
     *,
     source: str,
+    granularity: str,               # 'monthly' / 'daily' / 'cumulative'
     has_store_column: bool,        # CSV 列里直接有 FB_店舗
     has_store_groups: bool,         # CSV 用「店铺标题行 + SKU 明细行」分组结构
     has_rank: bool,
     has_purchase_price: bool,
-    has_upc: bool = True,           # 报表是否有 UPCコード 列（前日报表只有 7 列无 UPC）
+    has_upc: bool = True,
     source_name: str | None = None,
 ) -> dict:
-    """通用销售导入。
+    """通用销售导入 · 直写 shop_sales（Phase 4.2）。
 
-    支持 3 种 store 形态：
-    - has_store_column=True  : 每行直接有 FB_店舗 列（asean_monthly / export_store）
-    - has_store_groups=True  : NetSuite 分组报表，需有状态地从分组标题行提取 store（asean_daily）
-    - 都 False                : 纯 SKU 维度，无店铺信息（export_item）
+    数据流：xls → shop_sales(granularity, period, shop_id, jan)
+    JAN 强制 8-13 位数字；空行 / 汇总行 / 无 JAN 行跳过。
     """
     path = Path(path)
     source_name = source_name or path.name
     period_start, period_end = _extract_period(path)
 
-    run_id = _start_run(conn, f"sales_line.{source}", source_name)
-    inserted = 0
-    errors = 0
+    run_id = _start_run(conn, f"shop_sales.{source}", source_name)
+    inserted = errors = skipped_no_jan = 0
 
-    # 先删除同 (source, period) 的旧数据 → 重新上传只更新不累计
+    # 先删除同 (source, period, granularity) 的旧数据
     conn.execute(
-        "DELETE FROM sales_line WHERE source = ? AND period_start = ? AND period_end = ?",
-        (source, period_start, period_end),
+        "DELETE FROM shop_sales WHERE source = ? AND period_start = ? AND period_end = ? AND granularity = ?",
+        (source, period_start, period_end, granularity),
     )
 
     rows = parse_to_dicts(path, header_row=6)
     sql = """
-        INSERT INTO sales_line (
-            store, item_code, upc, display_name, handling_status, maker, rank,
-            qty_sold, unit_purchase_price, revenue, defined_cost, gross_profit, gross_margin,
-            period_start, period_end, source, source_file, imported_at
+        INSERT OR REPLACE INTO shop_sales (
+            shop_id, jan, granularity, period_start, period_end,
+            qty_sold, unit_price, revenue, revenue_jpy,
+            cost, gross_profit, gross_margin, rank, source, imported_at
         ) VALUES (
-            :store, :item_code, :upc, :display_name, :handling_status, :maker, :rank,
-            :qty_sold, :unit_purchase_price, :revenue, :defined_cost, :gross_profit, :gross_margin,
-            :period_start, :period_end, :source, :source_file, :imported_at
+            :shop_id, :jan, :granularity, :period_start, :period_end,
+            :qty_sold, :unit_price, :revenue, :revenue_jpy,
+            :cost, :gross_profit, :gross_margin, :rank, :source, :imported_at
         )
     """
     now = _now_iso()
-    current_store: str | None = None  # for stateful group parsing
+    current_store: str | None = None
+    seen_shops: set[str] = set()
 
     for n, raw in enumerate(rows, start=1):
         try:
             item_code = _to_str(raw.get("アイテム"))
             display_name = _to_str(raw.get("表示名"))
 
-            # 处理店铺分组标题
+            # 店铺分组标题
             if _is_store_group_header(item_code, display_name):
                 if has_store_groups:
                     current_store = item_code
-                continue  # 不论哪种模式，分组标题行都不入库
+                continue
 
             if not item_code:
                 continue
-
-            # 跳过小计/总计行: A 列「合計 - 店铺名」/「合计」/「総合計」
-            # 例: 「合計 - Shopee J-Beauty Hub PH」(前日报表底部小计)
             if any(k in item_code for k in ("合計", "合计", "総合計", "総計")):
                 continue
 
-            # UPC (= JAN) 是销售数据基准 (Boss 决定)
-            # 仅在报表含 UPCコード 列的 source 才强制检查（asean_daily 前日报只有 7 列无 UPC）
+            # JAN 强制（无 UPC 报表 fallback 用 item_code 如果是 13 位）
             upc = _to_str(raw.get("UPCコード"))
-            if has_upc and not upc:
+            if has_upc:
+                jan = upc
+            else:
+                jan = upc if _is_valid_jan(upc) else item_code
+            if not _is_valid_jan(jan):
+                skipped_no_jan += 1
                 continue
 
-            # 决定 store 值
+            # 决定 shop_id
             if has_store_column:
                 store = _to_str(raw.get("FB_店舗"))
             elif has_store_groups:
                 store = current_store
             else:
                 store = None
+            shop_id = store or f"netsuite_{source}"
 
+            # 自动建 shop 主档（一个 source 内只建一次）
+            if shop_id not in seen_shops:
+                market, platform = _infer_shop_meta(shop_id)
+                _ensure_shop(conn, shop_id, market=market, platform=platform)
+                seen_shops.add(shop_id)
+
+            revenue = _to_float(raw.get("総収益"))
             payload = {
-                "store": store,
-                "item_code": item_code,
-                "upc": upc,
-                "display_name": display_name,
-                "handling_status": _to_str(
-                    raw.get("取扱区分") or raw.get("取扱区分: 名前") or raw.get("商品取扱区分: 名前")
-                ),
-                "maker": _to_str(raw.get("メーカー名")),  # K 列（ASEAN 集計専用 R7 第 11 列）
-                "rank": _to_str(raw.get("商品ランク")) if has_rank else None,
+                "shop_id": shop_id,
+                "jan": jan,
+                "granularity": granularity,
+                "period_start": period_start or "",
+                "period_end": period_end or "",
                 "qty_sold": _to_float(raw.get("販売数量")),
-                "unit_purchase_price": _to_float(raw.get("購入価格（単価）")) if has_purchase_price else None,
-                "revenue": _to_float(raw.get("総収益")),
-                "defined_cost": _to_float(raw.get("定義原価")),
+                "unit_price": _to_float(raw.get("購入価格(単価)")) if has_purchase_price else None,
+                "revenue": revenue,
+                "revenue_jpy": revenue,  # 当地币 = JPY 假设（NetSuite ASEAN 报表已折算）
+                "cost": _to_float(raw.get("定義原価")),
                 "gross_profit": _to_float(raw.get("粗利")),
                 "gross_margin": _to_float(raw.get("粗利率")),
-                "period_start": period_start,
-                "period_end": period_end,
+                "rank": _to_str(raw.get("商品ランク")) if has_rank else None,
                 "source": source,
-                "source_file": source_name,
                 "imported_at": now,
             }
             conn.execute(sql, payload)
             inserted += 1
         except Exception as e:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
             errors += 1
-            _record_error(conn, run_id, n, str(e), raw)
+            try:
+                _record_error(conn, run_id, n, str(e), raw)
+                conn.commit()
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
 
     _finalize_run(conn, run_id, total=len(rows), inserted=inserted, errors=errors)
-    # inserted=0 但 total>0 → 字段名/格式不匹配的 silent failure，必须显式报错
     if len(rows) > 0 and inserted == 0:
         first_keys = list(rows[0].keys()) if rows else []
         raise RuntimeError(
-            f"读取到 {len(rows)} 行但 0 行入库——报表列名跟 ingester 预期不符。"
-            f"检测到的列：{first_keys}。"
-            f"期待列至少含：アイテム / 表示名 / 販売数量 / 総収益 / 定義原価 / 粗利 / 粗利率"
+            f"读取到 {len(rows)} 行但 0 行入库 (skipped_no_jan={skipped_no_jan})。"
+            f"列名：{first_keys}。期待 アイテム / UPCコード / 販売数量 / 総収益 / 粗利"
         )
     return {
-        "run_id": run_id,
-        "total": len(rows),
-        "inserted": inserted,
-        "errors": errors,
-        "period_start": period_start,
-        "period_end": period_end,
+        "run_id": run_id, "total": len(rows),
+        "inserted": inserted, "errors": errors,
+        "period_start": period_start, "period_end": period_end,
     }
 
 
 def ingest_sales_asean_monthly(path, conn, **kw):
-    """ASEAN 店舗別売上 集計専用（每行有 FB_店舗 列）"""
+    """ASEAN 店舗別売上 集計専用 → shop_sales (granularity='monthly')"""
     return _ingest_sales(
-        path, conn, source="asean_monthly",
+        path, conn, source="asean_monthly", granularity="monthly",
         has_store_column=True, has_store_groups=False,
         has_rank=False, has_purchase_price=False, **kw,
     )
 
 
 def ingest_sales_asean_daily(path, conn, **kw):
-    """ASEAN 店舗別売上（前日）（NetSuite 分组报表 · 7 列无 UPC · 店铺标题行 + SKU 明细行）"""
+    """ASEAN 店舗別売上(前日) → shop_sales (granularity='daily')"""
     return _ingest_sales(
-        path, conn, source="asean_daily",
+        path, conn, source="asean_daily", granularity="daily",
         has_store_column=False, has_store_groups=True,
         has_rank=False, has_purchase_price=False, has_upc=False, **kw,
     )
 
 
 def ingest_sales_export_item(path, conn, **kw):
-    """輸出 アイテム別売上（概要）（纯 SKU 维度，带 rank + 单价，无店铺）"""
+    """輸出 アイテム別売上 → shop_sales (granularity='monthly', shop_id=netsuite_export_item)"""
     return _ingest_sales(
-        path, conn, source="export_item",
+        path, conn, source="export_item", granularity="monthly",
         has_store_column=False, has_store_groups=False,
         has_rank=True, has_purchase_price=True, **kw,
     )
 
 
 def ingest_sales_export_store(path, conn, **kw):
-    """輸出 店舗別売上（每行有 FB_店舗 列 + 商品ランク）"""
+    """輸出 店舗別売上 → shop_sales (granularity='monthly')"""
     return _ingest_sales(
-        path, conn, source="export_store",
+        path, conn, source="export_store", granularity="monthly",
         has_store_column=True, has_store_groups=False,
         has_rank=True, has_purchase_price=False, **kw,
     )
@@ -688,20 +801,79 @@ def ingest_shopee_income(
 
 
 def ingest_item_summary(path, conn, *, source_name: str | None = None) -> dict:
-    """アイテム.xls (NetSuite SpreadsheetML) → nst_item_summary 表.
-    Wrapper over xml_netsuite.ItemSummaryIngestor for INGESTOR_REGISTRY 接口统一."""
+    """アイテム.xls 8 列 → 直写 item_v2（Phase 4.2）。
+
+    8 列对应 アイテム.xls：A=item_code, B=upc(jan), C=display_name,
+        D=handling_status, E=std_cost, F=available, G=available_on_hand, H=avg_cost
+    JAN 强制 8-13 位数字；既有 jan UPSERT 更新 std_cost / avg_cost / handling_status。
+    """
     from data_warehouse.ingest.xml_netsuite import ItemSummaryIngestor
     path = Path(path)
     source_name = source_name or path.name
-    # 整表 truncate 再插 (覆盖性快照)
-    conn.execute("DELETE FROM nst_item_summary")
-    r = ItemSummaryIngestor().run(str(path), conn, source_name=source_name)
-    # 适配 INGESTOR_REGISTRY 期望的 result 格式
+    run_id = _start_run(conn, "item_v2.item_summary", source_name)
+    inserted = errors = skipped_no_jan = 0
+
+    # 用 ItemSummaryIngestor 解析 XML 结构
+    parser = ItemSummaryIngestor()
+    rows = parser.parse_rows(str(path))
+
+    sql = """
+        INSERT INTO item_v2 (
+            jan, item_code, upc, display_name, handling_status,
+            std_cost, avg_cost, source_priority, imported_at, updated_at
+        ) VALUES (
+            :jan, :item_code, :upc, :display_name, :handling_status,
+            :std_cost, :avg_cost, 'nst_item_summary', :now, :now
+        )
+        ON CONFLICT (jan) DO UPDATE SET
+          item_code = EXCLUDED.item_code,
+          display_name = EXCLUDED.display_name,
+          handling_status = EXCLUDED.handling_status,
+          std_cost = EXCLUDED.std_cost,
+          avg_cost = EXCLUDED.avg_cost,
+          updated_at = EXCLUDED.updated_at
+    """
+    now = _now_iso()
+    for n, raw in enumerate(rows, start=1):
+        try:
+            payload = parser.parse_row(raw)
+            if payload is None:
+                continue
+            jan = (payload.get("upc") or "").strip()
+            if not _is_valid_jan(jan):
+                skipped_no_jan += 1
+                continue
+            params = {
+                "jan": jan,
+                "item_code": payload.get("item_code"),
+                "upc": jan,
+                "display_name": payload.get("display_name"),
+                "handling_status": payload.get("handling_status"),
+                "std_cost": payload.get("std_cost"),
+                "avg_cost": payload.get("avg_cost"),
+                "now": now,
+            }
+            conn.execute(sql, params)
+            inserted += 1
+        except Exception as e:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            errors += 1
+            try:
+                _record_error(conn, run_id, n, str(e), raw)
+                conn.commit()
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+
+    _finalize_run(conn, run_id, total=len(rows), inserted=inserted, errors=errors)
     return {
-        "run_id": r.get("run_id"),
-        "total": r.get("total_rows", 0),
-        "inserted": r.get("inserted", 0),
-        "errors": r.get("errors", 0),
+        "run_id": run_id, "total": len(rows),
+        "inserted": inserted, "errors": errors,
         "period_start": None, "period_end": None,
     }
 
