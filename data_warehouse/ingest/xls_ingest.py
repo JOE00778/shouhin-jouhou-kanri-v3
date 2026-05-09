@@ -331,7 +331,9 @@ def ingest_inventory_snapshot_multi(
 
     - 解析 row 6 (主表头, 仓库列表) + row 7 (子表头, 8 子字段)
     - 写入 item_inventory_snapshot_v2: 每个 (jan, location) 一行（不含合計行）
-    - total_amount = 平均原価 × (手持 + 注文待ち + 輸送中)
+    - total_amount = 平均原価 × (手持 + 在途)
+      · 弁天倉庫: 仅手持 (没有在途库存)
+      · 其他仓库 (JD-物流-千葉 等): 手持 + 注文待ち + 輸送中
     - 同步 item_v2.{on_hand_total, on_order_total, qty_committed_total, total_amount}
     """
     path = Path(path)
@@ -414,14 +416,18 @@ def ingest_inventory_snapshot_multi(
             tot_oo = _cell(total_idx, "注文済") or 0.0
             tot_cm = _cell(total_idx, "確保済") or 0.0
             # 金额类: per-warehouse avg × qty 后求和（合計 列的平均原価 是各仓 SUM 不可直用）
+            # 在途规则: 弁天倉庫 不会有在途库存 (Boss 2026-05-10 规则), 其他仓库可能有
             jan_total_amt = 0.0
             for wh in data_warehouses:
                 idx_map = col_index.get(wh, {})
                 wh_avg = _cell(idx_map, "平均原価") or 0.0
                 wh_oh = _cell(idx_map, "手持") or 0.0
-                wh_wt = _cell(idx_map, "注文待ち") or 0.0
-                wh_tr = _cell(idx_map, "輸送中") or 0.0
-                jan_total_amt += wh_avg * (wh_oh + wh_wt + wh_tr)
+                if wh == "弁天倉庫":
+                    jan_total_amt += wh_avg * wh_oh
+                else:
+                    wh_wt = _cell(idx_map, "注文待ち") or 0.0
+                    wh_tr = _cell(idx_map, "輸送中") or 0.0
+                    jan_total_amt += wh_avg * (wh_oh + wh_wt + wh_tr)
             item_totals[jan] = {
                 "on_hand_total": tot_oh,
                 "on_order_total": tot_oo,
@@ -444,8 +450,13 @@ def ingest_inventory_snapshot_multi(
                 # backorder 在新文件不存在; 用「注文待ち」近似（语义最接近）
                 qty_backorder = qty_waiting
 
-                # total_amount = 平均原価 × (手持 + 注文待ち + 輸送中)
-                qty_for_amt = (qty_on_hand or 0.0) + (qty_waiting or 0.0) + (qty_transit or 0.0)
+                # total_amount = 平均原価 × (手持 [+ 在途])
+                # 弁天倉庫: 仅手持, 没有在途库存 (Boss 2026-05-10 规则)
+                # 其他仓库: 手持 + 注文待ち + 輸送中
+                if wh == "弁天倉庫":
+                    qty_for_amt = (qty_on_hand or 0.0)
+                else:
+                    qty_for_amt = (qty_on_hand or 0.0) + (qty_waiting or 0.0) + (qty_transit or 0.0)
                 total_amount = (avg_cost or 0.0) * qty_for_amt if avg_cost else None
 
                 payload = {
