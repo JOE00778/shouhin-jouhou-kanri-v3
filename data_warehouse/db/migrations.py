@@ -14,7 +14,7 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = 16
+SCHEMA_VERSION = 17
 SCHEMA_FILE = Path(__file__).parent / "schema.sql"
 
 # 增量 ALTER（旧 db 已建过表,补充缺失列）
@@ -25,6 +25,7 @@ ALTERS: list[tuple[str, str]] = [
     ("item_v2", "department TEXT"),
     ("item_v2", "qty_committed_total REAL"),
     ("item_v2", "total_amount REAL"),
+    ("item_v2", "owner TEXT"),
     ("item_inventory_snapshot_v2", "item_code TEXT"),
     ("item_inventory_snapshot_v2", "internal_id TEXT"),
     ("item_inventory_snapshot_v2", "display_name TEXT"),

@@ -1256,6 +1256,106 @@ def ingest_monthly_turnover(
 
 
 # ============================================================
+# Ingestor 11：item_master_v2（輸出アイテムCMSData用結果.xls · 15 列, R1 表头）
+# ============================================================
+def ingest_item_master_v2(
+    path, conn, *, source_name: str | None = None
+) -> dict:
+    """輸出アイテムCMSData用結果204.xls 15 列 → 直写 item_v2.
+
+    列: 内部ID/名前/UPCコード/表示名/メーカー名/商品ランク/取扱区分/部門/
+        商品担当者/平均原価/アイテム定義原価/前回購入価格/カートン入数/商品重量(g)/作成日
+
+    JAN 强制 8-13 位; 已有 jan UPSERT 更新。
+    """
+    path = Path(path)
+    source_name = source_name or path.name
+    run_id = _start_run(conn, "item_master_v2", source_name)
+    inserted = errors = skipped_no_jan = 0
+
+    rows = parse_to_dicts(path, header_row=0)
+
+    sql = """
+        INSERT INTO item_v2 (
+            jan, item_code, internal_id, upc, display_name,
+            maker, rank, handling_status, department, owner,
+            avg_cost, std_cost, actual_cost, case_qty, weight,
+            source_priority, imported_at, updated_at
+        ) VALUES (
+            :jan, :item_code, :internal_id, :jan, :display_name,
+            :maker, :rank, :handling_status, :department, :owner,
+            :avg_cost, :std_cost, :actual_cost, :case_qty, :weight,
+            'nst_cmsdata', :now, :now
+        )
+        ON CONFLICT (jan) DO UPDATE SET
+            item_code = EXCLUDED.item_code,
+            internal_id = EXCLUDED.internal_id,
+            upc = EXCLUDED.upc,
+            display_name = EXCLUDED.display_name,
+            maker = EXCLUDED.maker,
+            rank = EXCLUDED.rank,
+            handling_status = EXCLUDED.handling_status,
+            department = EXCLUDED.department,
+            owner = EXCLUDED.owner,
+            avg_cost = EXCLUDED.avg_cost,
+            std_cost = EXCLUDED.std_cost,
+            actual_cost = EXCLUDED.actual_cost,
+            case_qty = EXCLUDED.case_qty,
+            weight = EXCLUDED.weight,
+            updated_at = EXCLUDED.updated_at
+    """
+    now = _now_iso()
+    for n, raw in enumerate(rows, start=1):
+        try:
+            jan = _to_str(raw.get("UPCコード"))
+            if not _is_valid_jan(jan):
+                skipped_no_jan += 1
+                continue
+            case_qty_raw = _to_float(raw.get("カートン入数"))
+            payload = {
+                "jan": jan,
+                "item_code": _to_str(raw.get("名前")),
+                "internal_id": _to_str(raw.get("内部ID")),
+                "display_name": _to_str(raw.get("表示名")),
+                "maker": _to_str(raw.get("メーカー名")),
+                "rank": _to_str(raw.get("商品ランク")),
+                "handling_status": _to_str(raw.get("取扱区分")),
+                "department": _to_str(raw.get("部門")),
+                "owner": _to_str(raw.get("商品担当者")),
+                "avg_cost": _to_float(raw.get("平均原価")),
+                "std_cost": _to_float(raw.get("アイテム定義原価")),
+                "actual_cost": _to_float(raw.get("前回購入価格")),
+                "case_qty": int(case_qty_raw) if case_qty_raw is not None else None,
+                "weight": _to_float(raw.get("商品重量(g)")),
+                "now": now,
+            }
+            conn.execute(sql, payload)
+            inserted += 1
+        except Exception as e:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            errors += 1
+            try:
+                _record_error(conn, run_id, n, str(e), raw)
+                conn.commit()
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+
+    _finalize_run(conn, run_id, total=len(rows), inserted=inserted, errors=errors)
+    return {
+        "run_id": run_id, "total": len(rows),
+        "inserted": inserted, "errors": errors,
+        "skipped_no_jan": skipped_no_jan,
+        "period_start": None, "period_end": None,
+    }
+
+
+# ============================================================
 # 自动派发：根据文件名启发式选择 ingestor
 # ============================================================
 INGESTOR_REGISTRY: dict[str, callable] = {
@@ -1270,6 +1370,7 @@ INGESTOR_REGISTRY: dict[str, callable] = {
     "shopee_income": ingest_shopee_income,
     "item_summary": ingest_item_summary,
     "monthly_turnover": ingest_monthly_turnover,
+    "item_master_v2": ingest_item_master_v2,
 }
 
 
@@ -1283,6 +1384,9 @@ def detect_ingestor(filename: str) -> str | None:
         return "inventory"
     if "月完売率" in n or "完売率" in n:
         return "monthly_turnover"
+    # CMSData 用 (15 列商品主档): 輸出アイテムCMSData用結果204.xls
+    if "CMSData" in n or "cmsdata" in n.lower():
+        return "item_master_v2"
     if "在庫回転率" in n or "回転率" in n:
         return "turnover"
     if "ASEAN" in n and "前日" in n:

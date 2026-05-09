@@ -875,6 +875,7 @@ CREATE TABLE IF NOT EXISTS item_v2 (
   rank             TEXT,                    -- ランク
   handling_status  TEXT,                    -- 取扱区分
   department       TEXT,                    -- 部門（Phase 4 新加）
+  owner            TEXT,                    -- 商品担当者（v3 / 結果204 新加）
   -- 進货区
   std_cost         REAL,                    -- 定義原価
   avg_cost         REAL,                    -- 平均原価
