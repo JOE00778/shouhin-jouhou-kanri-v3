@@ -265,136 +265,193 @@ with tab_legacy:
 
 
 # ============================================================
-# Tab 5: 飞书集成（群机器人 + 自建应用 OpenAPI 自检 + 测试）
+# Tab 5: 飞书集成（一个 CMS App 启用机器人能力 → 推消息 + 写表格 + 写文档）
 # ============================================================
 with tab_lark:
     from shared import lark_notify, lark_openapi
-    import os as _os
 
-    st.subheader(t("🔔 飞书通知集成"))
-    st.caption(t("两套机制并行：群机器人 webhook（推消息）+ 自建应用 OpenAPI（写表格 / 文档）"))
+    st.subheader(t("🔔 飞书集成 · CMS 自建应用 + 机器人"))
+    st.caption(
+        "推荐方案：一个自建应用 (LARK_APP_ID/SECRET) 启用「机器人」能力 → "
+        "既能推消息（替代群机器人 webhook），也能写表格 / 文档"
+    )
 
-    # ─────────────────── 1. 群机器人 webhook ───────────────────
-    st.markdown("### 1. 群机器人 Webhook")
-    st.caption("飞书群 → 设置 → 群机器人 → 添加自定义机器人 → 复制 Webhook URL")
-
+    # ─────────────────── 当前状态总览 ───────────────────
+    health = lark_openapi.health_check()
     routes = lark_notify.list_configured_routes()
-    if any(routes.values()):
-        st.success(t("✅ 已配置至少一个 webhook"))
-        st.dataframe(
-            [{"路由": k, "URL（前 60 字符）": v} for k, v in routes.items() if v],
-            use_container_width=True, hide_index=True,
-        )
-    else:
-        st.warning(t("⚠️ 还没配置任何群机器人 webhook"))
+    active_mode = routes["active_mode"]
 
-    with st.expander(t("📖 怎么配（环境变量 / .streamlit/secrets.toml）"), expanded=False):
-        st.code(
-            """# 默认群（必填，作为兜底）
-LARK_WEBHOOK_URL=https://open.feishu.cn/open-apis/bot/v2/hook/xxx
-
-# 按业务模块分群（可选，命中则覆盖默认）
-LARK_WEBHOOK_URL_SHOPEE=https://...      # shopee_mass_upload + image_gen
-LARK_WEBHOOK_URL_DISCONTINUE=https://... # discontinue_confirm
-LARK_WEBHOOK_URL_NST=https://...         # nst_order
-LARK_WEBHOOK_URL_ERROR=https://...       # 任何 status='error' 的兜底群
-
-# 或者完全自定义路由表（JSON，优先级最高）
-LARK_WEBHOOK_ROUTES={"shopee_mass_upload": "https://...", "image_gen": "..."}""",
-            language="bash",
-        )
-
-    # 测试按钮
-    cc1, cc2, cc3 = st.columns(3)
-    if cc1.button(t("发测试消息（默认群）"), key="lark_test_default"):
-        ok = lark_notify.notify_card(
-            title="🧪 CMS 飞书集成测试",
-            rows=[("来源", "page 99 测试按钮"), ("状态", "OK")],
-            status="info",
-        )
-        st.success("✅ 已发送，去飞书群看") if ok else st.error("❌ 失败（检查 webhook URL）")
-    if cc2.button(t("发测试卡片（success 绿）"), key="lark_test_succ"):
-        ok = lark_notify.notify_card(
-            title="✅ 测试 · success 卡片",
-            rows=[("市场", "TW"), ("成功", "12"), ("失败", "0")],
-            status="success", module="shopee_mass_upload",
-        )
-        st.success("✅ 已发送") if ok else st.error("❌ 失败")
-    if cc3.button(t("发测试卡片（error 红）"), key="lark_test_err"):
-        ok = lark_notify.notify_card(
-            title="🔴 测试 · error 卡片",
-            body="模拟一个失败场景",
-            rows=[("error", "ConnectionError")],
-            status="error",
-        )
-        st.success("✅ 已发送") if ok else st.error("❌ 失败")
+    cols = st.columns(3)
+    with cols[0]:
+        if active_mode == "bot":
+            st.success("📡 模式：**Bot App**")
+        elif active_mode == "webhook":
+            st.warning("📡 模式：**Webhook fallback**")
+        else:
+            st.error("📡 模式：**未配置**")
+    with cols[1]:
+        if health["configured"]:
+            st.success(f"App ID `{health['app_id']}`")
+        else:
+            st.warning("App 未配置")
+    with cols[2]:
+        if health.get("token_ok"):
+            mins = health["token_expires_in"] // 60
+            st.success(f"Token OK · {mins} 分钟后刷新")
+        elif health["configured"]:
+            st.error(f"Token 失败：{health.get('error','')[:40]}")
 
     st.divider()
 
-    # ─────────────────── 2. 飞书自建应用 OpenAPI ───────────────────
-    st.markdown("### 2. 飞书自建应用 OpenAPI（写表格 / 文档）")
-    st.caption("适用 stock_monitor 写改廃监控表格、把月度报告写飞书文档等场景")
+    # ─────────────────── 方案 A · 自建应用 + 机器人（推荐） ───────────────────
+    st.markdown("### 🤖 方案 A · 自建应用 + 机器人（推荐）")
+    st.caption("一个 App 全包：发消息 / 写表格 / 写文档 / 双向交互")
 
-    health = lark_openapi.health_check()
-    if health["configured"]:
-        st.success(f"✅ App ID 已配置 · `{health['app_id']}`")
-        if health["token_ok"]:
-            mins = health["token_expires_in"] // 60
-            st.success(f"✅ tenant_access_token 拉取成功（{mins} 分钟后过期，会自动刷新）")
-        else:
-            st.error(f"❌ token 拉取失败：{health['error']}")
-    else:
-        st.warning(t("⚠️ LARK_APP_ID / LARK_APP_SECRET 未配置"))
-
-    with st.expander(t("📖 怎么注册自建应用 + 申请权限"), expanded=False):
+    with st.expander(t("📖 启用机器人能力 + 配置完整步骤"), expanded=not health["configured"]):
         st.markdown(
             """
-**Step 1**：飞书开发者后台 → https://open.feishu.cn/app → 创建企业自建应用
+**Step 1**：飞书开发者后台 → https://open.feishu.cn/app
 
-**Step 2**：左侧「凭证与基础信息」复制 **App ID** + **App Secret**，填到 `.env`：
+- 如果 stock_monitor 已经在用某个 App → **直接复用同一个**（不要再新建）
+- 没有就「**创建企业自建应用**」起名 `SmikieJapan CMS`
+
+**Step 2**：「**凭证与基础信息**」复制 App ID + Secret 写进 `.env`：
 ```
 LARK_APP_ID=cli_xxxxxxxx
-LARK_APP_SECRET=xxxxxxxx
+LARK_APP_SECRET=xxxxxxxxxxxxxxxx
 ```
 
-**Step 3**：左侧「权限管理」→ 申请以下权限（再点页面顶部「发布版本」让管理员审核）：
+**Step 3**：左栏「**应用功能**」→「**机器人**」→ 启用 ⭐
+（这一步是 Boss 这次想加的「机器人功能」关键 — 默认是关着的）
+
+**Step 4**：左栏「**权限管理**」→ 申请权限：
+
 | 权限 | 用途 |
 |---|---|
-| `sheets:spreadsheet` | 电子表格读写（stock_monitor 改廃报告写飞书表）|
-| `docs:document` | 云文档读写（月度自动报告写飞书 doc）|
-| `im:message:send_as_bot` | 给指定用户/群发卡片消息（双向交互）|
-| `contact:user.id:readonly` | 用户基础信息（按 union_id 查邮箱）|
+| `im:message:send_as_bot` | 主动给群 / 用户发消息 ⭐ |
+| `im:message` | 接收用户发给机器人的消息（双向用） |
+| `im:chat` | 列出 / 搜索机器人加入的群 |
+| `im:chat.members:read` | 读群成员 |
+| `sheets:spreadsheet` | 写飞书表格（stock_monitor / 月度报告）|
+| `docs:document` | 写云文档（自动报告）|
+| `contact:user.id:readonly` | 按 union_id 查用户 |
 
-**Step 4**：左侧「应用发布」→「创建版本」→ 提交审核 → 管理员通过后生效。
+**Step 5**：「**版本管理与发布**」→ 创建版本 → 提交 → 管理员审批通过
 
-**Step 5**：把要写的表格 / 文档**共享给这个 App**（在表格右上角分享 → 添加协作者 → 输入应用名）。
+**Step 6**：**把机器人加进群**（关键）
+
+把机器人添加到目标群有 2 种方式：
+1. 群设置 → 群机器人 → 「添加机器人」搜索应用名 → 添加
+2. 群里直接 @ 机器人名字（首次会自动加入）
+
+**Step 7**：拉 chat_id（用下面「列出我的群」按钮，或在 N8N 飞书节点里看）
+
+**Step 8**：写到 `.env`：
+```
+LARK_DEFAULT_CHAT_ID=oc_xxxxxxxxxxxxxxxxxxxxxxxx       # 默认群
+LARK_CHAT_ROUTES={"_error": "oc_yyy", "shopee_mass_upload": "oc_zzz"}  # 可选 module 路由
+```
 """
         )
 
     if health["configured"] and health["token_ok"]:
-        st.markdown("**测试 OpenAPI · 表格写入**")
+        st.markdown("#### 🔍 列出机器人加入的所有群（拿 chat_id）")
+        if st.button("📋 拉取群列表", key="lark_list_chats"):
+            try:
+                chats = lark_openapi.list_chats()
+                if not chats:
+                    st.warning("机器人还没加入任何群（去群里 @机器人 或在群设置加机器人）")
+                else:
+                    st.dataframe(
+                        [{"chat_id": c.get("chat_id"), "群名": c.get("name"),
+                          "类型": c.get("chat_type"), "描述": (c.get("description") or "")[:30]}
+                         for c in chats],
+                        use_container_width=True, hide_index=True,
+                    )
+                    st.caption("👆 复制 chat_id 填到 .env 的 LARK_DEFAULT_CHAT_ID")
+            except Exception as e:
+                st.error(f"❌ 拉取失败：{e}")
+                st.caption("常见原因：缺 im:chat 权限 / 版本未发布 / token 拿不到")
+
+        st.divider()
+        st.markdown("#### 🧪 发测试消息到指定群")
+        c1, c2 = st.columns([3, 2])
+        with c1:
+            test_chat_id = st.text_input(
+                "chat_id（oc_xxx，留空则用 LARK_DEFAULT_CHAT_ID）",
+                key="lark_test_chat_id",
+            )
+        with c2:
+            test_status = st.selectbox(
+                "卡片颜色",
+                ["info", "success", "warning", "error"],
+                key="lark_test_status",
+            )
+        if st.button("🚀 发测试卡片", key="lark_test_bot_send", type="primary"):
+            kwargs = {"chat_id": test_chat_id} if test_chat_id else {"status": test_status}
+            ok = lark_notify.notify_card(
+                title=f"🧪 CMS 飞书 Bot 测试 · {test_status}",
+                body=f"From CMS page 99 → Bot App 机器人模式",
+                rows=[("时间", datetime.now().isoformat(timespec="seconds")),
+                      ("模式", routes["active_mode"])],
+                status=test_status,
+                **kwargs,
+            )
+            st.success("✅ 已发送，去飞书群看") if ok else st.error(
+                "❌ 失败（看上面状态：App 配置 / 权限 / 机器人是否在群里 / chat_id 是否对）")
+
+        st.divider()
+        st.markdown("#### 📋 测试写飞书表格")
         col_a, col_b = st.columns(2)
         with col_a:
-            test_token = st.text_input(
-                "电子表格 token（URL 中 /sheets/<token>）",
-                key="lark_sheet_token",
-            )
+            test_token = st.text_input("电子表格 token（URL /sheets/<token>）", key="lark_sheet_token")
         with col_b:
-            test_sheet_id = st.text_input(
-                "子表 ID（URL 中 ?sheet=xxx）",
-                key="lark_sheet_id",
-            )
-        if st.button(t("📋 追加一行测试数据"), key="lark_test_sheet"):
+            test_sheet_id = st.text_input("子表 ID（URL ?sheet=xxx）", key="lark_sheet_id")
+        if st.button("追加一行测试数据", key="lark_test_sheet"):
             if not (test_token and test_sheet_id):
-                st.warning(t("先填表格 token 和 sheet_id"))
+                st.warning("先填表格 token 和 sheet_id")
             else:
-                from datetime import datetime as _dt
                 try:
                     n = lark_openapi.sheet_append_rows(
                         test_token, test_sheet_id,
-                        [["CMS 测试", _dt.now().isoformat(timespec="seconds"), "OK"]],
+                        [["CMS 测试", datetime.now().isoformat(timespec="seconds"), "OK"]],
                         column_range="A:C",
                     )
                     st.success(f"✅ 已追加 {n} 行（去飞书表格刷新看）")
                 except Exception as e:
                     st.error(f"❌ {e}")
+
+    # ─────────────────── 当前路由配置 ───────────────────
+    st.divider()
+    st.markdown("### 📊 当前路由配置")
+    bot_default = routes["bot"]["default_chat_id"]
+    bot_routes = routes["bot"]["routes"]
+    st.write("**Bot 模式**：")
+    st.write(f"- 默认 chat_id: `{bot_default or '（未配置）'}`")
+    if bot_routes:
+        st.dataframe([{"module": k, "chat_id": v} for k, v in bot_routes.items()],
+                     use_container_width=True, hide_index=True)
+
+    if routes["webhook"]["default_url"] or routes["webhook"]["routes"]:
+        st.write("**Webhook 模式（fallback / 备用）**：")
+        st.write(f"- 默认 URL: `{routes['webhook']['default_url'] or '（未配置）'}`")
+        if routes["webhook"]["routes"]:
+            st.dataframe([{"module": k, "URL（脱敏）": v}
+                          for k, v in routes["webhook"]["routes"].items()],
+                         use_container_width=True, hide_index=True)
+
+    # ─────────────────── 方案 B · 群机器人 webhook（备用） ───────────────────
+    st.divider()
+    st.markdown("### 🪝 方案 B · 群机器人 Webhook（备用 / 兼容旧配置）")
+    st.caption("不需要自建应用，但功能弱（只能推消息，不能写表格 / 接收消息）。两套并存时优先走 A。")
+
+    with st.expander("📖 群机器人 webhook 配置（需要时再开）", expanded=False):
+        st.code(
+            """LARK_WEBHOOK_URL=https://open.feishu.cn/open-apis/bot/v2/hook/xxx
+LARK_WEBHOOK_URL_SHOPEE=...
+LARK_WEBHOOK_URL_DISCONTINUE=...
+LARK_WEBHOOK_URL_NST=...
+LARK_WEBHOOK_URL_ERROR=...
+LARK_WEBHOOK_ROUTES={"shopee_mass_upload": "https://..."}""",
+            language="bash",
+        )

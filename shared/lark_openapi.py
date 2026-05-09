@@ -169,22 +169,23 @@ def doc_append_block(document_id: str, text: str) -> bool:
 
 
 # ============================================================
-# 消息（IM v1）· 给单个用户 / 群 发卡片
+# 消息（IM v1）· 给单个用户 / 群 发卡片 / 文本
 # ============================================================
-def im_send_card(receive_id: str, receive_id_type: str, card: dict) -> str:
-    """给指定用户 / 群发交互式卡片，返回 message_id。
+def im_send(receive_id: str, receive_id_type: str, msg_type: str, content: dict) -> str:
+    """通用 IM 发送。返回 message_id。
 
     Args:
-        receive_id: 用户 union_id / open_id 或群 chat_id
+        receive_id: 用户 union_id / open_id / email 或群 chat_id
         receive_id_type: "union_id" | "open_id" | "chat_id" | "user_id" | "email"
-        card: 卡片 dict（同群机器人 card 格式）
-
-    要求权限：im:message:send_as_bot
+        msg_type: "text" | "interactive" | "post" | "image" 等
+        content: 对应 msg_type 的 content dict
+                 text → {"text": "..."}
+                 interactive → 卡片 dict（外层 msg_type/card 由本函数包好）
     """
     body = {
         "receive_id": receive_id,
-        "msg_type": "interactive",
-        "content": json.dumps(card, ensure_ascii=False),
+        "msg_type": msg_type,
+        "content": json.dumps(content, ensure_ascii=False),
     }
     data = _request(
         "POST",
@@ -192,6 +193,52 @@ def im_send_card(receive_id: str, receive_id_type: str, card: dict) -> str:
         data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
     )
     return data.get("data", {}).get("message_id", "")
+
+
+def im_send_card(receive_id: str, receive_id_type: str, card: dict) -> str:
+    """给指定用户 / 群发交互式卡片，返回 message_id。
+
+    要求权限：im:message:send_as_bot
+    """
+    return im_send(receive_id, receive_id_type, "interactive", card)
+
+
+def im_send_text(receive_id: str, receive_id_type: str, text: str) -> str:
+    """给指定用户 / 群发纯文本。"""
+    return im_send(receive_id, receive_id_type, "text", {"text": text})
+
+
+# ============================================================
+# 群（chat） · 列出 App 加入的群、按名称搜索群、查群成员
+# ============================================================
+def list_chats(page_size: int = 100) -> list[dict]:
+    """列出机器人加入的所有群。
+
+    返回每个 group 含: chat_id / name / description / avatar 等
+    要求权限：im:chat (or im:chat:readonly)
+    """
+    out: list[dict] = []
+    page_token = ""
+    while True:
+        params = f"page_size={page_size}"
+        if page_token:
+            params += f"&page_token={page_token}"
+        data = _request("GET", f"/open-apis/im/v1/chats?{params}")
+        items = data.get("data", {}).get("items", [])
+        out.extend(items)
+        page_token = data.get("data", {}).get("page_token", "")
+        if not data.get("data", {}).get("has_more"):
+            break
+    return out
+
+
+def search_chat_by_name(name_query: str) -> list[dict]:
+    """按名称模糊找群（机器人不在的群也能找到，但发不了消息）。
+
+    要求权限：im:chat (or im:chat:readonly)
+    """
+    data = _request("GET", f"/open-apis/im/v1/chats/search?query={name_query}")
+    return data.get("data", {}).get("items", [])
 
 
 # ============================================================
