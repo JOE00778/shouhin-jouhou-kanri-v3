@@ -119,10 +119,14 @@ with f1:
     sel_month = st.selectbox(t("月份"), months, index=0)
 
 with f2:
+    # 默认仅 JD-物流-千葉 (主要仓库)
+    # 弁天倉庫 = 退回商品暂存仓 (积攒后不定期发到 JD), 不参与订货决策
+    default_locs = [x for x in locations_all if "JD" in str(x)] or locations_all
     sel_locations = st.multiselect(
         t("仓库 (location)"),
         options=locations_all,
-        default=locations_all,
+        default=default_locs,
+        help=t("默认仅 JD (主仓库)。弁天倉庫 = 退回商品暂存, 不参与订货决策。"),
     )
 
 with f3:
