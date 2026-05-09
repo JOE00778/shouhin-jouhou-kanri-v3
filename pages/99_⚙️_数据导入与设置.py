@@ -32,13 +32,14 @@ conn = get_connection()
 st.title(t("⚙️ 数据导入与设置"))
 st.caption(t("把 NetSuite 标准导出 .xls 拖到这里，工具自动识别类型并入库"))
 
-tab_import, tab_status, tab_logs, tab_legacy, tab_lark = st.tabs(
+tab_import, tab_status, tab_logs, tab_legacy, tab_lark, tab_clear = st.tabs(
     [
         t("📤 一键导入（NetSuite .xls）"),
         t("📊 数据现状"),
         t("📜 导入历史"),
         t("🛠 旧 CSV（item_master）"),
         t("🔔 飞书集成"),
+        t("🧹 数据清除"),
     ]
 )
 
@@ -441,4 +442,104 @@ LARK_WEBHOOK_URL_ERROR=...
 LARK_WEBHOOK_ROUTES={"shopee_mass_upload": "https://..."}""",
             language="bash",
         )
+
+
+# ============================================================
+# Tab 6：数据清除（管理员专用 · 上传新数据前重置）
+# ============================================================
+with tab_clear:
+    st.subheader(t("🧹 数据清除"))
+    st.warning(t(
+        "⚠️ 此操作不可逆。建议在重新上传新版 NST 报表前执行一次, "
+        "确保 v2 数据全量重新构建。需要双重确认才能执行。"
+    ))
+
+    # 表清单 + 当前行数
+    CLEARABLE_TABLES = [
+        ("item_v2",                       t("商品主档")),
+        ("item_inventory_snapshot_v2",    t("库存快照（多仓库）")),
+        ("shop_sales",                    t("店铺销售（asean monthly + daily）")),
+        ("inventory_turnover",            t("库存周转率")),
+        ("item_monthly_turnover",         t("月完売率")),
+        ("_ingest_runs",                  t("导入历史日志")),
+        ("_ingest_errors",                t("导入错误日志")),
+    ]
+
+    def _safe_count(table: str) -> int:
+        try:
+            row = conn.execute(f"SELECT COUNT(*) AS c FROM {table}").fetchone()
+            return row["c"] if row and "c" in row.keys() else (row[0] if row else 0)
+        except Exception:
+            return 0
+
+    counts = [(tbl, label, _safe_count(tbl)) for tbl, label in CLEARABLE_TABLES]
+    total = sum(c for _, _, c in counts)
+
+    st.write(t(f"**当前合计：{total:,} 行待清除**"))
+    st.dataframe(
+        [{"table": tbl, "用途": label, "行数": f"{c:,}"} for tbl, label, c in counts],
+        use_container_width=True, hide_index=True,
+    )
+
+    st.divider()
+
+    # 选择要清除的表
+    selected_tables = st.multiselect(
+        t("选择要清除的表（默认 v2 全部）"),
+        options=[tbl for tbl, _, _ in counts],
+        default=[tbl for tbl, _, _ in counts if not tbl.startswith("_")],
+    )
+
+    # 双重确认
+    confirm_check = st.checkbox(
+        t("我确认要清除上述选中的表（不可逆）"),
+        key="clear_confirm_check",
+    )
+    confirm_text = st.text_input(
+        t("再输入 CLEAR 确认（大小写敏感）"),
+        key="clear_confirm_text",
+        placeholder="CLEAR",
+    )
+
+    can_run = (
+        confirm_check
+        and confirm_text == "CLEAR"
+        and len(selected_tables) > 0
+    )
+
+    if st.button(
+        t("🗑 立即清除"),
+        type="primary",
+        disabled=not can_run,
+        key="btn_clear_data",
+    ):
+        deleted: list[tuple[str, int]] = []
+        errors: list[tuple[str, str]] = []
+        for tbl in selected_tables:
+            try:
+                before = _safe_count(tbl)
+                conn.execute(f"DELETE FROM {tbl}")
+                conn.commit()
+                deleted.append((tbl, before))
+            except Exception as e:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                errors.append((tbl, str(e)))
+
+        if deleted:
+            st.success(t(f"✅ 已清除 {len(deleted)} 张表 / 共 {sum(n for _, n in deleted):,} 行"))
+            st.dataframe(
+                [{"table": t, "已删除行数": f"{n:,}"} for t, n in deleted],
+                use_container_width=True, hide_index=True,
+            )
+        if errors:
+            st.error(t(f"❌ {len(errors)} 张表清除失败"))
+            st.dataframe(
+                [{"table": t, "error": e} for t, e in errors],
+                use_container_width=True, hide_index=True,
+            )
+
+        st.info(t("现在可到 Tab 1「一键导入」上传新版 NST 报表"))
 
