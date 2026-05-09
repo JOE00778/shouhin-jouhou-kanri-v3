@@ -894,3 +894,209 @@ CREATE TABLE IF NOT EXISTS automation_runs (
 CREATE INDEX IF NOT EXISTS idx_automation_runs_module    ON automation_runs(module);
 CREATE INDEX IF NOT EXISTS idx_automation_runs_status    ON automation_runs(status);
 CREATE INDEX IF NOT EXISTS idx_automation_runs_triggered ON automation_runs(triggered_at);
+
+-- ============================================================
+-- v2 数据模型（Phase 3.1, 2026-05-09）· 以 JAN 为核心，item 主表
+-- ============================================================
+-- 设计原则（Boss 决策）：
+--   · item.jan 强制必填（无 JAN 不入 v2 — Q1=A）
+--   · 店铺两层建模：market_segment（粗）+ shop（细，账号级）— Q2=C
+--   · purchase 全合并按 source 区分 — Q3=A
+--   · 去掉 category 字段（Shopee 类目自动填 暂不需要）
+--   · 保留 benten_stock / warehouse_stock；废弃 store_profit_lines/_daily_lines（Q4=C）
+--
+-- 与旧表关系：
+--   · 旧 item / item_master / item_master_netsuite / nst_item_summary 数据合并 → item_v2
+--   · 旧 nst_inventory_snapshot ↔ item_inventory_snapshot_v2（jan 为 key）
+--   · 旧 sales_line / nst_store_sales 拆分 → item_sales_history + shop_sales
+--   · 旧 purchase / purchase_data / purchase_history 合并 → item_purchase_history
+--   · 旧 store_monthly → shop_monthly
+--   · 旧 std_cost_history → item_cost_history（重命名）
+-- ============================================================
+
+-- ⭐ item v2 主表 · PK = JAN
+CREATE TABLE IF NOT EXISTS item_v2 (
+  jan              TEXT PRIMARY KEY,        -- 13 位 JAN（核心 key）
+  -- 来源 ID
+  item_code        TEXT,                    -- NetSuite アイテム
+  internal_id      TEXT,                    -- NetSuite 内部 ID
+  upc              TEXT,                    -- 兼容老字段（同 jan）
+  -- 基础信息
+  display_name     TEXT,
+  maker            TEXT,                    -- 品牌
+  rank             TEXT,                    -- A/B/C/D 等级
+  handling_status  TEXT,                    -- 取扱区分
+  -- 进货核心
+  std_cost         REAL,                    -- アイテム定義原価
+  avg_cost         REAL,                    -- 平均原価（H 列源）
+  actual_cost      REAL,                    -- 实绩原価
+  min_cost         REAL,                    -- 最安原価
+  case_qty         INTEGER,                 -- ケース入数
+  order_lot        INTEGER,                 -- 発注ロット
+  weight           REAL,                    -- 重量
+  supplier_default TEXT,                    -- 默认供应商名
+  supply_cycle_days INTEGER,                -- 进货周期
+  bucket           TEXT,                    -- short/normal/long
+  -- 库存当前快照（汇总值，方便快查）
+  on_hand_total    REAL,                    -- 全仓 sum 库存
+  on_order_total   REAL,                    -- 在途 sum
+  -- 状态
+  source_priority  TEXT,                    -- nst > supplier > manual
+  imported_at      TEXT NOT NULL,
+  updated_at       TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_item_v2_code     ON item_v2(item_code);
+CREATE INDEX IF NOT EXISTS idx_item_v2_internal ON item_v2(internal_id);
+CREATE INDEX IF NOT EXISTS idx_item_v2_maker    ON item_v2(maker);
+CREATE INDEX IF NOT EXISTS idx_item_v2_rank     ON item_v2(rank);
+CREATE INDEX IF NOT EXISTS idx_item_v2_status   ON item_v2(handling_status);
+
+-- 维度 A · item × 时间序列（4 张子表）
+-- ────────────────────────────────────────────────────────────
+
+-- A1. 进货明细
+CREATE TABLE IF NOT EXISTS item_purchase_history (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  jan          TEXT NOT NULL,
+  po_number    TEXT,
+  supplier     TEXT,
+  qty          INTEGER,
+  unit_cost    REAL,
+  total_cost   REAL,
+  ordered_at   TEXT,
+  received_at  TEXT,
+  source       TEXT,                  -- 'netsuite_po' / 'supplier_csv' / 'manual'
+  imported_at  TEXT,
+  UNIQUE(po_number, jan, source)
+);
+CREATE INDEX IF NOT EXISTS idx_iph_jan       ON item_purchase_history(jan);
+CREATE INDEX IF NOT EXISTS idx_iph_supplier  ON item_purchase_history(supplier);
+CREATE INDEX IF NOT EXISTS idx_iph_ordered   ON item_purchase_history(ordered_at);
+
+-- A2. 销售明细（item 视角）
+CREATE TABLE IF NOT EXISTS item_sales_history (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  jan           TEXT NOT NULL,
+  period_start  TEXT,
+  period_end    TEXT,
+  channel       TEXT,                 -- 'shopee_tw' / 'lazada_my' / 'netsuite_store'
+  qty_sold      REAL,
+  revenue       REAL,
+  cost          REAL,
+  gross_profit  REAL,
+  gross_margin  REAL,
+  source        TEXT,                 -- 'nst_store_sales' / 'shopee_orders' / 'asean_monthly' / 'asean_daily'
+  imported_at   TEXT,
+  UNIQUE(jan, period_start, period_end, channel, source)
+);
+CREATE INDEX IF NOT EXISTS idx_ish_jan      ON item_sales_history(jan);
+CREATE INDEX IF NOT EXISTS idx_ish_channel  ON item_sales_history(channel);
+CREATE INDEX IF NOT EXISTS idx_ish_period   ON item_sales_history(period_start);
+
+-- A3. 库存快照（替代 nst_inventory_snapshot 的 jan 视角）
+CREATE TABLE IF NOT EXISTS item_inventory_snapshot_v2 (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  jan           TEXT NOT NULL,
+  location      TEXT,
+  bin_number    TEXT,
+  snapshot_at   TEXT,
+  qty_on_hand   REAL,
+  qty_committed REAL,
+  qty_backorder REAL,
+  std_cost      REAL,
+  avg_cost      REAL,
+  imported_at   TEXT,
+  UNIQUE(jan, location, bin_number, snapshot_at)
+);
+CREATE INDEX IF NOT EXISTS idx_iis2_jan      ON item_inventory_snapshot_v2(jan);
+CREATE INDEX IF NOT EXISTS idx_iis2_location ON item_inventory_snapshot_v2(location);
+CREATE INDEX IF NOT EXISTS idx_iis2_snapshot ON item_inventory_snapshot_v2(snapshot_at);
+
+-- A4. 原価历史
+CREATE TABLE IF NOT EXISTS item_cost_history (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  jan          TEXT NOT NULL,
+  std_cost     REAL,
+  avg_cost     REAL,
+  changed_by   TEXT,
+  changed_at   TEXT NOT NULL,
+  reason       TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_ich_jan ON item_cost_history(jan);
+CREATE INDEX IF NOT EXISTS idx_ich_changed ON item_cost_history(changed_at);
+
+-- 维度 B · shop × item（3 张表 · 两层店铺建模 Q2=C）
+-- ────────────────────────────────────────────────────────────
+
+-- B0. market_segment（粗粒度，TW/SG/MY/PH/TH/VN/ID/JP/...）
+CREATE TABLE IF NOT EXISTS market_segment (
+  market_id    TEXT PRIMARY KEY,        -- 'TW' / 'SG' / ...
+  display_name TEXT NOT NULL,           -- '台湾' / 'Singapore'
+  currency     TEXT,                    -- TWD / SGD
+  active       INTEGER DEFAULT 1
+);
+
+-- B1. shop（细粒度，账号级）
+CREATE TABLE IF NOT EXISTS shop (
+  shop_id      TEXT PRIMARY KEY,        -- 'shopee_tw_smikie_main' 等
+  market_id    TEXT NOT NULL,           -- 关联 market_segment
+  platform     TEXT NOT NULL,           -- shopee / lazada / amazon / coupang / netsuite
+  display_name TEXT NOT NULL,           -- 「Smikie 台湾旗舰店」
+  currency     TEXT,
+  owner        TEXT,                    -- 运营负责人
+  active       INTEGER DEFAULT 1,
+  created_at   TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_shop_market   ON shop(market_id);
+CREATE INDEX IF NOT EXISTS idx_shop_platform ON shop(platform);
+
+-- B2. shop × SKU 销售明细
+CREATE TABLE IF NOT EXISTS shop_sales (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  shop_id       TEXT NOT NULL,
+  jan           TEXT NOT NULL,
+  period_start  TEXT,
+  period_end    TEXT,
+  qty_sold      REAL,
+  revenue       REAL,                   -- 当地币
+  revenue_jpy   REAL,                   -- 折算 JPY
+  cost          REAL,
+  gross_profit  REAL,
+  gross_margin  REAL,
+  rank          TEXT,                   -- 商品 ランク
+  source        TEXT,
+  imported_at   TEXT,
+  UNIQUE(shop_id, jan, period_start, period_end, source)
+);
+CREATE INDEX IF NOT EXISTS idx_ss_shop   ON shop_sales(shop_id);
+CREATE INDEX IF NOT EXISTS idx_ss_jan    ON shop_sales(jan);
+CREATE INDEX IF NOT EXISTS idx_ss_period ON shop_sales(period_start);
+
+-- B3. shop 月度 KPI（替代 store_monthly）
+CREATE TABLE IF NOT EXISTS shop_monthly (
+  shop_id          TEXT NOT NULL,
+  year_month       TEXT NOT NULL,        -- YYYYMM
+  gmv              REAL,
+  profit           REAL,
+  margin_rate      REAL,
+  profit_contrib   REAL,
+  deduction_total  REAL,
+  order_count      INTEGER,
+  store_rating     REAL,
+  online_products  INTEGER,
+  imported_at      TEXT,
+  PRIMARY KEY(shop_id, year_month)
+);
+CREATE INDEX IF NOT EXISTS idx_sm_ym ON shop_monthly(year_month);
+
+-- 元数据 · v2 迁移状态记录
+CREATE TABLE IF NOT EXISTS _v2_migration_runs (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  step          TEXT NOT NULL,         -- 'item_v2' / 'shop' / 'item_sales_history' 等
+  source_table  TEXT,
+  rows_read     INTEGER,
+  rows_written  INTEGER,
+  errors        INTEGER,
+  ran_at        TEXT NOT NULL,
+  notes         TEXT
+);

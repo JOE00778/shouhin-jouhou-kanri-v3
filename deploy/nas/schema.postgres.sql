@@ -893,3 +893,174 @@ CREATE TABLE IF NOT EXISTS automation_runs (
 CREATE INDEX IF NOT EXISTS idx_automation_runs_module    ON automation_runs(module);
 CREATE INDEX IF NOT EXISTS idx_automation_runs_status    ON automation_runs(status);
 CREATE INDEX IF NOT EXISTS idx_automation_runs_triggered ON automation_runs(triggered_at);
+
+-- ============================================================
+-- v2 数据模型（Phase 3.1, 2026-05-09）· 以 JAN 为核心
+-- 详细注释见 data_warehouse/db/schema.sql 末尾
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS item_v2 (
+  jan              TEXT PRIMARY KEY,
+  item_code        TEXT,
+  internal_id      TEXT,
+  upc              TEXT,
+  display_name     TEXT,
+  maker            TEXT,
+  rank             TEXT,
+  handling_status  TEXT,
+  std_cost         DOUBLE PRECISION,
+  avg_cost         DOUBLE PRECISION,
+  actual_cost      DOUBLE PRECISION,
+  min_cost         DOUBLE PRECISION,
+  case_qty         INTEGER,
+  order_lot        INTEGER,
+  weight           DOUBLE PRECISION,
+  supplier_default TEXT,
+  supply_cycle_days INTEGER,
+  bucket           TEXT,
+  on_hand_total    DOUBLE PRECISION,
+  on_order_total   DOUBLE PRECISION,
+  source_priority  TEXT,
+  imported_at      TEXT NOT NULL,
+  updated_at       TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_item_v2_code     ON item_v2(item_code);
+CREATE INDEX IF NOT EXISTS idx_item_v2_internal ON item_v2(internal_id);
+CREATE INDEX IF NOT EXISTS idx_item_v2_maker    ON item_v2(maker);
+CREATE INDEX IF NOT EXISTS idx_item_v2_rank     ON item_v2(rank);
+CREATE INDEX IF NOT EXISTS idx_item_v2_status   ON item_v2(handling_status);
+
+CREATE TABLE IF NOT EXISTS item_purchase_history (
+  id           BIGSERIAL PRIMARY KEY,
+  jan          TEXT NOT NULL,
+  po_number    TEXT,
+  supplier     TEXT,
+  qty          INTEGER,
+  unit_cost    DOUBLE PRECISION,
+  total_cost   DOUBLE PRECISION,
+  ordered_at   TEXT,
+  received_at  TEXT,
+  source       TEXT,
+  imported_at  TEXT,
+  UNIQUE(po_number, jan, source)
+);
+CREATE INDEX IF NOT EXISTS idx_iph_jan       ON item_purchase_history(jan);
+CREATE INDEX IF NOT EXISTS idx_iph_supplier  ON item_purchase_history(supplier);
+CREATE INDEX IF NOT EXISTS idx_iph_ordered   ON item_purchase_history(ordered_at);
+
+CREATE TABLE IF NOT EXISTS item_sales_history (
+  id            BIGSERIAL PRIMARY KEY,
+  jan           TEXT NOT NULL,
+  period_start  TEXT,
+  period_end    TEXT,
+  channel       TEXT,
+  qty_sold      DOUBLE PRECISION,
+  revenue       DOUBLE PRECISION,
+  cost          DOUBLE PRECISION,
+  gross_profit  DOUBLE PRECISION,
+  gross_margin  DOUBLE PRECISION,
+  source        TEXT,
+  imported_at   TEXT,
+  UNIQUE(jan, period_start, period_end, channel, source)
+);
+CREATE INDEX IF NOT EXISTS idx_ish_jan      ON item_sales_history(jan);
+CREATE INDEX IF NOT EXISTS idx_ish_channel  ON item_sales_history(channel);
+CREATE INDEX IF NOT EXISTS idx_ish_period   ON item_sales_history(period_start);
+
+CREATE TABLE IF NOT EXISTS item_inventory_snapshot_v2 (
+  id            BIGSERIAL PRIMARY KEY,
+  jan           TEXT NOT NULL,
+  location      TEXT,
+  bin_number    TEXT,
+  snapshot_at   TEXT,
+  qty_on_hand   DOUBLE PRECISION,
+  qty_committed DOUBLE PRECISION,
+  qty_backorder DOUBLE PRECISION,
+  std_cost      DOUBLE PRECISION,
+  avg_cost      DOUBLE PRECISION,
+  imported_at   TEXT,
+  UNIQUE(jan, location, bin_number, snapshot_at)
+);
+CREATE INDEX IF NOT EXISTS idx_iis2_jan      ON item_inventory_snapshot_v2(jan);
+CREATE INDEX IF NOT EXISTS idx_iis2_location ON item_inventory_snapshot_v2(location);
+CREATE INDEX IF NOT EXISTS idx_iis2_snapshot ON item_inventory_snapshot_v2(snapshot_at);
+
+CREATE TABLE IF NOT EXISTS item_cost_history (
+  id           BIGSERIAL PRIMARY KEY,
+  jan          TEXT NOT NULL,
+  std_cost     DOUBLE PRECISION,
+  avg_cost     DOUBLE PRECISION,
+  changed_by   TEXT,
+  changed_at   TEXT NOT NULL,
+  reason       TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_ich_jan ON item_cost_history(jan);
+CREATE INDEX IF NOT EXISTS idx_ich_changed ON item_cost_history(changed_at);
+
+CREATE TABLE IF NOT EXISTS market_segment (
+  market_id    TEXT PRIMARY KEY,
+  display_name TEXT NOT NULL,
+  currency     TEXT,
+  active       INTEGER DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS shop (
+  shop_id      TEXT PRIMARY KEY,
+  market_id    TEXT NOT NULL,
+  platform     TEXT NOT NULL,
+  display_name TEXT NOT NULL,
+  currency     TEXT,
+  owner        TEXT,
+  active       INTEGER DEFAULT 1,
+  created_at   TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_shop_market   ON shop(market_id);
+CREATE INDEX IF NOT EXISTS idx_shop_platform ON shop(platform);
+
+CREATE TABLE IF NOT EXISTS shop_sales (
+  id            BIGSERIAL PRIMARY KEY,
+  shop_id       TEXT NOT NULL,
+  jan           TEXT NOT NULL,
+  period_start  TEXT,
+  period_end    TEXT,
+  qty_sold      DOUBLE PRECISION,
+  revenue       DOUBLE PRECISION,
+  revenue_jpy   DOUBLE PRECISION,
+  cost          DOUBLE PRECISION,
+  gross_profit  DOUBLE PRECISION,
+  gross_margin  DOUBLE PRECISION,
+  rank          TEXT,
+  source        TEXT,
+  imported_at   TEXT,
+  UNIQUE(shop_id, jan, period_start, period_end, source)
+);
+CREATE INDEX IF NOT EXISTS idx_ss_shop   ON shop_sales(shop_id);
+CREATE INDEX IF NOT EXISTS idx_ss_jan    ON shop_sales(jan);
+CREATE INDEX IF NOT EXISTS idx_ss_period ON shop_sales(period_start);
+
+CREATE TABLE IF NOT EXISTS shop_monthly (
+  shop_id          TEXT NOT NULL,
+  year_month       TEXT NOT NULL,
+  gmv              DOUBLE PRECISION,
+  profit           DOUBLE PRECISION,
+  margin_rate      DOUBLE PRECISION,
+  profit_contrib   DOUBLE PRECISION,
+  deduction_total  DOUBLE PRECISION,
+  order_count      INTEGER,
+  store_rating     DOUBLE PRECISION,
+  online_products  INTEGER,
+  imported_at      TEXT,
+  PRIMARY KEY(shop_id, year_month)
+);
+CREATE INDEX IF NOT EXISTS idx_sm_ym ON shop_monthly(year_month);
+
+CREATE TABLE IF NOT EXISTS _v2_migration_runs (
+  id            BIGSERIAL PRIMARY KEY,
+  step          TEXT NOT NULL,
+  source_table  TEXT,
+  rows_read     INTEGER,
+  rows_written  INTEGER,
+  errors        INTEGER,
+  ran_at        TEXT NOT NULL,
+  notes         TEXT
+);

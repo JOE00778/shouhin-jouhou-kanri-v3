@@ -102,6 +102,15 @@ class _PostgresAdapter:
         "health_grade_monthly": ("sku", "year_month"),
         "rank_history": ("sku", "quarter"),
         "_schema_version": ("version",),
+        # v2 数据模型（Phase 3.1, 2026-05-09）
+        "item_v2": ("jan",),
+        "market_segment": ("market_id",),
+        "shop": ("shop_id",),
+        "shop_monthly": ("shop_id", "year_month"),
+        "item_purchase_history": ("po_number", "jan", "source"),
+        "item_sales_history": ("jan", "period_start", "period_end", "channel", "source"),
+        "item_inventory_snapshot_v2": ("jan", "location", "bin_number", "snapshot_at"),
+        "shop_sales": ("shop_id", "jan", "period_start", "period_end", "source"),
     }
 
     _RE_OR_REPLACE = re.compile(
