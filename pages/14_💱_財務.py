@@ -47,16 +47,37 @@ st.caption(t(
 # ============================================================
 NST_MAX_ROWS = 899  # NST 单文件上限
 
-# 账单金额 = 退款金额右侧到拨款金额左侧之间的所有费用列 (来自 schema 顺序)
+# 账单金额 = 新版 Shopee Income 表【退款金额】右侧到【拨款金额】左侧的费用列
+# (新版 Excel 把 买家支付运费/第三方物流费/Shopee运费回扣 移到了退款金额左侧, 不再算入账单金额)
 BILL_FEE_COLS = [
-    "shopee_rebate", "seller_voucher", "seller_voucher_jv",
-    "seller_shopee_coin", "seller_shopee_coin_jv",
-    "buyer_shipping", "shopee_shipping_subsidy",
-    "seller_shipping", "return_shipping", "return_to_seller_ship",
-    "shipping_insurance_save", "affiliate_commission", "commission",
-    "fbs_overseas_fail", "fbs_overseas_return",
-    "service_fee", "shipping_insurance_fee",
-    "transaction_fee", "fbs_fee",
+    # 退款金额右侧 (= 账单金额扣款项目, 与 Boss 截图 K 列起对齐):
+    "shopee_rebate",                                       # Shopee 回扣金额
+    "seller_voucher", "seller_voucher_jv",                 # 卖家优惠券折扣 (含合资)
+    "seller_shopee_coin", "seller_shopee_coin_jv",         # 卖家 Shopee 币回扣 (含合资)
+    "return_shipping", "return_to_seller_ship",            # 退货运费
+    "shipping_insurance_save",                             # 运费险节省
+    "affiliate_commission",                                # 联盟营销佣金
+    "commission",                                          # 佣金
+    "fbs_overseas_fail", "fbs_overseas_return",            # 海外免退服务费
+    "service_fee",                                         # 服务费
+    "shipping_insurance_fee",                              # 运费险服务费
+    "transaction_fee",                                     # 交易费 (旧名: 交易手续费)
+    "fbs_fee",                                             # FBS Fee
+]
+
+# 单条扣款项目展开 (与 Boss 截图 K-P 等列对齐, 用于扣款明细 Tab)
+BILL_BREAKDOWN_COLS = [
+    ("seller_voucher_total",  "卖家优惠券折扣", ["seller_voucher", "seller_voucher_jv"]),
+    ("seller_coin_total",     "卖家 Shopee 币回扣", ["seller_shopee_coin", "seller_shopee_coin_jv"]),
+    ("shopee_rebate",         "Shopee 回扣金额", ["shopee_rebate"]),
+    ("commission",            "佣金",         ["commission", "affiliate_commission"]),
+    ("service_fee",           "服务费",       ["service_fee"]),
+    ("transaction_fee",       "交易费",       ["transaction_fee"]),
+    ("return_shipping_total", "退货运费",     ["return_shipping", "return_to_seller_ship"]),
+    ("insurance_total",       "运费险",       ["shipping_insurance_save", "shipping_insurance_fee"]),
+    ("fbs_total",             "FBS / 海外免退", ["fbs_fee", "fbs_overseas_fail", "fbs_overseas_return"]),
+    # 截图中存在但当前 ingester 未捕获 (待补):
+    # AMS佣金 / 线下调整金额 — 需要在 xls_ingest.NAME_MAP 中追加
 ]
 
 
@@ -87,6 +108,23 @@ def _country_from_seller(seller: str | None) -> str:
     s = str(seller).lower()
     m = re.search(r"\.([a-z]{2,3})$", s)
     return m.group(1).upper() if m else s.upper()
+
+
+def _market_from_country(country: str | None) -> str:
+    """市场维度: country → 高级地区
+    - TW/SG/MY/PH/ID/VN/TH → 东南亚
+    - KR → 韩国
+    - JP → 日本国内
+    - 其他 → 其他
+    """
+    c = (country or "").upper()
+    if c in {"TW", "SG", "MY", "PH", "ID", "VN", "TH", "BR"}:
+        return t("东南亚")
+    if c == "KR":
+        return t("韩国")
+    if c == "JP":
+        return t("日本国内")
+    return t("其他")
 
 
 def _to_yyyy_mm(dt) -> str | None:
@@ -177,6 +215,7 @@ if not df_income.empty:
     df_income["payout_week"] = df_income["payout_date"].apply(_to_iso_week)
 
     df_income["country"] = df_income["seller_account"].apply(_country_from_seller)
+    df_income["market"] = df_income["country"].apply(_market_from_country)
     if "platform" not in df_income.columns:
         df_income["platform"] = "Shopee"
 
@@ -198,6 +237,7 @@ if not df_income.empty:
 
 if not df_orders.empty:
     df_orders["country"] = df_orders["shop_name"].apply(_country_from_shop)
+    df_orders["market"] = df_orders["country"].apply(_market_from_country)
     if "platform" not in df_orders.columns:
         df_orders["platform"] = "Shopee"
     if not df_income.empty:
@@ -206,9 +246,15 @@ if not df_orders.empty:
                 "order_no",
                 "order_create_month", "order_create_week",
                 "payout_month", "payout_week",
+                "market",
             ]].drop_duplicates("order_no"),
             on="order_no", how="left",
+            suffixes=("", "_income"),
         )
+        # 优先使用 income 表的 market (国家更准确), fallback 到 orders 自身的 market
+        if "market_income" in df_orders.columns:
+            df_orders["market"] = df_orders["market_income"].fillna(df_orders["market"])
+            df_orders.drop(columns=["market_income"], inplace=True)
 
 
 # ============================================================
@@ -219,7 +265,7 @@ GRAN_LABEL_TO_COL = {
     t("按月"): "order_create_month",
 }
 
-c_gran, c0, c1, c2 = st.columns([1, 1.5, 1, 1])
+c_gran, c_period, c_market, c_country, c_seller = st.columns([1, 1.5, 1, 1, 1.2])
 with c_gran:
     gran_label = st.radio(
         t("粒度"), list(GRAN_LABEL_TO_COL.keys()), horizontal=False,
@@ -236,14 +282,19 @@ period_label = (
     t("订单成立周 (ISO YYYY-Www)") if gran_col == "order_create_week"
     else t("订单成立月份 (NST 文件切分依据)")
 )
-with c0:
+with c_period:
     sel_period = st.selectbox(period_label, [t("全部")] + periods)
-with c1:
+with c_market:
+    markets = []
+    if not df_income.empty and "market" in df_income.columns:
+        markets = sorted(df_income["market"].dropna().unique().tolist())
+    sel_market = st.selectbox(t("市场"), [t("全部")] + markets)
+with c_country:
     countries = []
     if not df_income.empty:
         countries = sorted(df_income["country"].dropna().unique().tolist())
     sel_country = st.selectbox(t("国家"), [t("全部")] + countries)
-with c2:
+with c_seller:
     sellers = []
     if not df_income.empty and "seller_account" in df_income.columns:
         sellers = sorted(df_income["seller_account"].dropna().unique().tolist())
@@ -253,6 +304,8 @@ with c2:
 if not df_income.empty:
     if sel_period != t("全部"):
         df_income = df_income[df_income[gran_col] == sel_period]
+    if sel_market != t("全部") and "market" in df_income.columns:
+        df_income = df_income[df_income["market"] == sel_market]
     if sel_country != t("全部"):
         df_income = df_income[df_income["country"] == sel_country]
     if sel_seller != t("全部") and "seller_account" in df_income.columns:
@@ -265,6 +318,8 @@ if not df_orders.empty:
             (df_orders[gran_col] == sel_period)
             | df_orders[gran_col].isna()
         ]
+    if sel_market != t("全部") and "market" in df_orders.columns:
+        df_orders = df_orders[df_orders["market"] == sel_market]
     if sel_country != t("全部") and "country" in df_orders.columns:
         df_orders = df_orders[df_orders["country"] == sel_country]
 
@@ -319,11 +374,15 @@ st.divider()
 # ============================================================
 _period_tab_unit = t("周") if gran_col == "order_create_week" else t("月")
 
-tab_nst, tab_month, tab_shop, tab_market, tab_raw_i, tab_raw_o = st.tabs([
+(
+    tab_nst, tab_market_period, tab_country, tab_shop, tab_platform,
+    tab_raw_i, tab_raw_o,
+) = st.tabs([
     t("📤 NST 上传明细 (6 列)"),
+    f"🌍 {_period_tab_unit} × {t('市场')} {t('汇总')}",
     f"📅 {_period_tab_unit} × {t('国家')} {t('汇总')}",
     f"🏪 {_period_tab_unit} × {t('店铺')} {t('汇总')}",
-    f"🌐 {_period_tab_unit} × {t('平台')} {t('汇总')}",
+    f"📱 {_period_tab_unit} × {t('平台')} {t('汇总')}",
     t("💰 拨款明细 (原始)"),
     t("📦 订单导出 (原始)"),
 ])
@@ -375,6 +434,32 @@ with tab_nst:
 
         st.subheader(t("📂 NST 文件清单 (按店铺 × 月份)"))
         st.dataframe(files_df, use_container_width=True, hide_index=True, height=280)
+
+        # 扣款项目分解 (与 Boss 截图 K 列起对齐 — 按月份汇总每个费用项)
+        st.subheader(t("💸 扣款项目分解 (按订单成立月份)"))
+        st.caption(t(
+            "🎯 与 Income 表【退款金额】右侧到【拨款金额】左侧的费用列对齐 · "
+            "原币种 (未换汇) · ⚠️ AMS佣金 / 线下调整金额 当前 ingester 未捕获, 待补"
+        ))
+
+        breakdown_rows = []
+        for month, g in nst_df.groupby("order_create_month", sort=True):
+            row = {t("订单成立月份"): month, t("订单数"): int(g["order_no"].nunique())}
+            for key, label_zh, src_cols in BILL_BREAKDOWN_COLS:
+                present = [c for c in src_cols if c in g.columns]
+                row[t(label_zh)] = round(float(g[present].sum().sum()), 2) if present else 0.0
+            row[t("账单金额合计")] = round(float(g["账单金额"].sum()), 2)
+            breakdown_rows.append(row)
+        breakdown_df = pd.DataFrame(breakdown_rows).sort_values(
+            t("订单成立月份"), ascending=False,
+        )
+        money_cols_b = [
+            t(label_zh) for _, label_zh, _ in BILL_BREAKDOWN_COLS
+        ] + [t("账单金额合计")]
+        for c in money_cols_b:
+            if c in breakdown_df.columns:
+                breakdown_df[c] = breakdown_df[c].map(_fmt_money)
+        st.dataframe(breakdown_df, use_container_width=True, hide_index=True, height=240)
 
         st.subheader(t("📋 NST 6 列明细"))
         nst_6cols = nst_df[[
@@ -480,8 +565,34 @@ def _format_agg(agg, dim_cols, dim_labels):
 period_axis_short = t("周") if gran_col == "order_create_week" else t("月份")
 
 
-# ----- Tab 2: 期间 × 国家 -----
-with tab_month:
+# ----- Tab 2: 期间 × 市场 -----
+with tab_market_period:
+    if df_income_jpy.empty:
+        st.info(t("拨款明细未上传, 无法汇总。"))
+    else:
+        agg = _agg_by(df_income_jpy, gran_col, "market")
+        show = _format_agg(
+            agg,
+            [gran_col, "market"],
+            [period_axis_label, t("市场")],
+        )
+        show = show.sort_values(
+            [period_axis_label, t("市场")],
+            ascending=[False, True],
+        )
+        st.dataframe(show, use_container_width=True, hide_index=True, height=460)
+        st.caption(t(f"共 {len(agg):,} 行"))
+        st.download_button(
+            f"📥 {period_axis_short}×{t('市场')} CSV",
+            data=agg.to_csv(index=False).encode("utf-8-sig"),
+            file_name=f"nst_shopee_{gran_col}_market.csv",
+            mime="text/csv",
+            key="dl_period_market",
+        )
+
+
+# ----- Tab 3: 期间 × 国家 -----
+with tab_country:
     if df_income_jpy.empty:
         st.info(t("拨款明细未上传, 无法汇总。"))
     else:
@@ -537,8 +648,8 @@ with tab_shop:
         )
 
 
-# ----- Tab 4: 期间 × 平台 -----
-with tab_market:
+# ----- Tab 5: 期间 × 平台 -----
+with tab_platform:
     if df_income_jpy.empty:
         st.info(t("拨款明细未上传, 无法汇总。"))
     else:
@@ -574,7 +685,7 @@ with tab_raw_i:
         cols = [
             "order_create_week", "order_create_month",
             "payout_week", "payout_month",
-            "country", "_jpy_rate",
+            "market", "country", "_jpy_rate",
             "seller_account", "order_no", "buyer_account",
             "order_created_at", "payout_date",
             "gross_price", "product_discount", "refund_amount",
@@ -604,7 +715,7 @@ with tab_raw_o:
         st.info(t("订单导出.xlsx 未上传。"))
     else:
         cols = [
-            "order_no", "platform", "shop_name", "country",
+            "order_no", "platform", "market", "shop_name", "country",
             "order_create_week", "order_create_month",
             "currency", "local_sku", "unit_price", "ship_qty", "payment_amount",
         ]
