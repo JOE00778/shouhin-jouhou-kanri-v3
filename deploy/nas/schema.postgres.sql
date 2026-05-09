@@ -271,6 +271,7 @@ CREATE TABLE IF NOT EXISTS item_monthly_turnover (
   close_avg_cost    DOUBLE PRECISION,
   close_amount      DOUBLE PRECISION,
   sell_through_rate DOUBLE PRECISION,
+  rank              TEXT,
   risk_label        TEXT,
   imported_at       TEXT NOT NULL,
   UNIQUE(item_code, location, year_month)

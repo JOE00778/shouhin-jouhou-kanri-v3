@@ -1191,17 +1191,28 @@ def ingest_monthly_turnover(
     header_row = detect_header_row(path)
     rows = parse_to_dicts(path, header_row=header_row)
 
-    # 预读 item_code → jan 映射 (从 item_v2)
+    # 预读 item_code → (jan, rank) 映射 (从 item_v2)
     item_to_jan: dict[str, str] = {}
+    item_to_rank: dict[str, str] = {}
+    jan_to_rank: dict[str, str] = {}  # 当 item_code 本身就是 JAN 时直接用
     try:
-        cur = conn.execute("SELECT item_code, jan FROM item_v2 WHERE item_code IS NOT NULL")
+        cur = conn.execute(
+            "SELECT item_code, jan, rank FROM item_v2 WHERE item_code IS NOT NULL OR jan IS NOT NULL"
+        )
         for row in cur.fetchall():
             ic = row[0] if not hasattr(row, "keys") else row["item_code"]
             j = row[1] if not hasattr(row, "keys") else row["jan"]
+            r = row[2] if not hasattr(row, "keys") else row["rank"]
             if ic and j:
                 item_to_jan[str(ic)] = str(j)
+            if ic and r:
+                item_to_rank[str(ic)] = str(r)
+            if j and r:
+                jan_to_rank[str(j)] = str(r)
     except Exception:
         item_to_jan = {}
+        item_to_rank = {}
+        jan_to_rank = {}
 
     sql = """
         INSERT INTO item_monthly_turnover (
@@ -1211,7 +1222,7 @@ def ingest_monthly_turnover(
             manual_input, last_received_at,
             qty_sold, qty_other_out, qty_total_out, out_amount, last_sold_at,
             close_qty, close_avg_cost, close_amount,
-            sell_through_rate, risk_label,
+            sell_through_rate, rank, risk_label,
             imported_at
         ) VALUES (
             :item_code, :jan, :location, :department, :year_month,
@@ -1220,7 +1231,7 @@ def ingest_monthly_turnover(
             :manual_input, :last_received_at,
             :qty_sold, :qty_other_out, :qty_total_out, :out_amount, :last_sold_at,
             :close_qty, :close_avg_cost, :close_amount,
-            :sell_through_rate, :risk_label,
+            :sell_through_rate, :rank, :risk_label,
             :imported_at
         )
     """
@@ -1246,7 +1257,25 @@ def ingest_monthly_turnover(
             denom = (open_qty or 0.0) + (qty_total_in or 0.0)
             rate = (qty_sold or 0.0) / denom if denom > 0 else None
 
-            if rate is None:
+            # jan 优先用 item_v2 lookup; fallback 用 item_code 自身 (新版文件 アイテム 列就是 JAN)
+            jan_val = item_to_jan.get(item_code)
+            if not jan_val and _is_valid_jan(item_code):
+                jan_val = item_code
+
+            # rank 从 item_v2 取 (来源: 結果204 商品ランク)
+            rank_val = item_to_rank.get(item_code) or jan_to_rank.get(jan_val or "")
+
+            # risk_label 判定规则 (Boss 2026-05-10):
+            # 做判断条件: rank IN (A, B, NEW) OR qty_sold > 10
+            # 否则: 销量太少, 数据不足, 不参与判断
+            # 注: NetSuite 实际值是 Aランク / Bランク / NEW / Cランク, 兼容多种写法
+            qty_sold_val = qty_sold or 0.0
+            judge_ranks = {"A", "B", "NEW", "Aランク", "Bランク"}
+            should_judge = (rank_val in judge_ranks) or (qty_sold_val > 10)
+
+            if not should_judge:
+                risk_label = "数据不足"
+            elif rate is None:
                 risk_label = "无数据"
             elif rate >= 0.9:
                 risk_label = "断货风险"
@@ -1254,11 +1283,6 @@ def ingest_monthly_turnover(
                 risk_label = "压库存"
             else:
                 risk_label = "正常"
-
-            # jan 优先用 item_v2 lookup; fallback 用 item_code 自身 (新版文件 アイテム 列就是 JAN)
-            jan_val = item_to_jan.get(item_code)
-            if not jan_val and _is_valid_jan(item_code):
-                jan_val = item_code
             payload = {
                 "item_code": item_code,
                 "jan": jan_val,
@@ -1282,6 +1306,7 @@ def ingest_monthly_turnover(
                 "close_avg_cost": _to_float(raw.get("期末平均原価")),
                 "close_amount": _to_float(raw.get("終了時の手持在庫額")),
                 "sell_through_rate": rate,
+                "rank": rank_val,
                 "risk_label": risk_label,
                 "imported_at": now,
             }

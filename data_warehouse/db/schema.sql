@@ -1218,7 +1218,8 @@ CREATE TABLE IF NOT EXISTS item_monthly_turnover (
   close_amount      REAL,                    -- 終了時の手持在庫額
   -- 派生指标 (ingest 端计算)
   sell_through_rate REAL,                    -- 完売率 = qty_sold / (open_qty + qty_total_in)
-  risk_label        TEXT,                    -- '断货风险' / '正常' / '压库存'
+  rank              TEXT,                    -- 商品ランク (从 item_v2 JOIN)
+  risk_label        TEXT,                    -- '断货风险' / '正常' / '压库存' / '不参与' / '无数据'
   imported_at       TEXT NOT NULL,
   UNIQUE(item_code, location, year_month)
 );
