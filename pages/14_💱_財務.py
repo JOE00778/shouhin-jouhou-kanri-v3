@@ -113,8 +113,7 @@ def _country_from_seller(seller: str | None) -> str:
 def _market_from_country(country: str | None) -> str:
     """市场维度: country → 高级地区
     - TW/SG/MY/PH/ID/VN/TH → 东南亚
-    - KR → 韩国
-    - JP → 日本国内
+    - KR → 韩国 (Coupang 接入后启用)
     - 其他 → 其他
     """
     c = (country or "").upper()
@@ -122,8 +121,6 @@ def _market_from_country(country: str | None) -> str:
         return t("东南亚")
     if c == "KR":
         return t("韩国")
-    if c == "JP":
-        return t("日本国内")
     return t("其他")
 
 
