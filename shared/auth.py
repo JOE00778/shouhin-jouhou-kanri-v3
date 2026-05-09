@@ -93,6 +93,34 @@ header[data-testid="stHeader"] > div:last-child {
 </style>
 """
 
+# 紧凑 layout · 全局生效（不论角色）· 把内容顶到上面
+_COMPACT_LAYOUT_CSS = """
+<style>
+/* 主内容区上 padding 从默认 6rem 压到 1rem */
+[data-testid="stMainBlockContainer"],
+.main .block-container,
+[data-testid="block-container"] {
+    padding-top: 1rem !important;
+    padding-bottom: 2rem !important;
+}
+/* Streamlit 顶部 header 高度压扁（保留 toolbar 但压紧）*/
+[data-testid="stHeader"] {
+    height: 0 !important;
+    background: transparent !important;
+}
+/* 标题与 caption 行间距收紧 */
+h1, h2, h3 {
+    margin-top: 0.5rem !important;
+    padding-top: 0 !important;
+}
+</style>
+"""
+
+
+def _apply_compact_layout() -> None:
+    """全局紧凑布局 · 内容贴顶 · 每次 require_password / require_admin 都注入"""
+    st.markdown(_COMPACT_LAYOUT_CSS, unsafe_allow_html=True)
+
 
 def _hide_chrome_for_guest() -> None:
     if not is_admin():
@@ -129,6 +157,7 @@ def _try_lark_sso() -> bool:
 
 
 def require_password() -> None:
+    _apply_compact_layout()  # 全局贴顶 · 不论登录前后都生效
     if st.session_state.get("__auth_ok"):
         _hide_chrome_for_guest()
         return
