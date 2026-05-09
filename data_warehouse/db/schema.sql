@@ -960,7 +960,10 @@ CREATE TABLE IF NOT EXISTS item_inventory_snapshot_v2 (
   -- 库存量
   qty_on_hand   REAL,                   -- 手持合計
   qty_committed REAL,                   -- 確保済合計
-  qty_backorder REAL,                   -- バック・オーダー合計
+  qty_backorder REAL,                   -- バック・オーダー合計（旧字段, 复用存 注文待ち 近似）
+  qty_on_order  REAL,                   -- 注文済（PO 已下达, 待到货）
+  qty_waiting   REAL,                   -- 注文待ち（待 PO 安排）
+  qty_in_transit REAL,                  -- 輸送中（运输中）
   -- 价值
   std_cost      REAL,                   -- 定義原価
   avg_cost      REAL,                   -- 平均原価

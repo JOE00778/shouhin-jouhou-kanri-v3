@@ -183,6 +183,7 @@ def ingest_inventory_snapshot(
             jan, item_code, internal_id, display_name,
             location, bin_number, snapshot_at,
             qty_on_hand, qty_committed, qty_backorder,
+            qty_on_order, qty_waiting, qty_in_transit,
             std_cost, avg_cost, total_amount,
             handling_status, status, owner, department,
             imported_at
@@ -190,6 +191,7 @@ def ingest_inventory_snapshot(
             :jan, :item_code, :internal_id, :display_name,
             :location, :bin_number, :snapshot_at,
             :qty_on_hand, :qty_committed, :qty_backorder,
+            :qty_on_order, :qty_waiting, :qty_in_transit,
             :std_cost, :avg_cost, :total_amount,
             :handling_status, :status, :owner, :department,
             :imported_at
@@ -228,6 +230,9 @@ def ingest_inventory_snapshot(
                 "qty_on_hand": _to_float(raw.get("手持合計")),
                 "qty_committed": _to_float(raw.get("確保済合計")),
                 "qty_backorder": _to_float(raw.get("バック・オーダー合計")),
+                "qty_on_order": None,    # 旧版文件没有这 3 字段
+                "qty_waiting": None,
+                "qty_in_transit": None,
                 "std_cost": _to_float(raw.get("アイテム定義原価")),
                 "total_amount": _to_float(raw.get("合計金額")),
                 "avg_cost": _to_float(raw.get("平均原価合計")),
@@ -363,6 +368,7 @@ def ingest_inventory_snapshot_multi(
             jan, item_code, internal_id, display_name,
             location, bin_number, snapshot_at,
             qty_on_hand, qty_committed, qty_backorder,
+            qty_on_order, qty_waiting, qty_in_transit,
             std_cost, avg_cost, total_amount,
             handling_status, status, owner, department,
             imported_at
@@ -370,6 +376,7 @@ def ingest_inventory_snapshot_multi(
             :jan, :item_code, :internal_id, :display_name,
             :location, :bin_number, :snapshot_at,
             :qty_on_hand, :qty_committed, :qty_backorder,
+            :qty_on_order, :qty_waiting, :qty_in_transit,
             :std_cost, :avg_cost, :total_amount,
             :handling_status, :status, :owner, :department,
             :imported_at
@@ -470,6 +477,10 @@ def ingest_inventory_snapshot_multi(
                     "qty_on_hand": qty_on_hand,
                     "qty_committed": qty_committed,
                     "qty_backorder": qty_backorder,
+                    "qty_on_order": _cell(idx_map, "注文済"),
+                    # 弁天倉庫 没有也不会有在途, 强制 0; 其他仓库读原值
+                    "qty_waiting": 0.0 if wh == "弁天倉庫" else qty_waiting,
+                    "qty_in_transit": 0.0 if wh == "弁天倉庫" else qty_transit,
                     "std_cost": std_cost,
                     "avg_cost": avg_cost,
                     "total_amount": total_amount,
