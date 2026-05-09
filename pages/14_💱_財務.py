@@ -98,6 +98,18 @@ def _to_yyyy_mm(dt) -> str | None:
         return None
 
 
+def _to_iso_week(dt) -> str | None:
+    """ISO 周表示 'YYYY-Www' (周一为周首日)."""
+    if dt is None or pd.isna(dt):
+        return None
+    try:
+        d = pd.to_datetime(dt)
+        iso = d.isocalendar()
+        return f"{int(iso.year)}-W{int(iso.week):02d}"
+    except Exception:
+        return None
+
+
 def _to_yyyy_mm_dd_slash(dt) -> str:
     """NST 拨款完成日期格式: YYYY/MM/DD."""
     if dt is None or pd.isna(dt):
@@ -160,7 +172,9 @@ if not df_income.empty:
 
     # NST 颗粒度: 按【订单成立时间】月份切分
     df_income["order_create_month"] = df_income["order_created_at"].apply(_to_yyyy_mm)
+    df_income["order_create_week"] = df_income["order_created_at"].apply(_to_iso_week)
     df_income["payout_month"] = df_income["payout_date"].apply(_to_yyyy_mm)
+    df_income["payout_week"] = df_income["payout_date"].apply(_to_iso_week)
 
     df_income["country"] = df_income["seller_account"].apply(_country_from_seller)
     if "platform" not in df_income.columns:
@@ -188,28 +202,42 @@ if not df_orders.empty:
         df_orders["platform"] = "Shopee"
     if not df_income.empty:
         df_orders = df_orders.merge(
-            df_income[["order_no", "order_create_month", "payout_month"]]
-            .drop_duplicates("order_no"),
+            df_income[[
+                "order_no",
+                "order_create_month", "order_create_week",
+                "payout_month", "payout_week",
+            ]].drop_duplicates("order_no"),
             on="order_no", how="left",
         )
 
 
 # ============================================================
-# 期间筛选 (按订单成立时间月份, 与 NST 一致)
+# 期间筛选 (粒度切换: 按周 / 按月, 时间锚点 = 订单成立时间)
 # ============================================================
-months = []
+GRAN_LABEL_TO_COL = {
+    t("按周"): "order_create_week",
+    t("按月"): "order_create_month",
+}
+
+c_gran, c0, c1, c2 = st.columns([1, 1.5, 1, 1])
+with c_gran:
+    gran_label = st.radio(
+        t("粒度"), list(GRAN_LABEL_TO_COL.keys()), horizontal=False,
+    )
+    gran_col = GRAN_LABEL_TO_COL[gran_label]
+
+periods = []
 if not df_income.empty:
-    months = sorted(
-        df_income["order_create_month"].dropna().unique().tolist(),
-        reverse=True,
+    periods = sorted(
+        df_income[gran_col].dropna().unique().tolist(), reverse=True,
     )
 
-c0, c1, c2 = st.columns([1.5, 1, 1])
+period_label = (
+    t("订单成立周 (ISO YYYY-Www)") if gran_col == "order_create_week"
+    else t("订单成立月份 (NST 文件切分依据)")
+)
 with c0:
-    sel_month = st.selectbox(
-        t("订单成立月份 (NST 文件切分依据)"),
-        [t("全部")] + months,
-    )
+    sel_period = st.selectbox(period_label, [t("全部")] + periods)
 with c1:
     countries = []
     if not df_income.empty:
@@ -223,8 +251,8 @@ with c2:
 
 # 应用筛选 (income 表)
 if not df_income.empty:
-    if sel_month != t("全部"):
-        df_income = df_income[df_income["order_create_month"] == sel_month]
+    if sel_period != t("全部"):
+        df_income = df_income[df_income[gran_col] == sel_period]
     if sel_country != t("全部"):
         df_income = df_income[df_income["country"] == sel_country]
     if sel_seller != t("全部") and "seller_account" in df_income.columns:
@@ -232,10 +260,10 @@ if not df_income.empty:
 
 # 应用筛选 (orders 表)
 if not df_orders.empty:
-    if sel_month != t("全部") and "order_create_month" in df_orders.columns:
+    if sel_period != t("全部") and gran_col in df_orders.columns:
         df_orders = df_orders[
-            (df_orders["order_create_month"] == sel_month)
-            | df_orders["order_create_month"].isna()
+            (df_orders[gran_col] == sel_period)
+            | df_orders[gran_col].isna()
         ]
     if sel_country != t("全部") and "country" in df_orders.columns:
         df_orders = df_orders[df_orders["country"] == sel_country]
@@ -257,7 +285,7 @@ else:
 # KPI (NST 4 指标 + 实拨)
 # ============================================================
 n_orders = int(df_income["order_no"].nunique()) if not df_income.empty else 0
-n_months = int(df_income["order_create_month"].nunique()) if not df_income.empty else 0
+n_periods = int(df_income[gran_col].nunique()) if not df_income.empty else 0
 
 if not df_income_jpy.empty:
     sum_payment = float(df_income_jpy["nst_payment"].sum())
@@ -267,15 +295,19 @@ if not df_income_jpy.empty:
 else:
     sum_payment = sum_refund = sum_bill = sum_payout = 0.0
 
+period_unit_label = t("覆盖周数") if gran_col == "order_create_week" else t("覆盖月份")
+
 c1, c2, c3, c4, c5 = st.columns(5)
-c1.metric(t("覆盖月份"), f"{n_months:,}")
+c1.metric(period_unit_label, f"{n_periods:,}")
 c2.metric(t("订单数"), f"{n_orders:,}")
 c3.metric(t("付款金额合计 (¥)"), f"¥{sum_payment:,.0f}")
 c4.metric(t("账单金额合计 (¥)"), f"¥{sum_bill:,.0f}")
 c5.metric(t("拨款金额合计 (¥)"), f"¥{sum_payout:,.0f}")
 
+period_axis_label = t("订单成立周") if gran_col == "order_create_week" else t("订单成立月份")
+
 st.info(t(
-    "📍 颗粒度: 订单成立月份 × 店铺账号 (与 NST 上传文件一致) · "
+    f"📍 颗粒度: {period_axis_label} × 店铺账号 (NST 上传切分仍以月份为基准) · "
     "💴 跨国汇总按 country × 公司固定汇率换算为日元 · "
     "PHP=2.4 / TWD=4.57 / MYR=36.48 / SGD=113.44 / USD=145"
 ))
@@ -285,11 +317,13 @@ st.divider()
 # ============================================================
 # Tabs
 # ============================================================
+_period_tab_unit = t("周") if gran_col == "order_create_week" else t("月")
+
 tab_nst, tab_month, tab_shop, tab_market, tab_raw_i, tab_raw_o = st.tabs([
     t("📤 NST 上传明细 (6 列)"),
-    t("📅 月份 × 国家 汇总"),
-    t("🏪 月份 × 店铺 汇总"),
-    t("🌐 月份 × 平台 汇总"),
+    f"📅 {_period_tab_unit} × {t('国家')} {t('汇总')}",
+    f"🏪 {_period_tab_unit} × {t('店铺')} {t('汇总')}",
+    f"🌐 {_period_tab_unit} × {t('平台')} {t('汇总')}",
     t("💰 拨款明细 (原始)"),
     t("📦 订单导出 (原始)"),
 ])
@@ -442,33 +476,37 @@ def _format_agg(agg, dim_cols, dim_labels):
     return show
 
 
-# ----- Tab 2: 月份 × 国家 -----
+# 选定粒度的 axis 标签 (用于 Tab 2-4 的列名)
+period_axis_short = t("周") if gran_col == "order_create_week" else t("月份")
+
+
+# ----- Tab 2: 期间 × 国家 -----
 with tab_month:
     if df_income_jpy.empty:
         st.info(t("拨款明细未上传, 无法汇总。"))
     else:
-        agg = _agg_by(df_income_jpy, "order_create_month", "country")
+        agg = _agg_by(df_income_jpy, gran_col, "country")
         show = _format_agg(
             agg,
-            ["order_create_month", "country"],
-            [t("订单成立月份"), t("国家")],
+            [gran_col, "country"],
+            [period_axis_label, t("国家")],
         )
         show = show.sort_values(
-            [t("订单成立月份"), t("国家")],
+            [period_axis_label, t("国家")],
             ascending=[False, True],
         )
         st.dataframe(show, use_container_width=True, hide_index=True, height=460)
         st.caption(t(f"共 {len(agg):,} 行"))
         st.download_button(
-            t("📥 月份×国家 CSV"),
+            f"📥 {period_axis_short}×{t('国家')} CSV",
             data=agg.to_csv(index=False).encode("utf-8-sig"),
-            file_name="nst_shopee_month_country.csv",
+            file_name=f"nst_shopee_{gran_col}_country.csv",
             mime="text/csv",
-            key="dl_month_country",
+            key="dl_period_country",
         )
 
 
-# ----- Tab 3: 月份 × 店铺 -----
+# ----- Tab 3: 期间 × 店铺 -----
 with tab_shop:
     if df_income_jpy.empty or df_orders.empty:
         st.info(t("订单导出 + 拨款明细 都需上传 (店铺信息来自订单导出)。"))
@@ -478,50 +516,50 @@ with tab_shop:
             on="order_no", how="left",
         )
         joined["shop_name"] = joined["shop_name"].fillna(t("(无店铺信息)"))
-        agg = _agg_by(joined, "order_create_month", "shop_name")
+        agg = _agg_by(joined, gran_col, "shop_name")
         show = _format_agg(
             agg,
-            ["order_create_month", "shop_name"],
-            [t("订单成立月份"), t("店铺")],
+            [gran_col, "shop_name"],
+            [period_axis_label, t("店铺")],
         )
         show = show.sort_values(
-            [t("订单成立月份"), t("拨款金额")],
+            [period_axis_label, t("拨款金额")],
             ascending=[False, False],
         )
         st.dataframe(show, use_container_width=True, hide_index=True, height=460)
         st.caption(t(f"共 {len(agg):,} 行"))
         st.download_button(
-            t("📥 月份×店铺 CSV"),
+            f"📥 {period_axis_short}×{t('店铺')} CSV",
             data=agg.to_csv(index=False).encode("utf-8-sig"),
-            file_name="nst_shopee_month_shop.csv",
+            file_name=f"nst_shopee_{gran_col}_shop.csv",
             mime="text/csv",
-            key="dl_month_shop",
+            key="dl_period_shop",
         )
 
 
-# ----- Tab 4: 月份 × 平台 -----
+# ----- Tab 4: 期间 × 平台 -----
 with tab_market:
     if df_income_jpy.empty:
         st.info(t("拨款明细未上传, 无法汇总。"))
     else:
-        agg = _agg_by(df_income_jpy, "order_create_month", "platform")
+        agg = _agg_by(df_income_jpy, gran_col, "platform")
         show = _format_agg(
             agg,
-            ["order_create_month", "platform"],
-            [t("订单成立月份"), t("平台")],
+            [gran_col, "platform"],
+            [period_axis_label, t("平台")],
         )
         show = show.sort_values(
-            [t("订单成立月份"), t("平台")],
+            [period_axis_label, t("平台")],
             ascending=[False, True],
         )
         st.dataframe(show, use_container_width=True, hide_index=True, height=460)
         st.caption(t(f"共 {len(agg):,} 行"))
         st.download_button(
-            t("📥 月份×平台 CSV"),
+            f"📥 {period_axis_short}×{t('平台')} CSV",
             data=agg.to_csv(index=False).encode("utf-8-sig"),
-            file_name="nst_shopee_month_platform.csv",
+            file_name=f"nst_shopee_{gran_col}_platform.csv",
             mime="text/csv",
-            key="dl_month_platform",
+            key="dl_period_platform",
         )
 
 
@@ -534,7 +572,9 @@ with tab_raw_i:
             "💴 金额已按 country × 公司固定汇率换算为日元。"
         ))
         cols = [
-            "order_create_month", "payout_month", "country", "_jpy_rate",
+            "order_create_week", "order_create_month",
+            "payout_week", "payout_month",
+            "country", "_jpy_rate",
             "seller_account", "order_no", "buyer_account",
             "order_created_at", "payout_date",
             "gross_price", "product_discount", "refund_amount",
@@ -565,7 +605,7 @@ with tab_raw_o:
     else:
         cols = [
             "order_no", "platform", "shop_name", "country",
-            "order_create_month",
+            "order_create_week", "order_create_month",
             "currency", "local_sku", "unit_price", "ship_qty", "payment_amount",
         ]
         cols = [c for c in cols if c in df_orders.columns]
