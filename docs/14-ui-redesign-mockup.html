@@ -20,8 +20,56 @@
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
   table tbody tr:hover { background: #f8fafc; }
+  .kpi-card { position: relative; }
   .kpi-card:hover { transform: translateY(-2px); transition: transform 0.15s; }
+  .kpi-spark { position: absolute; right: 12px; bottom: 12px; width: 60px; height: 24px; }
   .nav-item.active { background: #eff6ff; color: #1d4ed8; border-right: 3px solid #2563eb; }
+
+  /* Global search modal */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.4); z-index: 50; display: flex; align-items: flex-start; justify-content: center; padding-top: 12vh; }
+  .modal-overlay.hidden { display: none; }
+  .modal-card { background: #fff; border-radius: 12px; box-shadow: 0 20px 50px -12px rgba(0,0,0,0.25); width: 560px; max-width: 92%; overflow: hidden; }
+  kbd { font-family: 'SF Mono', 'Menlo', monospace; font-size: 10px; background: #f1f5f9; border: 1px solid #cbd5e1; border-bottom-width: 2px; border-radius: 4px; padding: 1px 5px; color: #475569; }
+
+  /* Notification panel */
+  .notif-panel { position: absolute; right: 0; top: calc(100% + 8px); width: 360px; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 16px 40px -8px rgba(0,0,0,0.15); z-index: 40; }
+  .notif-panel.hidden { display: none; }
+
+  /* Side drawer */
+  .drawer-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.35); z-index: 45; }
+  .drawer-overlay.hidden { display: none; }
+  .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 480px; max-width: 92%; background: #fff; box-shadow: -16px 0 40px -8px rgba(0,0,0,0.2); z-index: 46; transform: translateX(100%); transition: transform 0.22s ease; display: flex; flex-direction: column; }
+  .drawer.open { transform: translateX(0); }
+  .drawer-overlay { transition: opacity 0.2s; }
+
+  /* Bulk action bar */
+  .bulk-bar { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: #1e293b; color: #fff; border-radius: 12px; padding: 10px 16px; box-shadow: 0 12px 30px -8px rgba(0,0,0,0.4); z-index: 30; display: flex; align-items: center; gap: 10px; }
+  .bulk-bar.hidden { display: none; }
+
+  /* View tabs */
+  .view-chip { white-space: nowrap; padding: 6px 12px; border-radius: 8px; font-size: 12px; cursor: pointer; border: 1px solid #e2e8f0; background: #fff; color: #475569; flex-shrink: 0; }
+  .view-chip.active { border-color: #2563eb; color: #1d4ed8; background: #eff6ff; font-weight: 500; }
+
+  /* Density modes */
+  tbody.density-compact td { padding-top: 4px; padding-bottom: 4px; }
+  tbody.density-comfy td { padding-top: 16px; padding-bottom: 16px; }
+
+  /* Toast */
+  .toast { position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%); background: #0f172a; color: #fff; padding: 8px 16px; border-radius: 8px; font-size: 13px; z-index: 60; box-shadow: 0 10px 24px -6px rgba(0,0,0,0.3); }
+  .toast.hidden { display: none; }
+
+  /* Quick links */
+  .quick-link { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 8px; cursor: pointer; font-size: 16px; color: #64748b; }
+  .quick-link:hover { background: #f1f5f9; color: #1e293b; }
+  .quick-link.active { background: #eff6ff; color: #1d4ed8; }
+
+  /* Drawer arrow on row */
+  .row-arrow { opacity: 0; transition: opacity 0.15s; cursor: pointer; }
+  tr:hover .row-arrow { opacity: 1; }
+
+  /* Column toggle panel */
+  .col-toggle { position: absolute; right: 0; top: calc(100% + 6px); width: 200px; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; box-shadow: 0 16px 40px -8px rgba(0,0,0,0.15); padding: 10px; z-index: 25; }
+  .col-toggle.hidden { display: none; }
 </style>
 </head>
 <body class="bg-slate-50 text-slate-800">
@@ -134,10 +182,128 @@
   <!-- ===== Main ===== -->
   <main class="flex-1 overflow-y-auto">
 
+    <!-- ===== Global Topbar (T1 search · T3 notif · T7 quick links) ===== -->
+    <div class="bg-white border-b border-slate-200 px-6 py-2.5 flex items-center gap-4 sticky top-0 z-20">
+      <!-- T1 Global search trigger -->
+      <button id="searchTrigger" class="flex-1 max-w-xl flex items-center gap-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg px-3 py-1.5 text-left text-sm text-slate-400">
+        <span>🔍</span>
+        <span class="flex-1">⌘K 全局搜索：JAN / 商品名 / 页面…</span>
+        <kbd>⌘</kbd><kbd>K</kbd>
+      </button>
+
+      <!-- T7 Quick links -->
+      <div class="flex items-center gap-1 border-l border-slate-200 pl-4">
+        <button class="quick-link" data-quick-view="order" title="订货依据">📦</button>
+        <button class="quick-link" data-quick-view="search" title="商品检索">🔍</button>
+        <button class="quick-link" data-quick-view="finance" title="财务">💱</button>
+        <button class="quick-link" title="销售查询">📊</button>
+        <button class="quick-link" title="数据导入">⚙️</button>
+      </div>
+
+      <!-- T3 Notification bell -->
+      <div class="relative">
+        <button id="notifBtn" class="relative w-9 h-9 rounded-lg hover:bg-slate-100 flex items-center justify-center text-lg">
+          🔔
+          <span class="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">3</span>
+        </button>
+        <div id="notifPanel" class="notif-panel hidden">
+          <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+            <div class="text-sm font-semibold text-slate-800">通知 <span class="text-xs text-slate-400 font-normal">(3 条新)</span></div>
+            <button class="text-xs text-blue-600 hover:underline">全部已读</button>
+          </div>
+          <div class="divide-y divide-slate-100 max-h-80 overflow-y-auto">
+            <div class="px-4 py-3 hover:bg-slate-50 cursor-pointer">
+              <div class="text-sm text-slate-800">🔴 新增 <span class="font-semibold text-red-700">12 个 断货风险</span> SKU</div>
+              <div class="flex justify-between mt-1">
+                <span class="text-[11px] text-slate-400">2 分钟前</span>
+                <a href="#" class="text-[11px] text-blue-600 hover:underline">查看 →</a>
+              </div>
+            </div>
+            <div class="px-4 py-3 hover:bg-slate-50 cursor-pointer">
+              <div class="text-sm text-slate-800">📦 6 份 NST 报表导入完成</div>
+              <div class="flex justify-between mt-1">
+                <span class="text-[11px] text-slate-400">1 小时前</span>
+                <a href="#" class="text-[11px] text-blue-600 hover:underline">查看 →</a>
+              </div>
+            </div>
+            <div class="px-4 py-3 hover:bg-slate-50 cursor-pointer">
+              <div class="text-sm text-slate-800">📊 4 月完売率分析已就绪</div>
+              <div class="flex justify-between mt-1">
+                <span class="text-[11px] text-slate-400">3 小时前</span>
+                <a href="#" class="text-[11px] text-blue-600 hover:underline">查看 →</a>
+              </div>
+            </div>
+          </div>
+          <div class="px-4 py-2 border-t border-slate-200 text-center">
+            <a href="#" class="text-xs text-blue-600 hover:underline">查看全部通知 →</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== T1 Search Modal ===== -->
+    <div id="searchModal" class="modal-overlay hidden">
+      <div class="modal-card" id="searchCard">
+        <div class="px-4 py-3 border-b border-slate-200 flex items-center gap-2">
+          <span class="text-lg">🔍</span>
+          <input id="searchInput" type="text" placeholder="搜索 JAN / 商品名 / 页面..." class="flex-1 outline-none text-sm bg-transparent" autocomplete="off">
+          <kbd>ESC</kbd>
+        </div>
+        <div class="max-h-96 overflow-y-auto">
+          <div class="px-4 py-2 text-[10px] uppercase tracking-wider text-slate-400">页面跳转</div>
+          <div class="px-4 py-2 hover:bg-slate-50 cursor-pointer flex items-center gap-3 search-result" data-target-view="order">
+            <span class="text-base">📦</span>
+            <div class="flex-1">
+              <div class="text-sm text-slate-800">跳转：订货依据</div>
+              <div class="text-[11px] text-slate-400">订货决策 / 完売率分析</div>
+            </div>
+            <kbd>↵</kbd>
+          </div>
+          <div class="px-4 py-2 hover:bg-slate-50 cursor-pointer flex items-center gap-3 search-result" data-target-view="search">
+            <span class="text-base">📊</span>
+            <div class="flex-1">
+              <div class="text-sm text-slate-800">跳转：商品情报检索</div>
+              <div class="text-[11px] text-slate-400">总览 / 商品检索</div>
+            </div>
+            <kbd>↵</kbd>
+          </div>
+          <div class="px-4 py-2 text-[10px] uppercase tracking-wider text-slate-400 border-t border-slate-100 mt-1">商品</div>
+          <div class="px-4 py-2 hover:bg-slate-50 cursor-pointer flex items-center gap-3 search-result">
+            <span class="text-base">🏷</span>
+            <div class="flex-1">
+              <div class="text-sm text-slate-800">4976631478272 · Pelican 恋するおしりヒップケアソープ</div>
+              <div class="text-[11px] text-slate-400">A 级 · 在库 1,019 · JD-物流-千葉</div>
+            </div>
+            <kbd>↵</kbd>
+          </div>
+          <div class="px-4 py-2 hover:bg-slate-50 cursor-pointer flex items-center gap-3 search-result">
+            <span class="text-base">🏷</span>
+            <div class="flex-1">
+              <div class="text-sm text-slate-800">4901872837144 · SKATER 子供用水筒 直飲み 恐竜</div>
+              <div class="text-[11px] text-slate-400">A 级 · 在库 500 · JD-物流-千葉</div>
+            </div>
+            <kbd>↵</kbd>
+          </div>
+          <div class="px-4 py-2 hover:bg-slate-50 cursor-pointer flex items-center gap-3 search-result">
+            <span class="text-base">🏷</span>
+            <div class="flex-1">
+              <div class="text-sm text-slate-800">4582300064280 · TIRTIR マスクフィットメイクアップフィクサー 80ml</div>
+              <div class="text-[11px] text-slate-400">NEW · 在库 500 · JD-物流-千葉</div>
+            </div>
+            <kbd>↵</kbd>
+          </div>
+        </div>
+        <div class="px-4 py-2 border-t border-slate-200 text-[11px] text-slate-400 flex justify-between">
+          <span><kbd>↑</kbd><kbd>↓</kbd> 浏览 · <kbd>↵</kbd> 选择</span>
+          <span>5 / 5 个结果</span>
+        </div>
+      </div>
+    </div>
+
     <!-- ===== View: Dashboard ===== -->
     <div data-view-content="dashboard">
       <!-- Header -->
-      <header class="bg-white border-b border-slate-200 px-8 py-4 flex items-center justify-between sticky top-0 z-10">
+      <header class="bg-white border-b border-slate-200 px-8 py-4 flex items-center justify-between relative z-0">
         <div>
           <div class="text-xs text-slate-500">总览</div>
           <h1 class="text-xl font-bold text-slate-900">📊 仪表盘</h1>
@@ -157,22 +323,26 @@
             <div class="kpi-card bg-white border border-slate-200 rounded-xl p-5">
               <div class="text-xs text-slate-500">商品 SKU</div>
               <div class="text-2xl font-bold text-slate-900 mt-1">3,896</div>
-              <div class="text-xs mt-2"><span class="text-green-600 font-medium">+12</span> 本月新增</div>
+              <div class="text-xs mt-2"><span class="text-green-600 font-medium">▲ +12</span> vs 上月</div>
+              <canvas class="kpi-spark" id="sparkSku"></canvas>
             </div>
             <div class="kpi-card bg-white border border-slate-200 rounded-xl p-5">
               <div class="text-xs text-slate-500">在库金额</div>
               <div class="text-2xl font-bold text-slate-900 mt-1">¥64.06M</div>
-              <div class="text-xs mt-2 text-slate-400">JD ¥49.8M · 弁天 ¥14.2M</div>
+              <div class="text-xs mt-2"><span class="text-green-600 font-medium">▲ +2.1%</span> JD ¥49.8M · 弁天 ¥14.2M</div>
+              <canvas class="kpi-spark" id="sparkStock"></canvas>
             </div>
             <div class="kpi-card bg-white border border-slate-200 rounded-xl p-5">
               <div class="text-xs text-slate-500">本月销售</div>
               <div class="text-2xl font-bold text-slate-900 mt-1">¥4.42M</div>
-              <div class="text-xs mt-2"><span class="text-red-600 font-medium">-8.3%</span> 环比上月</div>
+              <div class="text-xs mt-2"><span class="text-red-600 font-medium">▼ -8.3%</span> 环比上月</div>
+              <canvas class="kpi-spark" id="sparkSales"></canvas>
             </div>
             <div class="kpi-card bg-white border border-slate-200 rounded-xl p-5">
               <div class="text-xs text-slate-500">毛利率</div>
               <div class="text-2xl font-bold text-slate-900 mt-1">61.4%</div>
-              <div class="text-xs mt-2"><span class="text-green-600 font-medium">+1.2pp</span> 环比上月</div>
+              <div class="text-xs mt-2"><span class="text-green-600 font-medium">▲ +1.2pp</span> 环比上月</div>
+              <canvas class="kpi-spark" id="sparkMargin"></canvas>
             </div>
           </div>
         </div>
@@ -184,27 +354,27 @@
             <div class="kpi-card bg-red-50 border border-red-200 rounded-xl p-5">
               <div class="text-xs text-red-700">🔴 断货风险</div>
               <div class="text-2xl font-bold text-red-900 mt-1">116</div>
-              <div class="text-xs mt-2 text-red-600">完売率 ≥ 0.9 → 加大订货</div>
+              <div class="text-xs mt-2"><span class="text-red-700 font-medium">▲ +12</span> <span class="text-red-600">vs 上月 · 加大订货</span></div>
             </div>
             <div class="kpi-card bg-yellow-50 border border-yellow-200 rounded-xl p-5">
               <div class="text-xs text-yellow-800">🟡 压库存</div>
               <div class="text-2xl font-bold text-yellow-900 mt-1">1,717</div>
-              <div class="text-xs mt-2 text-yellow-700">完売率 &lt; 0.5 → 减少订货</div>
+              <div class="text-xs mt-2"><span class="text-green-700 font-medium">▼ -34</span> <span class="text-yellow-700">vs 上月 · 减少订货</span></div>
             </div>
             <div class="kpi-card bg-green-50 border border-green-200 rounded-xl p-5">
               <div class="text-xs text-green-700">🟢 正常</div>
               <div class="text-2xl font-bold text-green-900 mt-1">258</div>
-              <div class="text-xs mt-2 text-green-600">完売率 0.5 - 0.9</div>
+              <div class="text-xs mt-2"><span class="text-green-700 font-medium">▲ +18</span> <span class="text-green-600">vs 上月</span></div>
             </div>
             <div class="kpi-card bg-slate-50 border border-slate-200 rounded-xl p-5">
               <div class="text-xs text-slate-700">⚪ 数据不足</div>
               <div class="text-2xl font-bold text-slate-700 mt-1">3,951</div>
-              <div class="text-xs mt-2 text-slate-500">销量太少不参与</div>
+              <div class="text-xs mt-2"><span class="text-slate-500 font-medium">▲ +6</span> <span class="text-slate-500">vs 上月</span></div>
             </div>
             <div class="kpi-card bg-orange-50 border border-orange-200 rounded-xl p-5">
               <div class="text-xs text-orange-700">⚠️ 入荷困難</div>
               <div class="text-2xl font-bold text-orange-900 mt-1">42</div>
-              <div class="text-xs mt-2 text-orange-600">人工标记的难入荷品</div>
+              <div class="text-xs mt-2"><span class="text-red-700 font-medium">▲ +3</span> <span class="text-orange-600">vs 上月</span></div>
             </div>
           </div>
         </div>
@@ -301,7 +471,7 @@
 
     <!-- ===== View: 订货依据 ===== -->
     <div data-view-content="order" class="hidden">
-      <header class="bg-white border-b border-slate-200 px-8 py-4 sticky top-0 z-10">
+      <header class="bg-white border-b border-slate-200 px-8 py-4 relative z-0">
         <div class="text-xs text-slate-500">订货决策 / 订货依据</div>
         <h1 class="text-xl font-bold text-slate-900">📦 订货依据 · 完売率分析</h1>
       </header>
@@ -332,6 +502,22 @@
           <div class="bg-slate-50 border border-slate-200 rounded-lg px-4 py-3">
             <div class="text-[10px] text-slate-700">⚪ 数据不足</div>
             <div class="text-lg font-bold text-slate-700 mt-0.5">3,951</div>
+          </div>
+        </div>
+
+        <!-- T6 Saved Views -->
+        <div class="bg-white border border-slate-200 rounded-xl px-4 py-3">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-[11px] uppercase tracking-wider text-slate-500 font-medium">📌 我的看板</span>
+            <span class="text-[10px] text-slate-400">— 一键切换常用筛选组合</span>
+          </div>
+          <div class="flex gap-2 overflow-x-auto pb-1">
+            <button class="view-chip active">当月断货 + 压库存</button>
+            <button class="view-chip">A/B 商品全部</button>
+            <button class="view-chip">弁天退品观察</button>
+            <button class="view-chip">仅 NEW</button>
+            <button class="view-chip">全部 SKU</button>
+            <button class="view-chip text-blue-600 border-dashed" id="newViewBtn">+ 新建视图</button>
           </div>
         </div>
 
@@ -367,67 +553,111 @@
           </div>
         </div>
 
-        <!-- Tabs -->
+        <!-- Tabs + T9/T10 controls -->
         <div class="bg-white border border-slate-200 rounded-xl">
-          <div class="border-b border-slate-200 px-4 flex gap-1">
-            <button class="px-4 py-3 text-sm font-medium text-red-700 border-b-2 border-red-500">🔴 断货风险 (要补货) <span class="text-[10px] bg-red-100 px-1.5 rounded">116</span></button>
-            <button class="px-4 py-3 text-sm text-slate-500 hover:text-slate-700">🟡 压库存 (减少订货) <span class="text-[10px] bg-yellow-100 px-1.5 rounded">1,717</span></button>
-            <button class="px-4 py-3 text-sm text-slate-500 hover:text-slate-700">🟢 正常 (参考) <span class="text-[10px] bg-green-100 px-1.5 rounded">258</span></button>
+          <div class="border-b border-slate-200 px-4 flex items-center justify-between">
+            <div class="flex gap-1">
+              <button class="px-4 py-3 text-sm font-medium text-red-700 border-b-2 border-red-500">🔴 断货风险 (要补货) <span class="text-[10px] bg-red-100 px-1.5 rounded">116</span></button>
+              <button class="px-4 py-3 text-sm text-slate-500 hover:text-slate-700">🟡 压库存 (减少订货) <span class="text-[10px] bg-yellow-100 px-1.5 rounded">1,717</span></button>
+              <button class="px-4 py-3 text-sm text-slate-500 hover:text-slate-700">🟢 正常 (参考) <span class="text-[10px] bg-green-100 px-1.5 rounded">258</span></button>
+            </div>
+            <div class="flex items-center gap-2 pr-2">
+              <!-- T10 Density toggle -->
+              <div class="flex border border-slate-200 rounded-md overflow-hidden text-xs" id="densityToggle">
+                <button class="px-2 py-1 hover:bg-slate-100" data-density="compact">紧凑</button>
+                <button class="px-2 py-1 bg-blue-600 text-white" data-density="normal">标准</button>
+                <button class="px-2 py-1 hover:bg-slate-100" data-density="comfy">宽松</button>
+              </div>
+              <!-- T9 Column toggle -->
+              <div class="relative">
+                <button id="colToggleBtn" class="w-7 h-7 rounded-md border border-slate-200 hover:bg-slate-50 flex items-center justify-center text-sm" title="列显示设置">⚙</button>
+                <div id="colTogglePanel" class="col-toggle hidden">
+                  <div class="text-[11px] uppercase tracking-wider text-slate-500 mb-2">列显示</div>
+                  <div class="space-y-1 text-sm" id="colTogglePanelList">
+                    <label class="flex items-center gap-2"><input type="checkbox" class="col-toggle-cb" data-col="0" checked> JAN</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" class="col-toggle-cb" data-col="1" checked> 商品名</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" class="col-toggle-cb" data-col="2" checked> 等级</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" class="col-toggle-cb" data-col="3" checked> 仓库</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" class="col-toggle-cb" data-col="4" checked> 月销量</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" class="col-toggle-cb" data-col="5" checked> 合计可售</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" class="col-toggle-cb" data-col="6" checked> 完売率</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" class="col-toggle-cb" data-col="7" checked> 建议订货量</label>
+                  </div>
+                  <button id="colResetBtn" class="mt-2 w-full text-xs text-blue-600 hover:underline">重置全部</button>
+                </div>
+              </div>
+            </div>
           </div>
 
-          <table class="w-full text-sm">
+          <!-- T4 Select-all banner (visible when all current page selected) -->
+          <div id="selectAllBanner" class="hidden px-4 py-2 bg-blue-50 border-b border-blue-200 text-xs text-blue-800 flex justify-center gap-2">
+            <span>已选当前页 <strong id="selectedPageCount">0</strong> 项</span>
+            <a href="#" class="text-blue-600 hover:underline" id="selectAllAcrossLink">选中所有 116 项 →</a>
+          </div>
+
+          <table class="w-full text-sm" id="orderTable">
             <thead class="bg-slate-50 text-xs text-slate-500">
               <tr>
-                <th class="px-4 py-2 text-left">JAN</th>
-                <th class="px-4 py-2 text-left">商品名</th>
-                <th class="px-4 py-2 text-left">等级</th>
-                <th class="px-4 py-2 text-left">仓库</th>
-                <th class="px-4 py-2 text-right">月销量</th>
-                <th class="px-4 py-2 text-right">合计可售</th>
-                <th class="px-4 py-2 text-right">完売率</th>
-                <th class="px-4 py-2 text-right font-medium text-slate-700">建议订货量 ↓</th>
+                <th class="px-3 py-2 text-left w-8"><input type="checkbox" id="selectAllCb"></th>
+                <th class="px-4 py-2 text-left col-0">JAN</th>
+                <th class="px-4 py-2 text-left col-1">商品名</th>
+                <th class="px-4 py-2 text-left col-2">等级</th>
+                <th class="px-4 py-2 text-left col-3">仓库</th>
+                <th class="px-4 py-2 text-right col-4">月销量</th>
+                <th class="px-4 py-2 text-right col-5">合计可售</th>
+                <th class="px-4 py-2 text-right col-6">完売率</th>
+                <th class="px-4 py-2 text-right font-medium text-slate-700 col-7">建议订货量 ↓</th>
+                <th class="px-2 py-2 w-8"></th>
               </tr>
             </thead>
-            <tbody class="divide-y divide-slate-100">
-              <tr>
-                <td class="px-4 py-2 font-mono text-xs text-slate-500">4901872837144</td>
-                <td class="px-4 py-2">SKATER 水筒 恐竜</td>
-                <td class="px-4 py-2"><span class="badge-A px-1.5 py-0.5 rounded text-[10px] font-medium">A</span></td>
-                <td class="px-4 py-2 text-slate-500 text-xs">JD-物流-千葉</td>
-                <td class="px-4 py-2 text-right">498</td>
-                <td class="px-4 py-2 text-right">500</td>
-                <td class="px-4 py-2 text-right"><span class="risk-danger px-2 py-0.5 rounded-md text-xs font-medium">99.6%</span></td>
-                <td class="px-4 py-2 text-right font-bold text-red-700">747</td>
+            <tbody class="divide-y divide-slate-100" id="orderTbody">
+              <tr data-jan="4901872837144" data-name="SKATER 水筒 恐竜" data-rank="A">
+                <td class="px-3 py-2 w-8"><input type="checkbox" class="row-cb"></td>
+                <td class="px-4 py-2 font-mono text-xs text-slate-500 col-0">4901872837144</td>
+                <td class="px-4 py-2 col-1">SKATER 水筒 恐竜</td>
+                <td class="px-4 py-2 col-2"><span class="badge-A px-1.5 py-0.5 rounded text-[10px] font-medium">A</span></td>
+                <td class="px-4 py-2 text-slate-500 text-xs col-3">JD-物流-千葉</td>
+                <td class="px-4 py-2 text-right col-4">498</td>
+                <td class="px-4 py-2 text-right col-5">500</td>
+                <td class="px-4 py-2 text-right col-6"><span class="risk-danger px-2 py-0.5 rounded-md text-xs font-medium">99.6%</span></td>
+                <td class="px-4 py-2 text-right font-bold text-red-700 col-7">747</td>
+                <td class="px-2 py-2 text-right"><button class="row-arrow text-blue-600 hover:text-blue-800 text-base" title="查看详情">→</button></td>
               </tr>
-              <tr>
-                <td class="px-4 py-2 font-mono text-xs text-slate-500">4582300064280</td>
-                <td class="px-4 py-2">TIRTIR マスクフィットメイクアップフィクサー 80ml</td>
-                <td class="px-4 py-2"><span class="badge-NEW px-1.5 py-0.5 rounded text-[10px] font-medium">NEW</span></td>
-                <td class="px-4 py-2 text-slate-500 text-xs">JD-物流-千葉</td>
-                <td class="px-4 py-2 text-right">496</td>
-                <td class="px-4 py-2 text-right">500</td>
-                <td class="px-4 py-2 text-right"><span class="risk-danger px-2 py-0.5 rounded-md text-xs font-medium">99.2%</span></td>
-                <td class="px-4 py-2 text-right font-bold text-red-700">744</td>
+              <tr data-jan="4582300064280" data-name="TIRTIR マスクフィットメイクアップフィクサー 80ml" data-rank="NEW">
+                <td class="px-3 py-2 w-8"><input type="checkbox" class="row-cb"></td>
+                <td class="px-4 py-2 font-mono text-xs text-slate-500 col-0">4582300064280</td>
+                <td class="px-4 py-2 col-1">TIRTIR マスクフィットメイクアップフィクサー 80ml</td>
+                <td class="px-4 py-2 col-2"><span class="badge-NEW px-1.5 py-0.5 rounded text-[10px] font-medium">NEW</span></td>
+                <td class="px-4 py-2 text-slate-500 text-xs col-3">JD-物流-千葉</td>
+                <td class="px-4 py-2 text-right col-4">496</td>
+                <td class="px-4 py-2 text-right col-5">500</td>
+                <td class="px-4 py-2 text-right col-6"><span class="risk-danger px-2 py-0.5 rounded-md text-xs font-medium">99.2%</span></td>
+                <td class="px-4 py-2 text-right font-bold text-red-700 col-7">744</td>
+                <td class="px-2 py-2 text-right"><button class="row-arrow text-blue-600 hover:text-blue-800 text-base" title="查看详情">→</button></td>
               </tr>
-              <tr>
-                <td class="px-4 py-2 font-mono text-xs text-slate-500">4976631478272</td>
-                <td class="px-4 py-2">Pelican 恋するおしりヒップケアソープ</td>
-                <td class="px-4 py-2"><span class="badge-A px-1.5 py-0.5 rounded text-[10px] font-medium">A</span></td>
-                <td class="px-4 py-2 text-slate-500 text-xs">JD-物流-千葉</td>
-                <td class="px-4 py-2 text-right">5,089</td>
-                <td class="px-4 py-2 text-right">5,500</td>
-                <td class="px-4 py-2 text-right"><span class="risk-danger px-2 py-0.5 rounded-md text-xs font-medium">92.5%</span></td>
-                <td class="px-4 py-2 text-right font-bold text-red-700">7,634</td>
+              <tr data-jan="4976631478272" data-name="Pelican 恋するおしりヒップケアソープ" data-rank="A">
+                <td class="px-3 py-2 w-8"><input type="checkbox" class="row-cb"></td>
+                <td class="px-4 py-2 font-mono text-xs text-slate-500 col-0">4976631478272</td>
+                <td class="px-4 py-2 col-1">Pelican 恋するおしりヒップケアソープ</td>
+                <td class="px-4 py-2 col-2"><span class="badge-A px-1.5 py-0.5 rounded text-[10px] font-medium">A</span></td>
+                <td class="px-4 py-2 text-slate-500 text-xs col-3">JD-物流-千葉</td>
+                <td class="px-4 py-2 text-right col-4">5,089</td>
+                <td class="px-4 py-2 text-right col-5">5,500</td>
+                <td class="px-4 py-2 text-right col-6"><span class="risk-danger px-2 py-0.5 rounded-md text-xs font-medium">92.5%</span></td>
+                <td class="px-4 py-2 text-right font-bold text-red-700 col-7">7,634</td>
+                <td class="px-2 py-2 text-right"><button class="row-arrow text-blue-600 hover:text-blue-800 text-base" title="查看详情">→</button></td>
               </tr>
-              <tr>
-                <td class="px-4 py-2 font-mono text-xs text-slate-500">2000000000428</td>
-                <td class="px-4 py-2">配件 ケーブル USB-C 1m</td>
-                <td class="px-4 py-2"><span class="badge-B px-1.5 py-0.5 rounded text-[10px] font-medium">B</span></td>
-                <td class="px-4 py-2 text-slate-500 text-xs">JD-物流-千葉</td>
-                <td class="px-4 py-2 text-right">15</td>
-                <td class="px-4 py-2 text-right">15</td>
-                <td class="px-4 py-2 text-right"><span class="risk-danger px-2 py-0.5 rounded-md text-xs font-medium">100.0%</span></td>
-                <td class="px-4 py-2 text-right font-bold text-red-700">23</td>
+              <tr data-jan="2000000000428" data-name="配件 ケーブル USB-C 1m" data-rank="B">
+                <td class="px-3 py-2 w-8"><input type="checkbox" class="row-cb"></td>
+                <td class="px-4 py-2 font-mono text-xs text-slate-500 col-0">2000000000428</td>
+                <td class="px-4 py-2 col-1">配件 ケーブル USB-C 1m</td>
+                <td class="px-4 py-2 col-2"><span class="badge-B px-1.5 py-0.5 rounded text-[10px] font-medium">B</span></td>
+                <td class="px-4 py-2 text-slate-500 text-xs col-3">JD-物流-千葉</td>
+                <td class="px-4 py-2 text-right col-4">15</td>
+                <td class="px-4 py-2 text-right col-5">15</td>
+                <td class="px-4 py-2 text-right col-6"><span class="risk-danger px-2 py-0.5 rounded-md text-xs font-medium">100.0%</span></td>
+                <td class="px-4 py-2 text-right font-bold text-red-700 col-7">23</td>
+                <td class="px-2 py-2 text-right"><button class="row-arrow text-blue-600 hover:text-blue-800 text-base" title="查看详情">→</button></td>
               </tr>
             </tbody>
           </table>
@@ -459,7 +689,7 @@
 
     <!-- ===== View: 商品情报检索 ===== -->
     <div data-view-content="search" class="hidden">
-      <header class="bg-white border-b border-slate-200 px-8 py-4 sticky top-0 z-10">
+      <header class="bg-white border-b border-slate-200 px-8 py-4 relative z-0">
         <div class="text-xs text-slate-500">总览 / 商品情报检索</div>
         <h1 class="text-xl font-bold text-slate-900">🔍 商品情报检索</h1>
       </header>
@@ -675,7 +905,7 @@
 
     <!-- ===== View: 财务 ===== -->
     <div data-view-content="finance" class="hidden">
-      <header class="bg-white border-b border-slate-200 px-8 py-4 sticky top-0 z-10">
+      <header class="bg-white border-b border-slate-200 px-8 py-4 relative z-0">
         <div class="text-xs text-slate-500">销售数据 / 財務</div>
         <h1 class="text-xl font-bold text-slate-900">💱 財務 · NST 上传颗粒度对齐</h1>
       </header>
@@ -804,24 +1034,372 @@
   </main>
 </div>
 
+<!-- ===== T2 Side Drawer ===== -->
+<div id="drawerOverlay" class="drawer-overlay hidden"></div>
+<aside id="drawer" class="drawer">
+  <div class="px-5 py-4 border-b border-slate-200 flex items-start justify-between bg-slate-50/50">
+    <div class="flex-1 pr-3">
+      <div class="text-[11px] text-slate-500 mb-1">商品详情</div>
+      <h3 id="drawerTitle" class="text-base font-bold text-slate-900 leading-snug">—</h3>
+      <div class="flex items-center gap-2 mt-2">
+        <span id="drawerRank" class="badge-A px-2 py-0.5 rounded text-xs font-medium">A</span>
+        <span class="text-xs text-slate-500">JAN <span id="drawerJan" class="font-mono text-slate-700">—</span></span>
+      </div>
+    </div>
+    <button id="drawerClose" class="text-slate-400 hover:text-slate-700 text-xl leading-none">✕</button>
+  </div>
+  <div class="flex-1 overflow-y-auto p-5 space-y-5">
+    <!-- 基本信息 -->
+    <div>
+      <h4 class="text-xs uppercase tracking-wider text-slate-500 font-medium mb-2">基本信息</h4>
+      <div class="grid grid-cols-2 gap-2 text-sm">
+        <div class="bg-slate-50 rounded-lg px-3 py-2">
+          <div class="text-[10px] text-slate-500">主要仓库</div>
+          <div class="font-medium" id="drawerWh">JD-物流-千葉</div>
+        </div>
+        <div class="bg-slate-50 rounded-lg px-3 py-2">
+          <div class="text-[10px] text-slate-500">担当者</div>
+          <div class="font-medium">JO043 / 徐越</div>
+        </div>
+        <div class="bg-slate-50 rounded-lg px-3 py-2">
+          <div class="text-[10px] text-slate-500">部門</div>
+          <div class="font-medium">輸出事業</div>
+        </div>
+        <div class="bg-slate-50 rounded-lg px-3 py-2">
+          <div class="text-[10px] text-slate-500">取扱状态</div>
+          <div class="font-medium text-green-700">取扱中</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 在库分仓 -->
+    <div>
+      <h4 class="text-xs uppercase tracking-wider text-slate-500 font-medium mb-2">在库分仓</h4>
+      <table class="w-full text-sm border border-slate-200 rounded-lg overflow-hidden">
+        <thead class="bg-slate-50 text-xs text-slate-500">
+          <tr><th class="px-3 py-2 text-left">仓库</th><th class="px-3 py-2 text-right">在库</th><th class="px-3 py-2 text-right">金额</th></tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          <tr><td class="px-3 py-2">JD-物流-千葉</td><td class="px-3 py-2 text-right font-medium">739</td><td class="px-3 py-2 text-right">¥216,371</td></tr>
+          <tr><td class="px-3 py-2">弁天倉庫 <span class="text-[10px] bg-slate-200 px-1 rounded">退品</span></td><td class="px-3 py-2 text-right">247</td><td class="px-3 py-2 text-right">¥72,319</td></tr>
+          <tr><td class="px-3 py-2">弁天倉庫 <span class="text-[10px] bg-slate-200 px-1 rounded">HENPIN-EX</span></td><td class="px-3 py-2 text-right">33</td><td class="px-3 py-2 text-right">¥9,662</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 销售近 6 月 -->
+    <div>
+      <h4 class="text-xs uppercase tracking-wider text-slate-500 font-medium mb-2">销售近 6 月</h4>
+      <div class="bg-white border border-slate-200 rounded-lg p-3">
+        <canvas id="drawerSalesChart" height="120"></canvas>
+      </div>
+    </div>
+
+    <!-- 完売率 + 风险 + 建议订货 -->
+    <div>
+      <h4 class="text-xs uppercase tracking-wider text-slate-500 font-medium mb-2">订货建议</h4>
+      <div class="grid grid-cols-3 gap-2 text-center">
+        <div class="bg-red-50 border border-red-200 rounded-lg px-3 py-3">
+          <div class="text-[10px] text-red-700">完売率</div>
+          <div class="text-lg font-bold text-red-900">99.6%</div>
+        </div>
+        <div class="bg-red-50 border border-red-200 rounded-lg px-3 py-3">
+          <div class="text-[10px] text-red-700">风险等级</div>
+          <div class="text-sm font-bold text-red-900 mt-1">🔴 断货风险</div>
+        </div>
+        <div class="bg-blue-50 border border-blue-200 rounded-lg px-3 py-3">
+          <div class="text-[10px] text-blue-700">建议订货</div>
+          <div class="text-lg font-bold text-blue-900">747</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="border-t border-slate-200 px-5 py-3 flex gap-2 bg-slate-50/50">
+    <button class="flex-1 px-3 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700">📥 导出 SKU 报告</button>
+    <button class="flex-1 px-3 py-2 text-sm bg-white border border-slate-200 text-slate-700 rounded-md hover:bg-slate-50">✓ 标记已处理</button>
+  </div>
+</aside>
+
+<!-- ===== T4 Bulk Action Bar ===== -->
+<div id="bulkBar" class="bulk-bar hidden">
+  <span class="text-sm">已选 <strong id="bulkCount">0</strong> 项</span>
+  <span class="w-px h-5 bg-slate-600"></span>
+  <button class="px-3 py-1 text-xs bg-slate-700 hover:bg-slate-600 rounded-md">📥 导出选中 CSV</button>
+  <button class="px-3 py-1 text-xs bg-slate-700 hover:bg-slate-600 rounded-md">🛒 加入订货预算</button>
+  <button class="px-3 py-1 text-xs bg-slate-700 hover:bg-slate-600 rounded-md">✓ 标记已处理</button>
+  <button id="bulkCancel" class="px-3 py-1 text-xs hover:bg-slate-600 rounded-md text-slate-300">✕ 取消</button>
+</div>
+
+<!-- ===== Toast ===== -->
+<div id="toast" class="toast hidden">提示</div>
+
 <script>
+// === Helpers ===
+function showToast(msg, ms) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.remove('hidden');
+  clearTimeout(showToast._tid);
+  showToast._tid = setTimeout(() => t.classList.add('hidden'), ms || 1800);
+}
+
 // === Tab/Nav switching ===
 const navItems = document.querySelectorAll('.nav-item[data-view]');
 const views = document.querySelectorAll('[data-view-content]');
+function switchView(v) {
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const navHit = document.querySelector(`.nav-item[data-view="${v}"]`);
+  if (navHit) navHit.classList.add('active');
+  views.forEach(view => {
+    view.classList.toggle('hidden', view.getAttribute('data-view-content') !== v);
+  });
+  // T7 quick link active state
+  document.querySelectorAll('.quick-link').forEach(q => q.classList.remove('active'));
+  const qHit = document.querySelector(`.quick-link[data-quick-view="${v}"]`);
+  if (qHit) qHit.classList.add('active');
+}
 navItems.forEach(item => {
   item.addEventListener('click', e => {
     e.preventDefault();
-    const v = item.getAttribute('data-view');
-    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-    item.classList.add('active');
-    views.forEach(view => {
-      view.classList.toggle('hidden', view.getAttribute('data-view-content') !== v);
-    });
+    switchView(item.getAttribute('data-view'));
   });
 });
 
+// === T7 Quick links ===
+document.querySelectorAll('.quick-link[data-quick-view]').forEach(q => {
+  q.addEventListener('click', () => switchView(q.getAttribute('data-quick-view')));
+});
+
+// === T1 Global Search Modal ===
+const searchModal = document.getElementById('searchModal');
+const searchTrigger = document.getElementById('searchTrigger');
+const searchInput = document.getElementById('searchInput');
+function openSearch() {
+  searchModal.classList.remove('hidden');
+  setTimeout(() => searchInput && searchInput.focus(), 50);
+}
+function closeSearch() { searchModal.classList.add('hidden'); searchInput.value = ''; }
+searchTrigger.addEventListener('click', openSearch);
+searchModal.addEventListener('click', e => { if (e.target === searchModal) closeSearch(); });
+document.querySelectorAll('.search-result').forEach(r => {
+  r.addEventListener('click', () => {
+    const target = r.getAttribute('data-target-view');
+    if (target) switchView(target);
+    closeSearch();
+  });
+});
+document.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+    e.preventDefault();
+    if (searchModal.classList.contains('hidden')) openSearch(); else closeSearch();
+  } else if (e.key === 'Escape') {
+    if (!searchModal.classList.contains('hidden')) closeSearch();
+    closeNotif();
+    closeDrawer();
+  }
+});
+
+// === T3 Notification Panel ===
+const notifBtn = document.getElementById('notifBtn');
+const notifPanel = document.getElementById('notifPanel');
+function closeNotif() { notifPanel.classList.add('hidden'); }
+notifBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  notifPanel.classList.toggle('hidden');
+});
+document.addEventListener('click', e => {
+  if (!notifPanel.classList.contains('hidden') && !notifPanel.contains(e.target) && e.target !== notifBtn) closeNotif();
+});
+
+// === T2 Side Drawer ===
+const drawer = document.getElementById('drawer');
+const drawerOverlay = document.getElementById('drawerOverlay');
+let drawerChartInstance = null;
+function openDrawer(rowEl) {
+  const jan = rowEl.getAttribute('data-jan') || '—';
+  const name = rowEl.getAttribute('data-name') || '—';
+  const rank = rowEl.getAttribute('data-rank') || 'A';
+  document.getElementById('drawerTitle').textContent = name;
+  document.getElementById('drawerJan').textContent = jan;
+  const rb = document.getElementById('drawerRank');
+  rb.className = 'badge-' + rank + ' px-2 py-0.5 rounded text-xs font-medium';
+  rb.textContent = rank;
+  drawerOverlay.classList.remove('hidden');
+  drawer.classList.add('open');
+  // Render mini chart
+  setTimeout(() => {
+    const ctx = document.getElementById('drawerSalesChart');
+    if (drawerChartInstance) drawerChartInstance.destroy();
+    if (ctx) drawerChartInstance = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: ['11月', '12月', '1月', '2月', '3月', '4月'],
+        datasets: [{
+          label: '月销量',
+          data: [320, 358, 412, 468, 491, 498],
+          borderColor: '#dc2626',
+          backgroundColor: 'rgba(220, 38, 38, 0.1)',
+          fill: true, tension: 0.3, pointRadius: 3,
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true, ticks: { font: { size: 10 } } }, x: { ticks: { font: { size: 10 } } } },
+      },
+    });
+  }, 50);
+}
+function closeDrawer() {
+  drawer.classList.remove('open');
+  drawerOverlay.classList.add('hidden');
+}
+document.getElementById('drawerClose').addEventListener('click', closeDrawer);
+drawerOverlay.addEventListener('click', closeDrawer);
+document.querySelectorAll('#orderTbody .row-arrow').forEach(btn => {
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    openDrawer(btn.closest('tr'));
+  });
+});
+
+// === T4 Bulk select / actions ===
+const selectAllCb = document.getElementById('selectAllCb');
+const rowCbs = document.querySelectorAll('#orderTbody .row-cb');
+const bulkBar = document.getElementById('bulkBar');
+const bulkCount = document.getElementById('bulkCount');
+const selectAllBanner = document.getElementById('selectAllBanner');
+const selectedPageCount = document.getElementById('selectedPageCount');
+function refreshBulk() {
+  const checked = Array.from(rowCbs).filter(c => c.checked);
+  const n = checked.length;
+  if (n > 0) {
+    bulkBar.classList.remove('hidden');
+    bulkCount.textContent = n;
+  } else {
+    bulkBar.classList.add('hidden');
+  }
+  if (n === rowCbs.length && n > 0) {
+    selectAllBanner.classList.remove('hidden');
+    selectedPageCount.textContent = n;
+    selectAllCb.checked = true;
+    selectAllCb.indeterminate = false;
+  } else if (n === 0) {
+    selectAllBanner.classList.add('hidden');
+    selectAllCb.checked = false;
+    selectAllCb.indeterminate = false;
+  } else {
+    selectAllBanner.classList.add('hidden');
+    selectAllCb.checked = false;
+    selectAllCb.indeterminate = true;
+  }
+}
+selectAllCb.addEventListener('change', () => {
+  rowCbs.forEach(cb => cb.checked = selectAllCb.checked);
+  refreshBulk();
+});
+rowCbs.forEach(cb => cb.addEventListener('change', refreshBulk));
+document.getElementById('bulkCancel').addEventListener('click', () => {
+  rowCbs.forEach(cb => cb.checked = false);
+  refreshBulk();
+});
+const selectAllAcrossLink = document.getElementById('selectAllAcrossLink');
+if (selectAllAcrossLink) selectAllAcrossLink.addEventListener('click', e => {
+  e.preventDefault();
+  showToast('已选中全部 116 项');
+  bulkCount.textContent = '116';
+});
+
+// === T6 Saved views ===
+document.querySelectorAll('.view-chip').forEach(c => {
+  if (c.id === 'newViewBtn') return;
+  c.addEventListener('click', () => {
+    document.querySelectorAll('.view-chip').forEach(x => x.classList.remove('active'));
+    c.classList.add('active');
+  });
+});
+document.getElementById('newViewBtn').addEventListener('click', () => {
+  showToast('已保存当前筛选为新视图');
+});
+
+// === T9 Column toggle ===
+const colToggleBtn = document.getElementById('colToggleBtn');
+const colTogglePanel = document.getElementById('colTogglePanel');
+colToggleBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  colTogglePanel.classList.toggle('hidden');
+});
+document.addEventListener('click', e => {
+  if (!colTogglePanel.classList.contains('hidden') && !colTogglePanel.contains(e.target) && e.target !== colToggleBtn) {
+    colTogglePanel.classList.add('hidden');
+  }
+});
+function applyColVisibility(col, show) {
+  document.querySelectorAll('#orderTable .col-' + col).forEach(td => {
+    td.classList.toggle('hidden', !show);
+  });
+}
+document.querySelectorAll('.col-toggle-cb').forEach(cb => {
+  cb.addEventListener('change', () => applyColVisibility(cb.getAttribute('data-col'), cb.checked));
+});
+document.getElementById('colResetBtn').addEventListener('click', () => {
+  document.querySelectorAll('.col-toggle-cb').forEach(cb => {
+    cb.checked = true;
+    applyColVisibility(cb.getAttribute('data-col'), true);
+  });
+});
+
+// === T10 Density toggle ===
+const densityBtns = document.querySelectorAll('#densityToggle button');
+densityBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    densityBtns.forEach(b => { b.classList.remove('bg-blue-600', 'text-white'); b.classList.add('hover:bg-slate-100'); });
+    btn.classList.add('bg-blue-600', 'text-white');
+    btn.classList.remove('hover:bg-slate-100');
+    const tbody = document.getElementById('orderTbody');
+    tbody.classList.remove('density-compact', 'density-comfy');
+    const mode = btn.getAttribute('data-density');
+    if (mode === 'compact') tbody.classList.add('density-compact');
+    else if (mode === 'comfy') tbody.classList.add('density-comfy');
+  });
+});
+
+// === T5 KPI Sparklines ===
+function makeSpark(id, data, color) {
+  const ctx = document.getElementById(id);
+  if (!ctx) return;
+  return new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: data.map((_, i) => i),
+      datasets: [{
+        data: data,
+        borderColor: color,
+        backgroundColor: color.replace(')', ', 0.15)').replace('rgb', 'rgba'),
+        fill: true,
+        tension: 0.4,
+        pointRadius: 0,
+        borderWidth: 1.5,
+      }],
+    },
+    options: {
+      responsive: false,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      scales: { x: { display: false }, y: { display: false } },
+      elements: { line: { borderWidth: 1.5 } },
+    },
+  });
+}
+
 // === Charts (Dashboard) ===
 window.addEventListener('load', () => {
+  // T5 sparklines
+  makeSpark('sparkSku',    [3820, 3835, 3851, 3868, 3884, 3896], 'rgb(37, 99, 235)');     // blue
+  makeSpark('sparkStock',  [60.2, 61.8, 62.5, 63.1, 63.7, 64.06], 'rgb(99, 102, 241)');   // indigo
+  makeSpark('sparkSales',  [3.82, 4.19, 4.58, 5.03, 4.82, 4.42], 'rgb(34, 197, 94)');     // green
+  makeSpark('sparkMargin', [59.8, 60.2, 60.4, 60.7, 60.2, 61.4], 'rgb(168, 85, 247)');    // purple
+
   const ctx1 = document.getElementById('chartSales');
   if (ctx1) new Chart(ctx1, {
     type: 'line',
