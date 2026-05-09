@@ -54,17 +54,20 @@ with tab_import:
             """
             | 文件名包含 | 入到哪张表 | 内容 |
             |---|---|---|
-            | `在庫数残数` 或 `通常在庫` | `inventory_snapshot` | 多仓库库存快照（含 std/avg cost） |
+            | `在庫のスナップショット` 🆕 | `item_inventory_snapshot_v2` + `item_v2.合计` | 多仓库库存快照（多级表头，含在途计算） |
+            | `CMSData` 🆕 | `item_v2` 主档 | 商品主档 15 列（メーカー/ランク/取扱区分/部門/担当者 等） |
+            | `月完売率` / `完売率` 🆕 | `item_monthly_turnover` | 月度完売率（订货依据 page 18 数据源） |
             | `在庫回転率` | `inventory_turnover` | 库存周转率 + 平均手持日数 |
-            | `ASEAN` + `前日` | `sales_line` (asean_daily) | ASEAN 日销售 |
-            | `ASEAN` + `店舗別` | `sales_line` (asean_monthly) | ASEAN 月销售（按店铺） |
-            | `輸出` + `アイテム別` | `sales_line` (export_item) | 出口销售（SKU 维度，带 rank） |
-            | `輸出` + `店舗別` | `sales_line` (export_store) | 出口销售（店铺×SKU 维度） |
+            | `ASEAN` + `前日` | `shop_sales` (asean_daily) | ASEAN 日销售 |
+            | `ASEAN` + `店舗別` | `shop_sales` (asean_monthly) | ASEAN 月销售（按店铺） |
+            | `輸出` + `アイテム別` | `shop_sales` (export_item) | 出口销售（SKU 维度，带 rank） |
+            | `輸出` + `店舗別` | `shop_sales` (export_store) | 出口销售（店铺×SKU 维度） |
             | `订单导出` | `shopee_orders_raw` | Shopee 订单导出（订单号+SKU+店铺） |
             | `mtkshop`/`income`/`已拨款` | `shopee_income_lines` | Shopee 拨款明细（含各项扣费） |
-            | `アイテム` 开头 | `nst_item_summary` | NetSuite アイテム概要（page 03 平均原価源・H 列） |
+            | `アイテム` 开头 | `nst_item_summary` | NetSuite アイテム概要（旧 8 列・page 03 平均原価源） |
+            | `在庫数残数` / `通常在庫` | `inventory_snapshot` | 旧版库存快照（保留兼容） |
 
-            一次可以拖多个文件，挨个识别 + 导入。识别不到的文件会显示警告但不影响其他文件。
+            一次可以拖多个文件，按**文件名自动派发**。文件名不匹配的会被**跳过**（不再支持手动指定，避免误用）。
             """
         )
 
@@ -77,40 +80,40 @@ with tab_import:
 
     if uploaded_files:
         # 预扫描：识别每个文件，允许手动覆盖 ingester
-        st.write(t("### 文件识别结果（可手动指定 ingester）"))
+        st.write(t("### 文件识别结果（按文件名自动派发）"))
         INGESTOR_LABELS = {
-            "inventory": "📦 在庫快照 (輸出通常在庫数残数)",
+            "inventory": "📦 在庫快照 (旧版・在庫数残数)",
+            "inventory_multi": "📦 在庫快照 (新版多仓库・在庫のスナップショット)",
             "turnover": "🔄 在庫回転率",
+            "monthly_turnover": "📊 アイテム月完売率",
             "asean_monthly": "🏪 ASEAN 月度（店舗別 集計専用）",
             "asean_daily": "📊 ASEAN 前日（店舗別売上 前日）",
             "export_item": "🇯🇵 輸出 SKU 維度（アイテム別）",
             "export_store": "🇯🇵 輸出 店舗別売上",
             "shopee_orders": "🛒 Shopee 订单导出",
             "shopee_income": "💱 Shopee 拨款明细",
-            "item_summary": "📋 NetSuite アイテム概要",
+            "item_summary": "📋 NetSuite アイテム概要 (旧 8 列)",
+            "item_master_v2": "📋 商品主档 v2 (新版・CMSData 用 15 列)",
         }
         plan: list[tuple[str, str, object]] = []
-        all_keys = list(INGESTOR_LABELS.keys())
+        skipped: list[str] = []
         for f in uploaded_files:
             auto_key = detect_ingestor(f.name)
-            cols = st.columns([3, 3])
-            with cols[0]:
-                if auto_key:
-                    st.write(f"📄 `{f.name}` ({f.size:,} bytes)")
-                    st.caption(f"🤖 自动识别：**{INGESTOR_LABELS.get(auto_key, auto_key)}**")
-                else:
-                    st.warning(f"📄 `{f.name}` ({f.size:,} bytes) — 文件名未识别，**必须手动选**")
-            with cols[1]:
-                default_idx = all_keys.index(auto_key) if auto_key in all_keys else 0
-                chosen_key = st.selectbox(
-                    f"ingester for {f.name}",
-                    all_keys,
-                    format_func=lambda k: INGESTOR_LABELS[k],
-                    index=default_idx,
-                    key=f"__ingester_{f.name}",
-                    label_visibility="collapsed",
-                )
-            plan.append((f.name, chosen_key, f))
+            if auto_key:
+                label = INGESTOR_LABELS.get(auto_key, f"⚙️ {auto_key}")
+                st.write(f"✅ `{f.name}` ({f.size:,} bytes) → **{label}**")
+                plan.append((f.name, auto_key, f))
+            else:
+                st.error(f"❌ `{f.name}` ({f.size:,} bytes) — 文件名未识别，将被跳过")
+                skipped.append(f.name)
+
+        if skipped:
+            with st.expander(t("⚠️ 已跳过文件原因"), expanded=False):
+                st.caption(t(
+                    "文件名必须包含识别关键字才会被入库。请重命名文件或参考下方「支持的文件类型」。"
+                ))
+                for s in skipped:
+                    st.write(f"- `{s}`")
 
         if plan and st.button(t(f"🚀 开始导入 {len(plan)} 个文件"), type="primary"):
             INPUTS_DIR.mkdir(parents=True, exist_ok=True)
