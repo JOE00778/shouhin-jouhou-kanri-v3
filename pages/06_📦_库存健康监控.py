@@ -20,12 +20,14 @@ import plotly.express as px
 
 from modules.inventory_health.metrics import THRESHOLD, batch_calc
 from shared.db import get_connection
+from shared.v2_browser import render_v2_quickview
 
 st.set_page_config(page_title=t("库存健康监控"), page_icon="📦", layout="wide")
 from shared.auth import require_password
 require_password()
 lang_selector()
 conn = get_connection()
+render_v2_quickview(conn, key_prefix="page06_")
 
 st.title(t("📦 库存健康监控（JD-千叶仓库）"))
 st.caption(t(

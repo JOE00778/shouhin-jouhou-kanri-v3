@@ -194,6 +194,7 @@ if step == 1:
             SELECT
                 s.internal_id,
                 MAX(s.item_code) AS item_code,
+                MAX(s.upc) AS upc,
                 MAX(s.display_name) AS display_name,
                 MAX(s.handling_status) AS handling_status,
                 MAX(s.std_cost) AS std_cost,
@@ -225,10 +226,35 @@ if step == 1:
             for ir in item_rows:
                 avg_cost_by_code[ir["item_code"]] = float(ir["avg_cost"])
 
+        # ── Phase 3.3 · v2 fallback：avg_cost / maker 从 item_v2 兜底 ──
+        # nst_item_summary 经常空 → 用 item_v2 (PK=jan) 作权威源补缺
+        v2_by_jan: dict[str, dict] = {}
+        try:
+            jans = [r["upc"] for r in rows if r["upc"]]
+            if jans:
+                ph = ",".join(f":j{i}" for i in range(len(jans)))
+                jp = {f"j{i}": v for i, v in enumerate(jans)}
+                v2_rows = conn.execute(
+                    f"SELECT jan, avg_cost, maker FROM item_v2 WHERE jan IN ({ph})",
+                    jp,
+                ).fetchall()
+                v2_by_jan = {r["jan"]: dict(r) for r in v2_rows}
+        except Exception:
+            v2_by_jan = {}   # v2 表还没建则跳过
+
         # 跑业务规则
         decisions = []
         for r in rows:
-            avg_cost = avg_cost_by_code.get(r["item_code"])  # 来自 ASEAN 集計専用 H/F
+            avg_cost = avg_cost_by_code.get(r["item_code"])  # 来自 nst_item_summary
+            v2_row = v2_by_jan.get(r["upc"]) if r["upc"] else None
+            # v2 fallback：avg_cost
+            if avg_cost is None and v2_row and v2_row.get("avg_cost"):
+                avg_cost = float(v2_row["avg_cost"])
+            # v2 fallback：maker
+            maker = r["maker"]
+            if not maker and v2_row and v2_row.get("maker"):
+                maker = v2_row["maker"]
+
             row = {
                 "internal_id": r["internal_id"],
                 "item_code": r["item_code"],
@@ -236,14 +262,13 @@ if step == 1:
                 "avg_cost": avg_cost,
                 "std_cost_old": r["std_cost"],
             }
-            # master 用本行自身（同源数据，handling_status 已经在过滤里了）
             master = {
                 "handling_status": r["handling_status"],
                 "display_name": r["display_name"],
             }
             d = decide_action(row, master)
-            d["total_qty"] = r["total_qty"]  # 附带库存量给预览
-            d["maker"] = r["maker"]          # 附带品牌给预览
+            d["total_qty"] = r["total_qty"]
+            d["maker"] = maker
             decisions.append(d)
 
         st.session_state.cs_decisions = decisions

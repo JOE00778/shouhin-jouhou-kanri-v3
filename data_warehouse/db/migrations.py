@@ -14,13 +14,21 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 SCHEMA_FILE = Path(__file__).parent / "schema.sql"
 
 # 增量 ALTER（旧 db 已建过表,补充缺失列）
 # 格式: (table, column_def_in_ALTER) — 如果列已存在会被 try/except 吞掉
 ALTERS: list[tuple[str, str]] = [
     ("sales_line", "maker TEXT"),
+]
+
+# 废弃表清单 — 启动时 DROP TABLE IF EXISTS（仅一次性影响）
+# v2 模型上线后这些旧表无引用，统一退场
+DEPRECATED_TABLES: list[str] = [
+    "store_profit_lines",       # 无 SELECT 引用
+    "store_profit_daily_lines", # 无 SELECT 引用
+    "sales",                    # 空表，sales_line 替代
 ]
 
 # 启动时收集 schema 错误（不阻塞 init,但供调试）
@@ -107,6 +115,13 @@ def init_db(db_path: Path) -> sqlite3.Connection:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {col_def}")
         except sqlite3.OperationalError:
             pass  # 列已存在 / 表不存在 都跳过
+
+    # 废弃表退场（DROP TABLE IF EXISTS，幂等）
+    for tbl in DEPRECATED_TABLES:
+        try:
+            conn.execute(f"DROP TABLE IF EXISTS {tbl}")
+        except sqlite3.Error:
+            pass
 
     # 写入版本号（幂等）
     try:

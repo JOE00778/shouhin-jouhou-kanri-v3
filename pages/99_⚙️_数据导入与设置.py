@@ -153,6 +153,29 @@ with tab_import:
                     )
                     st.success(msg)
 
+            # ────────────────────────────────────────────────────────
+            # Phase 3.2 · ingest 双写：导入完成后自动跑 v2 ETL
+            # 让 v2 数据模型持续保鲜，无需 Boss 手工去 Tab 6 触发
+            # ────────────────────────────────────────────────────────
+            try:
+                with st.spinner(t("⚡ 自动同步到 v2 数据模型...")):
+                    from tools.migrate_to_v2 import run_all as _v2_run_all
+                    v2_results = _v2_run_all(conn)
+                v2_written = sum(r["written"] for r in v2_results)
+                v2_errors  = sum(r["errors"] for r in v2_results)
+                if v2_errors:
+                    st.warning(
+                        f"🧬 v2 模型同步：写入 {v2_written:,} 行，{v2_errors} 错误"
+                        f" · 详情见 Tab 6「v2 数据迁移」"
+                    )
+                else:
+                    st.info(
+                        f"🧬 v2 模型自动同步完成：写入 {v2_written:,} 行"
+                        f" · 详情见 Tab 6「v2 数据迁移」"
+                    )
+            except Exception as _e:
+                st.warning(f"🧬 v2 自动同步异常（不影响主导入）：{_e}")
+
 
 # ============================================================
 # Tab 2：数据现状

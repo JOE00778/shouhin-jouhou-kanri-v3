@@ -47,8 +47,16 @@ def _get_sqlite_connection() -> sqlite3.Connection:
     return conn
 
 
+_pg_schema_initialized = False  # 模块级 flag · 仅在 streamlit app 启动后第一次连库时跑
+
+
 def _get_postgres_connection():
-    """Postgres 连接（NAS 部署用）。延迟 import psycopg2，未装时优雅报错。"""
+    """Postgres 连接（NAS / Windows 部署用）。延迟 import psycopg2，未装时优雅报错。
+
+    第一次调用时自动跑 deploy/nas/schema.postgres.sql（IF NOT EXISTS 幂等），
+    确保 v2 等新表在 Boss 重启 streamlit 时无需手工 DDL 即生效。
+    """
+    global _pg_schema_initialized
     try:
         import psycopg2
         from psycopg2.extras import DictCursor
@@ -59,7 +67,32 @@ def _get_postgres_connection():
         ) from e
     raw = psycopg2.connect(os.environ["DATABASE_URL"], cursor_factory=DictCursor)
     raw.set_session(autocommit=False)
-    return _PostgresAdapter(raw)
+    adapter = _PostgresAdapter(raw)
+
+    if not _pg_schema_initialized:
+        try:
+            schema_path = PROJECT_ROOT / "deploy" / "nas" / "schema.postgres.sql"
+            if schema_path.exists():
+                cur = raw.cursor()
+                cur.execute(schema_path.read_text(encoding="utf-8"))
+                raw.commit()
+            # 同步跑 DEPRECATED_TABLES（与 SQLite 路径对齐）
+            from data_warehouse.db.migrations import DEPRECATED_TABLES
+            for tbl in DEPRECATED_TABLES:
+                try:
+                    cur = raw.cursor()
+                    cur.execute(f"DROP TABLE IF EXISTS {tbl} CASCADE")
+                    raw.commit()
+                except Exception:
+                    raw.rollback()
+        except Exception as e:
+            print(f"[postgres init warn] {e}")
+            try:
+                raw.rollback()
+            except Exception:
+                pass
+        _pg_schema_initialized = True
+    return adapter
 
 
 class _PostgresAdapter:

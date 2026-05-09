@@ -45,25 +45,7 @@ CREATE TABLE IF NOT EXISTS supplier (
 CREATE INDEX IF NOT EXISTS idx_supplier_name       ON supplier(name);
 
 -- ============================================================
--- 主表 3：sales — 销售明细（按订单行）
--- ============================================================
-CREATE TABLE IF NOT EXISTS sales (
-  id               INTEGER PRIMARY KEY AUTOINCREMENT,
-  order_id         TEXT,
-  internal_id      TEXT NOT NULL REFERENCES item(internal_id),
-  store            TEXT,
-  sold_at          TEXT NOT NULL,
-  qty              INTEGER NOT NULL,
-  unit_price       REAL,
-  unit_cost        REAL,
-  currency         TEXT,
-  source_file      TEXT,
-  imported_at      TEXT NOT NULL,
-  UNIQUE(order_id, internal_id, sold_at)  -- 防重复导入
-);
-CREATE INDEX IF NOT EXISTS idx_sales_internal      ON sales(internal_id);
-CREATE INDEX IF NOT EXISTS idx_sales_sold_at       ON sales(sold_at);
-CREATE INDEX IF NOT EXISTS idx_sales_store         ON sales(store);
+-- (废弃: sales 表为空，sales_line 替代；由 migrations.py DEPRECATED_TABLES DROP)
 
 -- ============================================================
 -- 主表 4：inventory — 库存快照（按时点）
@@ -709,24 +691,7 @@ CREATE TABLE IF NOT EXISTS item_expiry (
 );
 CREATE INDEX IF NOT EXISTS idx_item_expiry_min ON item_expiry(expiry_min);
 
--- 每日店铺销售明细
-CREATE TABLE IF NOT EXISTS store_profit_daily_lines (
-  id            INTEGER PRIMARY KEY AUTOINCREMENT,
-  report_date   TEXT NOT NULL,
-  line_type     TEXT NOT NULL,    -- detail / 合計 / 総計 等
-  store         TEXT NOT NULL,
-  item          TEXT,
-  item_name     TEXT,
-  qty           INTEGER DEFAULT 0,
-  revenue       INTEGER DEFAULT 0,
-  defined_cost  INTEGER DEFAULT 0,
-  gross_profit  INTEGER DEFAULT 0,
-  source_file   TEXT,
-  imported_at   TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_spdl_date  ON store_profit_daily_lines(report_date);
-CREATE INDEX IF NOT EXISTS idx_spdl_store ON store_profit_daily_lines(store);
-CREATE INDEX IF NOT EXISTS idx_spdl_type  ON store_profit_daily_lines(line_type);
+-- (废弃: store_profit_daily_lines 无 SELECT 引用，由 migrations.py DEPRECATED_TABLES DROP)
 
 -- ============================================================
 -- 定义原价变更历史 · 用于 SKU 级波动图
@@ -752,24 +717,7 @@ CREATE INDEX IF NOT EXISTS idx_stdcost_hist_changed ON std_cost_history(changed_
 --  导致 CREATE TABLE IF NOT EXISTS 跳过 + 后续 idx_sales_jan 索引失败 → executescript 崩溃 → 全 page 挂掉
 --  page 04 已经改回用 sales_line 聚合, 不再需要这张表)
 
--- ============================================================
--- 店舗別粗利月度（对齐原 store_profit_lines 表）
--- ============================================================
-CREATE TABLE IF NOT EXISTS store_profit_lines (
-  id              INTEGER PRIMARY KEY AUTOINCREMENT,
-  report_period   TEXT NOT NULL,        -- e.g. "2026-04"
-  line_type       TEXT NOT NULL,        -- detail / 合計 / 総計
-  store           TEXT,
-  qty             INTEGER DEFAULT 0,
-  revenue         INTEGER DEFAULT 0,
-  defined_cost    INTEGER DEFAULT 0,
-  gross_profit    INTEGER DEFAULT 0,
-  original_line   TEXT,
-  source_file     TEXT,
-  imported_at     TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_spl_period ON store_profit_lines(report_period);
-CREATE INDEX IF NOT EXISTS idx_spl_store  ON store_profit_lines(store);
+-- (废弃: store_profit_lines 无 SELECT 引用，由 migrations.py DEPRECATED_TABLES DROP)
 
 -- ============================================================
 -- Shopee 财务 v2 · 数据源对齐 Boss 提供的两份原表

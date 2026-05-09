@@ -5,11 +5,14 @@ import sqlite3
 from pathlib import Path
 from datetime import datetime
 from modules.rank_classifier.proposal import generate_proposal, export_csv
+from shared.db import get_connection
+from shared.v2_browser import render_v2_quickview
 
 st.set_page_config(page_title=t("商品等级判定"), page_icon="🏷️", layout="wide")
 from shared.auth import require_password
 require_password()
 lang_selector()
+render_v2_quickview(get_connection(), key_prefix="page07_")
 st.title(t("🏷️ 商品等级判定（季度·Boss-only）"))
 st.caption(t(
     "基于销售前 80% × 利润率 ≥59% 的 4 档判定 (A/B/C/停售) · "

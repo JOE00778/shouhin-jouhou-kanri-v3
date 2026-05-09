@@ -25,12 +25,14 @@ import streamlit as st
 
 from shared.db import get_connection
 from shared.i18n import lang_selector, t
+from shared.v2_browser import render_v2_quickview
 
 st.set_page_config(page_title=t("销售数据查询"), page_icon="📊", layout="wide")
 from shared.auth import require_password
 require_password()
 lang_selector()
 conn = get_connection()
+render_v2_quickview(conn, key_prefix="page04_")
 
 st.title(t("📊 销售数据查询"))
 st.caption(t(
