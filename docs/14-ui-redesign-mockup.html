@@ -7,146 +7,127 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --accent: #0ea5e9;       /* 单一主色: 清新天蓝 */
-    --accent-soft: #f0f9ff;  /* sky-50 */
-    --bg: #fafafa;
-    --card: #ffffff;
-    --border: #e5e7eb;       /* gray-200 */
-    --text: #0f172a;
-    --muted: #64748b;
-  }
-  body { font-family: 'Inter', 'Noto Sans JP', system-ui, sans-serif; background: var(--bg); color: var(--text); }
+  body { font-family: 'Inter', 'Noto Sans JP', system-ui, sans-serif; }
   .nav-group-title { letter-spacing: 0.08em; font-size: 11px; text-transform: uppercase; }
-  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; }
-  /* 风险用「圆点 + 文字色」, 没有彩色背景 */
-  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; vertical-align: middle; margin-right: 4px; }
-  .dot-danger    { background: #f43f5e; }   /* rose-500 — 仅 1 个强警示色 */
-  .dot-overstock { background: #94a3b8; }
-  .dot-normal    { background: #22c55e; }   /* 仅 KPI 用 */
-  .dot-low       { background: #cbd5e1; }
-  /* 等级用极简单字符块 */
-  .rank { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 600;
-          background: #f1f5f9; color: #334155; }
-  .rank.NEW { background: #ecfeff; color: #0891b2; }
+  .badge-A { background: #dcfce7; color: #166534; }
+  .badge-B { background: #dbeafe; color: #1e40af; }
+  .badge-C { background: #f3f4f6; color: #374151; }
+  .badge-NEW { background: #fef3c7; color: #92400e; }
+  .risk-danger { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+  .risk-overstock { background: #fef9c3; color: #854d0e; border: 1px solid #fde68a; }
+  .risk-normal { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+  .risk-low-data { background: #f3f4f6; color: #4b5563; border: 1px solid #e5e7eb; }
   ::-webkit-scrollbar { width: 6px; height: 6px; }
-  ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
-  table tbody tr:hover { background: #fafbfc; }
-  .nav-item { color: #475569; transition: color 0.1s; }
-  .nav-item:hover { color: var(--text); }
-  .nav-item.active { color: var(--accent); background: var(--accent-soft); border-right: 2px solid var(--accent); }
-  .btn-primary { background: var(--accent); color: #fff; }
-  .btn-primary:hover { background: #0284c7; }
-  .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
-  .btn-ghost:hover { background: #f9fafb; color: var(--text); }
-  .chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px;
-          font-size: 11px; background: #f1f5f9; color: #475569; border: 1px solid var(--border); }
-  .chip.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
-  .divider { height: 1px; background: var(--border); }
+  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+  table tbody tr:hover { background: #f8fafc; }
+  .kpi-card:hover { transform: translateY(-2px); transition: transform 0.15s; }
+  .nav-item.active { background: #eff6ff; color: #1d4ed8; border-right: 3px solid #2563eb; }
 </style>
 </head>
-<body>
+<body class="bg-slate-50 text-slate-800">
 
 <div class="flex h-screen overflow-hidden">
 
   <!-- ===== Sidebar ===== -->
-  <aside class="w-60 bg-white border-r border-gray-200 flex flex-col">
-    <div class="px-5 py-5">
-      <div class="flex items-center gap-2.5">
-        <div class="w-8 h-8 rounded-lg bg-slate-900 flex items-center justify-center text-white font-bold text-xs">CMS</div>
+  <aside class="w-64 bg-white border-r border-slate-200 flex flex-col">
+    <!-- Logo / Title -->
+    <div class="px-5 py-4 border-b border-slate-200">
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-sm">CMS</div>
         <div>
           <div class="font-semibold text-slate-900 text-sm">一元管理 V2.3</div>
-          <div class="text-[10px] text-slate-400">三金商事 · 輸出事業</div>
+          <div class="text-[10px] text-slate-500">三金商事 · 輸出事業</div>
         </div>
       </div>
     </div>
 
-    <div class="px-5 pb-3">
-      <div class="flex items-center gap-2.5 py-2">
-        <div class="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-700 text-xs font-bold">JO</div>
+    <!-- User badge -->
+    <div class="px-4 py-3 border-b border-slate-200 bg-slate-50">
+      <div class="flex items-center gap-2">
+        <div class="w-7 h-7 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs font-bold">JO</div>
         <div class="flex-1 min-w-0">
           <div class="text-xs font-medium text-slate-900 truncate">JO043 / 徐越</div>
-          <div class="text-[10px] text-slate-400">管理员</div>
+          <div class="text-[10px] text-blue-600">🛡 管理员</div>
         </div>
+        <button class="text-[10px] text-slate-400 hover:text-slate-600">⏎</button>
       </div>
     </div>
 
-    <div class="divider mx-5"></div>
-
-    <nav class="flex-1 overflow-y-auto py-4 text-[13px]">
-      <div class="px-5 mb-2 nav-group-title text-slate-400">总览</div>
-      <a href="#" data-view="dashboard" class="nav-item active flex items-center gap-2.5 px-5 py-2 cursor-pointer">
-        <span class="text-base">📊</span><span>仪表盘</span>
+    <!-- Nav -->
+    <nav class="flex-1 overflow-y-auto py-3 text-sm">
+      <div class="px-4 mb-2 nav-group-title text-slate-500">总览</div>
+      <a href="#" data-view="dashboard" class="nav-item active flex items-center gap-2 px-4 py-2 cursor-pointer">
+        <span>📊</span><span>仪表盘</span>
       </a>
-      <a href="#" data-view="search" class="nav-item flex items-center gap-2.5 px-5 py-2 cursor-pointer">
-        <span class="text-base">🔍</span><span>商品情报检索</span>
-      </a>
-
-      <div class="px-5 mb-2 mt-5 nav-group-title text-slate-400">销售数据</div>
-      <a href="#" class="nav-item flex items-center gap-2.5 px-5 py-2 cursor-pointer">
-        <span class="text-base">📈</span><span>销售数据查询</span>
-      </a>
-      <a href="#" class="nav-item flex items-center gap-2.5 px-5 py-2 cursor-pointer">
-        <span class="text-base">🏪</span><span>店铺别毛利</span>
-      </a>
-      <a href="#" data-view="finance" class="nav-item flex items-center gap-2.5 px-5 py-2 cursor-pointer">
-        <span class="text-base">💱</span><span>財務</span>
-      </a>
-      <a href="#" class="nav-item flex items-center gap-2.5 px-5 py-2 cursor-pointer">
-        <span class="text-base">💡</span><span>运营调整建议</span>
+      <a href="#" data-view="search" class="nav-item flex items-center gap-2 px-4 py-2 hover:bg-slate-50 cursor-pointer">
+        <span>🔍</span><span>商品情报检索</span>
       </a>
 
-      <div class="px-5 mb-2 mt-5 nav-group-title text-slate-400">订货决策</div>
-      <a href="#" data-view="order" class="nav-item flex items-center gap-2.5 px-5 py-2 cursor-pointer">
-        <span class="text-base">📦</span>
-        <span class="flex-1">订货依据</span>
-        <span class="text-[10px] text-slate-400">116</span>
+      <div class="px-4 mb-2 mt-4 nav-group-title text-slate-500">销售数据</div>
+      <a href="#" class="nav-item flex items-center gap-2 px-4 py-2 hover:bg-slate-50 cursor-pointer">
+        <span>📊</span><span>销售数据查询</span>
       </a>
-      <a href="#" class="nav-item flex items-center gap-2.5 px-5 py-2 cursor-pointer">
-        <span class="text-base">🤖</span><span>発注AI</span>
+      <a href="#" class="nav-item flex items-center gap-2 px-4 py-2 hover:bg-slate-50 cursor-pointer">
+        <span>🏪</span><span>店铺别毛利</span>
       </a>
-      <a href="#" class="nav-item flex items-center gap-2.5 px-5 py-2 cursor-pointer">
-        <span class="text-base">📝</span><span>発注書作成</span>
+      <a href="#" data-view="finance" class="nav-item flex items-center gap-2 px-4 py-2 hover:bg-slate-50 cursor-pointer">
+        <span>💱</span><span>財務</span>
       </a>
-      <a href="#" class="nav-item flex items-center gap-2.5 px-5 py-2 cursor-pointer">
-        <span class="text-base">📜</span><span>発注履歴</span>
-      </a>
-      <a href="#" class="nav-item flex items-center gap-2.5 px-5 py-2 cursor-pointer">
-        <span class="text-base">💰</span><span>价格改善</span>
+      <a href="#" class="nav-item flex items-center gap-2 px-4 py-2 hover:bg-slate-50 cursor-pointer">
+        <span>💡</span><span>运营调整建议</span>
       </a>
 
-      <div class="px-5 mb-2 mt-5 nav-group-title text-slate-400">商品情报</div>
-      <a href="#" class="nav-item flex items-center gap-2.5 px-5 py-2 cursor-pointer">
-        <span class="text-base">✏️</span><span>定義原価編集</span>
+      <div class="px-4 mb-2 mt-4 nav-group-title text-slate-500">订货决策</div>
+      <a href="#" data-view="order" class="nav-item flex items-center gap-2 px-4 py-2 hover:bg-slate-50 cursor-pointer">
+        <span>📦</span><span>订货依据 <span class="ml-auto text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded">116</span></span>
       </a>
-      <a href="#" class="nav-item flex items-center gap-2.5 px-5 py-2 cursor-pointer">
-        <span class="text-base">🏷</span><span>商品等级判定</span>
+      <a href="#" class="nav-item flex items-center gap-2 px-4 py-2 hover:bg-slate-50 cursor-pointer">
+        <span>📦</span><span>発注AI</span>
       </a>
-      <a href="#" class="nav-item flex items-center gap-2.5 px-5 py-2 cursor-pointer">
-        <span class="text-base">🏥</span><span>库存健康监控</span>
+      <a href="#" class="nav-item flex items-center gap-2 px-4 py-2 hover:bg-slate-50 cursor-pointer">
+        <span>📦</span><span>発注書作成</span>
       </a>
-      <a href="#" class="nav-item flex items-center gap-2.5 px-5 py-2 cursor-pointer">
-        <span class="text-base">🚫</span><span>入荷困難商品</span>
+      <a href="#" class="nav-item flex items-center gap-2 px-4 py-2 hover:bg-slate-50 cursor-pointer">
+        <span>📜</span><span>発注履歴</span>
       </a>
-      <a href="#" class="nav-item flex items-center gap-2.5 px-5 py-2 cursor-pointer">
-        <span class="text-base">⚠️</span><span>改廃確認</span>
-      </a>
-      <a href="#" class="nav-item flex items-center gap-2.5 px-5 py-2 cursor-pointer">
-        <span class="text-base">🧊</span><span>保质期管理</span>
+      <a href="#" class="nav-item flex items-center gap-2 px-4 py-2 hover:bg-slate-50 cursor-pointer">
+        <span>💰</span><span>价格改善</span>
       </a>
 
-      <div class="px-5 mb-2 mt-5 nav-group-title text-slate-400">系统</div>
-      <a href="#" class="nav-item flex items-center gap-2.5 px-5 py-2 cursor-pointer">
-        <span class="text-base">⚙️</span><span>数据导入与设置</span>
+      <div class="px-4 mb-2 mt-4 nav-group-title text-slate-500">商品情报</div>
+      <a href="#" class="nav-item flex items-center gap-2 px-4 py-2 hover:bg-slate-50 cursor-pointer">
+        <span>💰</span><span>定義原価編集</span>
       </a>
-      <a href="#" class="nav-item flex items-center gap-2.5 px-5 py-2 cursor-pointer">
-        <span class="text-base">🚀</span><span>Shopee 上架</span>
+      <a href="#" class="nav-item flex items-center gap-2 px-4 py-2 hover:bg-slate-50 cursor-pointer">
+        <span>🏷</span><span>商品等级判定</span>
+      </a>
+      <a href="#" class="nav-item flex items-center gap-2 px-4 py-2 hover:bg-slate-50 cursor-pointer">
+        <span>📦</span><span>库存健康监控</span>
+      </a>
+      <a href="#" class="nav-item flex items-center gap-2 px-4 py-2 hover:bg-slate-50 cursor-pointer">
+        <span>🚫</span><span>入荷困難商品</span>
+      </a>
+      <a href="#" class="nav-item flex items-center gap-2 px-4 py-2 hover:bg-slate-50 cursor-pointer">
+        <span>⚠️</span><span>改廃確認</span>
+      </a>
+      <a href="#" class="nav-item flex items-center gap-2 px-4 py-2 hover:bg-slate-50 cursor-pointer">
+        <span>🧊</span><span>保质期管理</span>
+      </a>
+
+      <div class="px-4 mb-2 mt-4 nav-group-title text-slate-500">系统</div>
+      <a href="#" class="nav-item flex items-center gap-2 px-4 py-2 hover:bg-slate-50 cursor-pointer">
+        <span>⚙️</span><span>数据导入与设置</span>
+      </a>
+      <a href="#" class="nav-item flex items-center gap-2 px-4 py-2 hover:bg-slate-50 cursor-pointer">
+        <span>🚀</span><span>Shopee 上架</span>
       </a>
     </nav>
 
-    <div class="px-5 py-3 text-[10px] text-slate-400 flex justify-between border-t border-gray-100">
-      <span>🌐 中文</span>
-      <span>v2.3.0</span>
+    <div class="px-4 py-3 border-t border-slate-200 text-[10px] text-slate-400">
+      <div class="flex justify-between">
+        <span>🌐 中文</span>
+        <span>v2.3.0</span>
+      </div>
     </div>
   </aside>
 
@@ -155,158 +136,161 @@
 
     <!-- ===== View: Dashboard ===== -->
     <div data-view-content="dashboard">
-      <header class="bg-white border-b border-gray-200 px-10 py-5 flex items-center justify-between sticky top-0 z-10">
+      <!-- Header -->
+      <header class="bg-white border-b border-slate-200 px-8 py-4 flex items-center justify-between sticky top-0 z-10">
         <div>
-          <div class="text-xs text-slate-400">总览</div>
-          <h1 class="text-lg font-semibold text-slate-900 mt-0.5">仪表盘</h1>
+          <div class="text-xs text-slate-500">总览</div>
+          <h1 class="text-xl font-bold text-slate-900">📊 仪表盘</h1>
         </div>
-        <div class="flex items-center gap-3">
-          <span class="text-xs text-slate-400">最近更新 2026-05-10 02:44 (4 月)</span>
-          <button class="btn-primary px-3 py-1.5 text-xs rounded-md">↻ 刷新</button>
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-slate-500">最近更新：2026-05-10 02:44 (4 月数据)</span>
+          <button class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700">↻ 刷新数据</button>
         </div>
       </header>
 
-      <div class="p-10 space-y-8">
+      <div class="p-8 space-y-6">
 
-        <!-- KPI Row 1 -->
+        <!-- KPI Row 1 · 业务大盘 -->
         <div>
-          <h2 class="text-xs font-medium text-slate-500 mb-3 nav-group-title">业务大盘</h2>
+          <h2 class="text-sm font-semibold text-slate-700 mb-3">业务大盘</h2>
           <div class="grid grid-cols-4 gap-4">
-            <div class="card p-5">
+            <div class="kpi-card bg-white border border-slate-200 rounded-xl p-5">
               <div class="text-xs text-slate-500">商品 SKU</div>
-              <div class="text-2xl font-semibold text-slate-900 mt-1">3,896</div>
-              <div class="text-[11px] mt-2 text-slate-400">本月新增 +12</div>
+              <div class="text-2xl font-bold text-slate-900 mt-1">3,896</div>
+              <div class="text-xs mt-2"><span class="text-green-600 font-medium">+12</span> 本月新增</div>
             </div>
-            <div class="card p-5">
+            <div class="kpi-card bg-white border border-slate-200 rounded-xl p-5">
               <div class="text-xs text-slate-500">在库金额</div>
-              <div class="text-2xl font-semibold text-slate-900 mt-1">¥64.06M</div>
-              <div class="text-[11px] mt-2 text-slate-400">JD ¥49.8M · 弁天 ¥14.2M</div>
+              <div class="text-2xl font-bold text-slate-900 mt-1">¥64.06M</div>
+              <div class="text-xs mt-2 text-slate-400">JD ¥49.8M · 弁天 ¥14.2M</div>
             </div>
-            <div class="card p-5">
+            <div class="kpi-card bg-white border border-slate-200 rounded-xl p-5">
               <div class="text-xs text-slate-500">本月销售</div>
-              <div class="text-2xl font-semibold text-slate-900 mt-1">¥4.42M</div>
-              <div class="text-[11px] mt-2 text-slate-500">环比 −8.3%</div>
+              <div class="text-2xl font-bold text-slate-900 mt-1">¥4.42M</div>
+              <div class="text-xs mt-2"><span class="text-red-600 font-medium">-8.3%</span> 环比上月</div>
             </div>
-            <div class="card p-5">
+            <div class="kpi-card bg-white border border-slate-200 rounded-xl p-5">
               <div class="text-xs text-slate-500">毛利率</div>
-              <div class="text-2xl font-semibold text-slate-900 mt-1">61.4%</div>
-              <div class="text-[11px] mt-2 text-slate-500">环比 +1.2pp</div>
+              <div class="text-2xl font-bold text-slate-900 mt-1">61.4%</div>
+              <div class="text-xs mt-2"><span class="text-green-600 font-medium">+1.2pp</span> 环比上月</div>
             </div>
           </div>
         </div>
 
-        <!-- KPI Row 2 · 风险预警: 用 dot + 文字, 不用彩色背景 -->
+        <!-- KPI Row 2 · 风险预警 -->
         <div>
-          <h2 class="text-xs font-medium text-slate-500 mb-3 nav-group-title">风险预警 · 订货决策</h2>
+          <h2 class="text-sm font-semibold text-slate-700 mb-3">风险预警 · 订货决策</h2>
           <div class="grid grid-cols-5 gap-4">
-            <div class="card p-5">
-              <div class="text-xs text-slate-500"><span class="dot dot-danger"></span>断货风险</div>
-              <div class="text-2xl font-semibold text-slate-900 mt-1">116</div>
-              <div class="text-[11px] mt-2 text-slate-400">完売率 ≥ 0.9 加大订货</div>
+            <div class="kpi-card bg-red-50 border border-red-200 rounded-xl p-5">
+              <div class="text-xs text-red-700">🔴 断货风险</div>
+              <div class="text-2xl font-bold text-red-900 mt-1">116</div>
+              <div class="text-xs mt-2 text-red-600">完売率 ≥ 0.9 → 加大订货</div>
             </div>
-            <div class="card p-5">
-              <div class="text-xs text-slate-500"><span class="dot dot-overstock"></span>压库存</div>
-              <div class="text-2xl font-semibold text-slate-900 mt-1">1,717</div>
-              <div class="text-[11px] mt-2 text-slate-400">完売率 &lt; 0.5 减少订货</div>
+            <div class="kpi-card bg-yellow-50 border border-yellow-200 rounded-xl p-5">
+              <div class="text-xs text-yellow-800">🟡 压库存</div>
+              <div class="text-2xl font-bold text-yellow-900 mt-1">1,717</div>
+              <div class="text-xs mt-2 text-yellow-700">完売率 &lt; 0.5 → 减少订货</div>
             </div>
-            <div class="card p-5">
-              <div class="text-xs text-slate-500"><span class="dot dot-normal"></span>正常</div>
-              <div class="text-2xl font-semibold text-slate-900 mt-1">258</div>
-              <div class="text-[11px] mt-2 text-slate-400">0.5 ~ 0.9</div>
+            <div class="kpi-card bg-green-50 border border-green-200 rounded-xl p-5">
+              <div class="text-xs text-green-700">🟢 正常</div>
+              <div class="text-2xl font-bold text-green-900 mt-1">258</div>
+              <div class="text-xs mt-2 text-green-600">完売率 0.5 - 0.9</div>
             </div>
-            <div class="card p-5">
-              <div class="text-xs text-slate-500"><span class="dot dot-low"></span>数据不足</div>
-              <div class="text-2xl font-semibold text-slate-900 mt-1">3,951</div>
-              <div class="text-[11px] mt-2 text-slate-400">销量太少不参与</div>
+            <div class="kpi-card bg-slate-50 border border-slate-200 rounded-xl p-5">
+              <div class="text-xs text-slate-700">⚪ 数据不足</div>
+              <div class="text-2xl font-bold text-slate-700 mt-1">3,951</div>
+              <div class="text-xs mt-2 text-slate-500">销量太少不参与</div>
             </div>
-            <div class="card p-5">
-              <div class="text-xs text-slate-500"><span class="dot dot-overstock"></span>入荷困難</div>
-              <div class="text-2xl font-semibold text-slate-900 mt-1">42</div>
-              <div class="text-[11px] mt-2 text-slate-400">人工标记</div>
+            <div class="kpi-card bg-orange-50 border border-orange-200 rounded-xl p-5">
+              <div class="text-xs text-orange-700">⚠️ 入荷困難</div>
+              <div class="text-2xl font-bold text-orange-900 mt-1">42</div>
+              <div class="text-xs mt-2 text-orange-600">人工标记的难入荷品</div>
             </div>
           </div>
         </div>
 
-        <!-- Charts -->
+        <!-- Charts Row -->
         <div class="grid grid-cols-3 gap-4">
-          <div class="card col-span-2 p-5">
-            <div class="flex items-center justify-between mb-4">
-              <h3 class="text-sm font-medium text-slate-900">月度销售趋势</h3>
-              <select class="text-xs border border-gray-200 rounded px-2 py-1 bg-white">
+          <div class="col-span-2 bg-white border border-slate-200 rounded-xl p-5">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-sm font-semibold text-slate-700">月度销售趋势</h3>
+              <select class="text-xs border border-slate-200 rounded px-2 py-1">
                 <option>近 6 个月</option><option>近 12 个月</option>
               </select>
             </div>
             <canvas id="chartSales" height="220"></canvas>
           </div>
-          <div class="card p-5">
-            <h3 class="text-sm font-medium text-slate-900 mb-4">按市场分布 · 4 月</h3>
+          <div class="bg-white border border-slate-200 rounded-xl p-5">
+            <h3 class="text-sm font-semibold text-slate-700 mb-3">按市场分布 (4 月)</h3>
             <canvas id="chartMarket" height="220"></canvas>
           </div>
         </div>
 
         <!-- Top SKUs -->
-        <div class="card overflow-hidden">
-          <div class="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
-            <h3 class="text-sm font-medium text-slate-900">销售 TOP 10 · 4 月</h3>
-            <a href="#" class="text-xs text-sky-600 hover:underline">查看全部</a>
+        <div class="bg-white border border-slate-200 rounded-xl">
+          <div class="px-5 py-3 border-b border-slate-200 flex items-center justify-between">
+            <h3 class="text-sm font-semibold text-slate-700">🏆 销售 TOP 10 · 4 月</h3>
+            <a href="#" class="text-xs text-blue-600 hover:underline">查看全部 →</a>
           </div>
           <table class="w-full text-sm">
-            <thead class="text-xs text-slate-500 bg-slate-50/60">
+            <thead class="bg-slate-50 text-xs text-slate-500">
               <tr>
-                <th class="px-5 py-3 text-left font-medium w-8">#</th>
-                <th class="px-5 py-3 text-left font-medium">JAN</th>
-                <th class="px-5 py-3 text-left font-medium">商品名</th>
-                <th class="px-5 py-3 text-left font-medium">品牌</th>
-                <th class="px-5 py-3 text-left font-medium">等级</th>
-                <th class="px-5 py-3 text-right font-medium">销量</th>
-                <th class="px-5 py-3 text-right font-medium">销售额</th>
-                <th class="px-5 py-3 text-right font-medium">毛利率</th>
+                <th class="px-5 py-2 text-left">#</th>
+                <th class="px-5 py-2 text-left">JAN</th>
+                <th class="px-5 py-2 text-left">商品名</th>
+                <th class="px-5 py-2 text-left">品牌</th>
+                <th class="px-5 py-2 text-left">等级</th>
+                <th class="px-5 py-2 text-right">销量</th>
+                <th class="px-5 py-2 text-right">销售额</th>
+                <th class="px-5 py-2 text-right">毛利率</th>
               </tr>
             </thead>
-            <tbody class="divide-y divide-gray-100">
+            <tbody class="divide-y divide-slate-100">
               <tr>
-                <td class="px-5 py-3 text-slate-400">1</td>
-                <td class="px-5 py-3 text-slate-500 font-mono text-xs">4976631478272</td>
-                <td class="px-5 py-3">Pelican 恋するおしりヒップケアソープ</td>
-                <td class="px-5 py-3 text-slate-500">Pelican</td>
-                <td class="px-5 py-3"><span class="rank">A</span></td>
-                <td class="px-5 py-3 text-right">5,089</td>
-                <td class="px-5 py-3 text-right font-medium">¥682,341</td>
-                <td class="px-5 py-3 text-right text-slate-700">64.4%</td>
+                <td class="px-5 py-2 font-medium">1</td>
+                <td class="px-5 py-2 text-slate-500 font-mono text-xs">4976631478272</td>
+                <td class="px-5 py-2">Pelican ペリカン石鹸 恋するおしりヒップケアソープ</td>
+                <td class="px-5 py-2">Pelican</td>
+                <td class="px-5 py-2"><span class="badge-A px-1.5 py-0.5 rounded text-[10px] font-medium">A</span></td>
+                <td class="px-5 py-2 text-right">5,089</td>
+                <td class="px-5 py-2 text-right font-medium">¥682,341</td>
+                <td class="px-5 py-2 text-right text-green-700">64.4%</td>
               </tr>
               <tr>
-                <td class="px-5 py-3 text-slate-400">2</td>
-                <td class="px-5 py-3 text-slate-500 font-mono text-xs">4901872837144</td>
-                <td class="px-5 py-3">SKATER 子供用水筒 直飲み 恐竜</td>
-                <td class="px-5 py-3 text-slate-500">SKATER</td>
-                <td class="px-5 py-3"><span class="rank">A</span></td>
-                <td class="px-5 py-3 text-right">2,134</td>
-                <td class="px-5 py-3 text-right font-medium">¥451,892</td>
-                <td class="px-5 py-3 text-right text-slate-700">58.1%</td>
+                <td class="px-5 py-2 font-medium">2</td>
+                <td class="px-5 py-2 text-slate-500 font-mono text-xs">4901872837144</td>
+                <td class="px-5 py-2">SKATER 子供用水筒 直飲み 恐竜</td>
+                <td class="px-5 py-2">SKATER</td>
+                <td class="px-5 py-2"><span class="badge-A px-1.5 py-0.5 rounded text-[10px] font-medium">A</span></td>
+                <td class="px-5 py-2 text-right">2,134</td>
+                <td class="px-5 py-2 text-right font-medium">¥451,892</td>
+                <td class="px-5 py-2 text-right text-green-700">58.1%</td>
               </tr>
               <tr>
-                <td class="px-5 py-3 text-slate-400">3</td>
-                <td class="px-5 py-3 text-slate-500 font-mono text-xs">4582300064280</td>
-                <td class="px-5 py-3">TIRTIR マスクフィットメイクアップフィクサー 80ml</td>
-                <td class="px-5 py-3 text-slate-500">TIRTIR</td>
-                <td class="px-5 py-3"><span class="rank NEW">NEW</span></td>
-                <td class="px-5 py-3 text-right">1,892</td>
-                <td class="px-5 py-3 text-right font-medium">¥387,664</td>
-                <td class="px-5 py-3 text-right text-slate-700">61.7%</td>
+                <td class="px-5 py-2 font-medium">3</td>
+                <td class="px-5 py-2 text-slate-500 font-mono text-xs">4582300064280</td>
+                <td class="px-5 py-2">TIRTIR マスクフィットメイクアップフィクサー 80ml</td>
+                <td class="px-5 py-2">TIRTIR</td>
+                <td class="px-5 py-2"><span class="badge-NEW px-1.5 py-0.5 rounded text-[10px] font-medium">NEW</span></td>
+                <td class="px-5 py-2 text-right">1,892</td>
+                <td class="px-5 py-2 text-right font-medium">¥387,664</td>
+                <td class="px-5 py-2 text-right text-green-700">61.7%</td>
               </tr>
               <tr>
-                <td class="px-5 py-3 text-slate-400">4</td>
-                <td class="px-5 py-3 text-slate-500 font-mono text-xs">4901301413666</td>
-                <td class="px-5 py-3">Curel UVローション SPF50+ 60ml</td>
-                <td class="px-5 py-3 text-slate-500">Curel</td>
-                <td class="px-5 py-3"><span class="rank">B</span></td>
-                <td class="px-5 py-3 text-right">1,243</td>
-                <td class="px-5 py-3 text-right font-medium">¥298,440</td>
-                <td class="px-5 py-3 text-right text-slate-700">59.3%</td>
+                <td class="px-5 py-2 font-medium">4</td>
+                <td class="px-5 py-2 text-slate-500 font-mono text-xs">4901301413666</td>
+                <td class="px-5 py-2">Curel UVローション SPF50+ 60ml</td>
+                <td class="px-5 py-2">Curel</td>
+                <td class="px-5 py-2"><span class="badge-B px-1.5 py-0.5 rounded text-[10px] font-medium">B</span></td>
+                <td class="px-5 py-2 text-right">1,243</td>
+                <td class="px-5 py-2 text-right font-medium">¥298,440</td>
+                <td class="px-5 py-2 text-right text-green-700">59.3%</td>
               </tr>
               <tr>
-                <td class="px-5 py-3 text-slate-400">5</td>
-                <td class="px-5 py-3 text-slate-300 italic" colspan="7">… 还有 6 行</td>
+                <td class="px-5 py-2 font-medium">5</td>
+                <td class="px-5 py-2 text-slate-500 font-mono text-xs">4901111... </td>
+                <td class="px-5 py-2 text-slate-400 italic">… 还有 6 行</td>
+                <td colspan="5" class="px-5 py-2"></td>
               </tr>
             </tbody>
           </table>
@@ -317,202 +301,205 @@
 
     <!-- ===== View: 订货依据 ===== -->
     <div data-view-content="order" class="hidden">
-      <header class="bg-white border-b border-gray-200 px-10 py-5 sticky top-0 z-10">
-        <div class="text-xs text-slate-400">订货决策 / 订货依据</div>
-        <h1 class="text-lg font-semibold text-slate-900 mt-0.5">订货依据 · 完売率分析</h1>
+      <header class="bg-white border-b border-slate-200 px-8 py-4 sticky top-0 z-10">
+        <div class="text-xs text-slate-500">订货决策 / 订货依据</div>
+        <h1 class="text-xl font-bold text-slate-900">📦 订货依据 · 完売率分析</h1>
       </header>
 
-      <div class="p-10 space-y-6">
+      <div class="p-8 space-y-5">
         <!-- KPI -->
         <div class="grid grid-cols-6 gap-3">
-          <div class="card px-4 py-3">
+          <div class="bg-white border border-slate-200 rounded-lg px-4 py-3">
             <div class="text-[10px] text-slate-500">覆盖月数</div>
-            <div class="text-lg font-semibold mt-0.5">1</div>
+            <div class="text-lg font-bold mt-0.5">1</div>
           </div>
-          <div class="card px-4 py-3">
+          <div class="bg-white border border-slate-200 rounded-lg px-4 py-3">
             <div class="text-[10px] text-slate-500">SKU 总数</div>
-            <div class="text-lg font-semibold mt-0.5">6,044</div>
+            <div class="text-lg font-bold mt-0.5">6,044</div>
           </div>
-          <div class="card px-4 py-3">
-            <div class="text-[10px] text-slate-500"><span class="dot dot-danger"></span>断货风险</div>
-            <div class="text-lg font-semibold mt-0.5">116</div>
+          <div class="bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+            <div class="text-[10px] text-red-700">🔴 断货风险</div>
+            <div class="text-lg font-bold text-red-900 mt-0.5">116</div>
           </div>
-          <div class="card px-4 py-3">
-            <div class="text-[10px] text-slate-500"><span class="dot dot-normal"></span>正常</div>
-            <div class="text-lg font-semibold mt-0.5">258</div>
+          <div class="bg-green-50 border border-green-200 rounded-lg px-4 py-3">
+            <div class="text-[10px] text-green-700">🟢 正常</div>
+            <div class="text-lg font-bold text-green-900 mt-0.5">258</div>
           </div>
-          <div class="card px-4 py-3">
-            <div class="text-[10px] text-slate-500"><span class="dot dot-overstock"></span>压库存</div>
-            <div class="text-lg font-semibold mt-0.5">1,717</div>
+          <div class="bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-3">
+            <div class="text-[10px] text-yellow-800">🟡 压库存</div>
+            <div class="text-lg font-bold text-yellow-900 mt-0.5">1,717</div>
           </div>
-          <div class="card px-4 py-3">
-            <div class="text-[10px] text-slate-500"><span class="dot dot-low"></span>数据不足</div>
-            <div class="text-lg font-semibold mt-0.5">3,951</div>
+          <div class="bg-slate-50 border border-slate-200 rounded-lg px-4 py-3">
+            <div class="text-[10px] text-slate-700">⚪ 数据不足</div>
+            <div class="text-lg font-bold text-slate-700 mt-0.5">3,951</div>
           </div>
         </div>
 
         <!-- Filters -->
-        <div class="card p-4 flex items-end gap-4">
-          <div>
-            <label class="text-[11px] text-slate-500 mb-1 block">月份</label>
-            <select class="text-sm border border-gray-200 rounded-md px-3 py-1.5 bg-white">
-              <option>2026-04</option>
-            </select>
-          </div>
-          <div class="flex-1">
-            <label class="text-[11px] text-slate-500 mb-1 block">仓库</label>
-            <div class="flex gap-1.5 flex-wrap">
-              <span class="chip active">JD-物流-千葉 ✕</span>
-              <span class="chip">+ 弁天倉庫</span>
+        <div class="bg-white border border-slate-200 rounded-xl p-4">
+          <div class="flex items-end gap-3">
+            <div class="flex-shrink-0">
+              <label class="text-[11px] text-slate-500 mb-1 block">月份</label>
+              <select class="text-sm border border-slate-200 rounded-md px-3 py-1.5 bg-white">
+                <option>2026-04</option>
+              </select>
             </div>
-          </div>
-          <div class="flex-1">
-            <label class="text-[11px] text-slate-500 mb-1 block">风险等级</label>
-            <div class="flex gap-1.5 flex-wrap">
-              <span class="chip active">断货风险 ✕</span>
-              <span class="chip active">压库存 ✕</span>
-              <span class="chip">+ 正常</span>
-              <span class="chip">+ 数据不足</span>
+            <div class="flex-1">
+              <label class="text-[11px] text-slate-500 mb-1 block">仓库 (默认 JD 主仓)</label>
+              <div class="flex gap-1.5 flex-wrap">
+                <span class="text-xs bg-blue-100 text-blue-800 border border-blue-200 px-2 py-1 rounded-md cursor-pointer">JD-物流-千葉 ✕</span>
+                <span class="text-xs bg-slate-50 text-slate-500 border border-slate-200 px-2 py-1 rounded-md cursor-pointer hover:bg-slate-100">+ 弁天倉庫</span>
+              </div>
             </div>
+            <div class="flex-1">
+              <label class="text-[11px] text-slate-500 mb-1 block">风险等级</label>
+              <div class="flex gap-1.5 flex-wrap">
+                <span class="text-xs bg-red-100 text-red-800 border border-red-200 px-2 py-1 rounded-md cursor-pointer">断货风险 ✕</span>
+                <span class="text-xs bg-yellow-100 text-yellow-800 border border-yellow-200 px-2 py-1 rounded-md cursor-pointer">压库存 ✕</span>
+                <span class="text-xs bg-slate-50 text-slate-500 border border-slate-200 px-2 py-1 rounded-md cursor-pointer hover:bg-slate-100">+ 正常</span>
+              </div>
+            </div>
+            <div class="flex-shrink-0">
+              <label class="text-[11px] text-slate-500 mb-1 block">JAN 搜索</label>
+              <input type="text" placeholder="例: 4901111..." class="text-sm border border-slate-200 rounded-md px-3 py-1.5 w-44">
+            </div>
+            <button class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700">📥 CSV</button>
           </div>
-          <div>
-            <label class="text-[11px] text-slate-500 mb-1 block">JAN 搜索</label>
-            <input type="text" placeholder="例: 4901111..." class="text-sm border border-gray-200 rounded-md px-3 py-1.5 w-44">
-          </div>
-          <button class="btn-primary px-3 py-1.5 text-xs rounded-md">📥 CSV</button>
         </div>
 
-        <!-- Tabs + Table -->
-        <div class="card overflow-hidden">
-          <div class="border-b border-gray-200 px-4 flex gap-1">
-            <button class="px-4 py-3 text-sm font-medium text-sky-700 border-b-2 border-sky-500 -mb-px">断货风险 (要补货) <span class="text-[10px] text-slate-400 ml-1">116</span></button>
-            <button class="px-4 py-3 text-sm text-slate-500 hover:text-slate-700">压库存 (减少订货) <span class="text-[10px] text-slate-400 ml-1">1,717</span></button>
-            <button class="px-4 py-3 text-sm text-slate-500 hover:text-slate-700">正常 (参考) <span class="text-[10px] text-slate-400 ml-1">258</span></button>
+        <!-- Tabs -->
+        <div class="bg-white border border-slate-200 rounded-xl">
+          <div class="border-b border-slate-200 px-4 flex gap-1">
+            <button class="px-4 py-3 text-sm font-medium text-red-700 border-b-2 border-red-500">🔴 断货风险 (要补货) <span class="text-[10px] bg-red-100 px-1.5 rounded">116</span></button>
+            <button class="px-4 py-3 text-sm text-slate-500 hover:text-slate-700">🟡 压库存 (减少订货) <span class="text-[10px] bg-yellow-100 px-1.5 rounded">1,717</span></button>
+            <button class="px-4 py-3 text-sm text-slate-500 hover:text-slate-700">🟢 正常 (参考) <span class="text-[10px] bg-green-100 px-1.5 rounded">258</span></button>
           </div>
+
           <table class="w-full text-sm">
-            <thead class="text-xs text-slate-500 bg-slate-50/60">
+            <thead class="bg-slate-50 text-xs text-slate-500">
               <tr>
-                <th class="px-4 py-3 text-left font-medium">JAN</th>
-                <th class="px-4 py-3 text-left font-medium">商品名</th>
-                <th class="px-4 py-3 text-left font-medium">等级</th>
-                <th class="px-4 py-3 text-left font-medium">仓库</th>
-                <th class="px-4 py-3 text-right font-medium">月销量</th>
-                <th class="px-4 py-3 text-right font-medium">合计可售</th>
-                <th class="px-4 py-3 text-right font-medium">完売率</th>
-                <th class="px-4 py-3 text-right font-medium">建议订货量</th>
+                <th class="px-4 py-2 text-left">JAN</th>
+                <th class="px-4 py-2 text-left">商品名</th>
+                <th class="px-4 py-2 text-left">等级</th>
+                <th class="px-4 py-2 text-left">仓库</th>
+                <th class="px-4 py-2 text-right">月销量</th>
+                <th class="px-4 py-2 text-right">合计可售</th>
+                <th class="px-4 py-2 text-right">完売率</th>
+                <th class="px-4 py-2 text-right font-medium text-slate-700">建议订货量 ↓</th>
               </tr>
             </thead>
-            <tbody class="divide-y divide-gray-100">
+            <tbody class="divide-y divide-slate-100">
               <tr>
-                <td class="px-4 py-3 font-mono text-xs text-slate-500">4901872837144</td>
-                <td class="px-4 py-3">SKATER 水筒 恐竜</td>
-                <td class="px-4 py-3"><span class="rank">A</span></td>
-                <td class="px-4 py-3 text-slate-500 text-xs">JD-物流-千葉</td>
-                <td class="px-4 py-3 text-right">498</td>
-                <td class="px-4 py-3 text-right">500</td>
-                <td class="px-4 py-3 text-right"><span class="dot dot-danger"></span>99.6%</td>
-                <td class="px-4 py-3 text-right font-semibold">747</td>
+                <td class="px-4 py-2 font-mono text-xs text-slate-500">4901872837144</td>
+                <td class="px-4 py-2">SKATER 水筒 恐竜</td>
+                <td class="px-4 py-2"><span class="badge-A px-1.5 py-0.5 rounded text-[10px] font-medium">A</span></td>
+                <td class="px-4 py-2 text-slate-500 text-xs">JD-物流-千葉</td>
+                <td class="px-4 py-2 text-right">498</td>
+                <td class="px-4 py-2 text-right">500</td>
+                <td class="px-4 py-2 text-right"><span class="risk-danger px-2 py-0.5 rounded-md text-xs font-medium">99.6%</span></td>
+                <td class="px-4 py-2 text-right font-bold text-red-700">747</td>
               </tr>
               <tr>
-                <td class="px-4 py-3 font-mono text-xs text-slate-500">4582300064280</td>
-                <td class="px-4 py-3">TIRTIR マスクフィットメイクアップフィクサー 80ml</td>
-                <td class="px-4 py-3"><span class="rank NEW">NEW</span></td>
-                <td class="px-4 py-3 text-slate-500 text-xs">JD-物流-千葉</td>
-                <td class="px-4 py-3 text-right">496</td>
-                <td class="px-4 py-3 text-right">500</td>
-                <td class="px-4 py-3 text-right"><span class="dot dot-danger"></span>99.2%</td>
-                <td class="px-4 py-3 text-right font-semibold">744</td>
+                <td class="px-4 py-2 font-mono text-xs text-slate-500">4582300064280</td>
+                <td class="px-4 py-2">TIRTIR マスクフィットメイクアップフィクサー 80ml</td>
+                <td class="px-4 py-2"><span class="badge-NEW px-1.5 py-0.5 rounded text-[10px] font-medium">NEW</span></td>
+                <td class="px-4 py-2 text-slate-500 text-xs">JD-物流-千葉</td>
+                <td class="px-4 py-2 text-right">496</td>
+                <td class="px-4 py-2 text-right">500</td>
+                <td class="px-4 py-2 text-right"><span class="risk-danger px-2 py-0.5 rounded-md text-xs font-medium">99.2%</span></td>
+                <td class="px-4 py-2 text-right font-bold text-red-700">744</td>
               </tr>
               <tr>
-                <td class="px-4 py-3 font-mono text-xs text-slate-500">4976631478272</td>
-                <td class="px-4 py-3">Pelican 恋するおしりヒップケアソープ</td>
-                <td class="px-4 py-3"><span class="rank">A</span></td>
-                <td class="px-4 py-3 text-slate-500 text-xs">JD-物流-千葉</td>
-                <td class="px-4 py-3 text-right">5,089</td>
-                <td class="px-4 py-3 text-right">5,500</td>
-                <td class="px-4 py-3 text-right"><span class="dot dot-danger"></span>92.5%</td>
-                <td class="px-4 py-3 text-right font-semibold">7,634</td>
+                <td class="px-4 py-2 font-mono text-xs text-slate-500">4976631478272</td>
+                <td class="px-4 py-2">Pelican 恋するおしりヒップケアソープ</td>
+                <td class="px-4 py-2"><span class="badge-A px-1.5 py-0.5 rounded text-[10px] font-medium">A</span></td>
+                <td class="px-4 py-2 text-slate-500 text-xs">JD-物流-千葉</td>
+                <td class="px-4 py-2 text-right">5,089</td>
+                <td class="px-4 py-2 text-right">5,500</td>
+                <td class="px-4 py-2 text-right"><span class="risk-danger px-2 py-0.5 rounded-md text-xs font-medium">92.5%</span></td>
+                <td class="px-4 py-2 text-right font-bold text-red-700">7,634</td>
               </tr>
               <tr>
-                <td class="px-4 py-3 font-mono text-xs text-slate-500">2000000000428</td>
-                <td class="px-4 py-3">配件 ケーブル USB-C 1m</td>
-                <td class="px-4 py-3"><span class="rank">B</span></td>
-                <td class="px-4 py-3 text-slate-500 text-xs">JD-物流-千葉</td>
-                <td class="px-4 py-3 text-right">15</td>
-                <td class="px-4 py-3 text-right">15</td>
-                <td class="px-4 py-3 text-right"><span class="dot dot-danger"></span>100.0%</td>
-                <td class="px-4 py-3 text-right font-semibold">23</td>
+                <td class="px-4 py-2 font-mono text-xs text-slate-500">2000000000428</td>
+                <td class="px-4 py-2">配件 ケーブル USB-C 1m</td>
+                <td class="px-4 py-2"><span class="badge-B px-1.5 py-0.5 rounded text-[10px] font-medium">B</span></td>
+                <td class="px-4 py-2 text-slate-500 text-xs">JD-物流-千葉</td>
+                <td class="px-4 py-2 text-right">15</td>
+                <td class="px-4 py-2 text-right">15</td>
+                <td class="px-4 py-2 text-right"><span class="risk-danger px-2 py-0.5 rounded-md text-xs font-medium">100.0%</span></td>
+                <td class="px-4 py-2 text-right font-bold text-red-700">23</td>
               </tr>
             </tbody>
           </table>
-          <div class="px-4 py-3 border-t border-gray-200 text-xs text-slate-500 flex justify-between items-center">
+          <div class="px-4 py-3 border-t border-slate-200 text-xs text-slate-500 flex justify-between">
             <span>显示 4 / 116 行</span>
             <div class="flex gap-1">
-              <button class="px-2 py-1 border border-gray-200 rounded text-slate-500">‹</button>
-              <button class="px-2.5 py-1 bg-slate-900 text-white rounded">1</button>
-              <button class="px-2.5 py-1 border border-gray-200 rounded text-slate-500 hover:bg-slate-50">2</button>
-              <button class="px-2 py-1 border border-gray-200 rounded text-slate-500">›</button>
+              <button class="px-2 py-1 border rounded">‹</button>
+              <button class="px-2 py-1 bg-blue-600 text-white rounded">1</button>
+              <button class="px-2 py-1 border rounded">2</button>
+              <button class="px-2 py-1 border rounded">…</button>
+              <button class="px-2 py-1 border rounded">›</button>
             </div>
           </div>
         </div>
 
-        <!-- 金额视角 -->
+        <!-- Bottom 金额视角 -->
         <div class="grid grid-cols-2 gap-4">
-          <div class="card p-5">
+          <div class="bg-white border border-slate-200 rounded-xl p-5">
             <div class="text-xs text-slate-500">该 Tab 当前在库金额合计</div>
-            <div class="text-xl font-semibold text-slate-900 mt-1">¥3,247,890</div>
+            <div class="text-xl font-bold text-slate-900 mt-1">¥3,247,890</div>
           </div>
-          <div class="card p-5">
+          <div class="bg-white border border-slate-200 rounded-xl p-5">
             <div class="text-xs text-slate-500">上月销售金额合计</div>
-            <div class="text-xl font-semibold text-slate-900 mt-1">¥2,891,450</div>
+            <div class="text-xl font-bold text-slate-900 mt-1">¥2,891,450</div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- ===== View: 商品情报 ===== -->
+    <!-- ===== View: 商品情报检索 ===== -->
     <div data-view-content="search" class="hidden">
-      <header class="bg-white border-b border-gray-200 px-10 py-5 sticky top-0 z-10">
-        <div class="text-xs text-slate-400">总览 / 商品情报检索</div>
-        <h1 class="text-lg font-semibold text-slate-900 mt-0.5">商品情报检索</h1>
+      <header class="bg-white border-b border-slate-200 px-8 py-4 sticky top-0 z-10">
+        <div class="text-xs text-slate-500">总览 / 商品情报检索</div>
+        <h1 class="text-xl font-bold text-slate-900">🔍 商品情报检索</h1>
       </header>
 
-      <div class="p-10 space-y-6">
-        <!-- Search · 单条 + 批量 + 筛选 -->
-        <div class="card p-5 space-y-4">
+      <div class="p-8 space-y-5">
+        <!-- Search Bar -->
+        <div class="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
           <div class="grid grid-cols-2 gap-3">
             <div>
-              <label class="text-[11px] text-slate-500 mb-1 block">商品コード / JAN (单条)</label>
-              <input type="text" placeholder="例: 4515061012818" class="w-full text-sm border border-gray-200 rounded-md px-3 py-1.5">
+              <label class="text-[11px] text-slate-500 mb-1 block">商品コード / JAN（单条）</label>
+              <input type="text" placeholder="例: 4515061012818" class="w-full text-sm border border-slate-200 rounded-md px-3 py-1.5">
             </div>
             <div>
-              <label class="text-[11px] text-slate-500 mb-1 block">商品名 (部分一致)</label>
-              <input type="text" placeholder="例: パーフェクトジェル" class="w-full text-sm border border-gray-200 rounded-md px-3 py-1.5">
+              <label class="text-[11px] text-slate-500 mb-1 block">商品名（部分一致）</label>
+              <input type="text" placeholder="例: パーフェクトジェル" class="w-full text-sm border border-slate-200 rounded-md px-3 py-1.5">
             </div>
           </div>
           <div>
             <label class="text-[11px] text-slate-500 mb-1 flex items-center justify-between">
-              <span>批量 JAN (换行 / 逗号分隔)</span>
+              <span>批量 JAN（换行 / 逗号分隔）</span>
               <span class="text-slate-400">已输入 0 个</span>
             </label>
-            <textarea rows="3" placeholder="4901234567890&#10;4987654321098, 4976631478272" class="w-full text-sm border border-gray-200 rounded-md px-3 py-2 font-mono text-xs"></textarea>
+            <textarea rows="3" placeholder="4901234567890&#10;4987654321098, 4976631478272" class="w-full text-sm border border-slate-200 rounded-md px-3 py-2 font-mono text-xs"></textarea>
           </div>
           <div class="flex items-end gap-3">
             <div>
               <label class="text-[11px] text-slate-500 mb-1 block">取扱区分</label>
-              <select class="text-sm border border-gray-200 rounded-md px-3 py-1.5 bg-white">
+              <select class="text-sm border border-slate-200 rounded-md px-3 py-1.5 bg-white">
                 <option>全部</option><option>取扱中</option><option>取扱中止</option>
               </select>
             </div>
             <div>
               <label class="text-[11px] text-slate-500 mb-1 block">商品ランク</label>
-              <select class="text-sm border border-gray-200 rounded-md px-3 py-1.5 bg-white">
-                <option>全部</option><option>A</option><option>B</option><option>NEW</option>
+              <select class="text-sm border border-slate-200 rounded-md px-3 py-1.5 bg-white">
+                <option>全部</option><option>A</option><option>B</option><option>NEW</option><option>C</option>
               </select>
             </div>
             <div>
               <label class="text-[11px] text-slate-500 mb-1 block">部門</label>
-              <select class="text-sm border border-gray-200 rounded-md px-3 py-1.5 bg-white">
+              <select class="text-sm border border-slate-200 rounded-md px-3 py-1.5 bg-white">
                 <option>全部</option>
               </select>
             </div>
@@ -520,136 +507,138 @@
               <input type="checkbox"> 仅有库存 (qty &gt; 0)
             </label>
             <div class="flex-1"></div>
-            <button class="btn-ghost px-3 py-1.5 text-xs rounded-md">清空</button>
-            <button class="btn-primary px-4 py-1.5 text-sm rounded-md">🔍 检索</button>
+            <button class="px-3 py-1.5 text-xs border border-slate-200 text-slate-600 rounded-md hover:bg-slate-50">清空</button>
+            <button class="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700">🔍 检索</button>
           </div>
         </div>
 
-        <!-- SKU 详情 -->
-        <div class="card overflow-hidden">
-          <div class="px-6 py-5 border-b border-gray-200 flex items-start justify-between">
+        <!-- 选中 SKU 详情卡片 -->
+        <div class="bg-white border border-slate-200 rounded-xl">
+          <div class="px-5 py-4 border-b border-slate-200 flex items-start justify-between">
             <div>
-              <div class="flex items-center gap-2.5">
-                <h3 class="text-base font-semibold text-slate-900">Pelican ペリカン石鹸 恋するおしりヒップケアソープ</h3>
-                <span class="rank">A</span>
-                <span class="chip">取扱中</span>
+              <div class="flex items-center gap-2">
+                <h3 class="text-base font-bold text-slate-900">Pelican ペリカン石鹸 恋するおしりヒップケアソープ</h3>
+                <span class="badge-A px-2 py-0.5 rounded text-xs font-medium">A</span>
+                <span class="bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs">取扱中</span>
               </div>
-              <div class="flex gap-5 mt-2 text-xs text-slate-500">
+              <div class="flex gap-4 mt-2 text-xs text-slate-500">
                 <span>JAN <span class="font-mono text-slate-700">4976631478272</span></span>
                 <span>Internal ID <span class="font-mono text-slate-700">73368</span></span>
                 <span>部門 <span class="text-slate-700">輸出事業</span></span>
                 <span>担当者 <span class="text-slate-700">043 徐越</span></span>
               </div>
             </div>
-            <div class="flex gap-6">
+            <div class="flex gap-3">
               <div class="text-center">
-                <div class="text-[10px] text-slate-400">在庫合計</div>
-                <div class="text-xl font-semibold text-slate-900">1,019</div>
+                <div class="text-[10px] text-slate-500">在庫合計</div>
+                <div class="text-2xl font-bold text-slate-900">1,019</div>
               </div>
               <div class="text-center">
-                <div class="text-[10px] text-slate-400">販売実績</div>
-                <div class="text-xl font-semibold text-slate-900">5,089</div>
+                <div class="text-[10px] text-slate-500">販売実績</div>
+                <div class="text-2xl font-bold text-slate-900">5,089</div>
               </div>
               <div class="text-center">
-                <div class="text-[10px] text-slate-400">回転率</div>
-                <div class="text-xl font-semibold text-slate-900">5.99</div>
+                <div class="text-[10px] text-slate-500">回転率</div>
+                <div class="text-2xl font-bold text-slate-900">5.99</div>
               </div>
             </div>
           </div>
 
-          <div class="p-6 border-b border-gray-200">
-            <h4 class="text-sm font-medium text-slate-900 mb-3">各仓库库存细分</h4>
+          <!-- 库存细分 -->
+          <div class="p-5 border-b border-slate-200">
+            <h4 class="text-sm font-semibold text-slate-700 mb-3">📦 各仓库库存细分</h4>
             <table class="w-full text-sm">
-              <thead class="text-xs text-slate-500 bg-slate-50/60">
+              <thead class="bg-slate-50 text-xs text-slate-500">
                 <tr>
-                  <th class="px-3 py-2 text-left font-medium">仓库</th>
-                  <th class="px-3 py-2 text-left font-medium">货架号</th>
-                  <th class="px-3 py-2 text-right font-medium">在库</th>
-                  <th class="px-3 py-2 text-right font-medium">已占用</th>
-                  <th class="px-3 py-2 text-right font-medium">注文済</th>
-                  <th class="px-3 py-2 text-right font-medium">注文待ち</th>
-                  <th class="px-3 py-2 text-right font-medium">輸送中</th>
-                  <th class="px-3 py-2 text-right font-medium">平均原価</th>
-                  <th class="px-3 py-2 text-right font-medium">库存金额</th>
+                  <th class="px-3 py-2 text-left">仓库</th>
+                  <th class="px-3 py-2 text-left">货架号</th>
+                  <th class="px-3 py-2 text-right">在库</th>
+                  <th class="px-3 py-2 text-right">已占用</th>
+                  <th class="px-3 py-2 text-right">注文済</th>
+                  <th class="px-3 py-2 text-right">注文待ち</th>
+                  <th class="px-3 py-2 text-right">輸送中</th>
+                  <th class="px-3 py-2 text-right">平均原価</th>
+                  <th class="px-3 py-2 text-right">库存金额</th>
                 </tr>
               </thead>
-              <tbody class="divide-y divide-gray-100">
+              <tbody class="divide-y divide-slate-100">
                 <tr>
-                  <td class="px-3 py-2">JD-物流-千葉</td>
+                  <td class="px-3 py-2 font-medium">JD-物流-千葉</td>
                   <td class="px-3 py-2 text-slate-500">3A-01</td>
                   <td class="px-3 py-2 text-right font-medium">739</td>
-                  <td class="px-3 py-2 text-right text-slate-300">—</td>
+                  <td class="px-3 py-2 text-right text-slate-400">—</td>
                   <td class="px-3 py-2 text-right">102</td>
                   <td class="px-3 py-2 text-right">5</td>
                   <td class="px-3 py-2 text-right">23</td>
                   <td class="px-3 py-2 text-right text-slate-500">¥292.79</td>
                   <td class="px-3 py-2 text-right font-medium">¥216,371</td>
                 </tr>
-                <tr>
-                  <td class="px-3 py-2 text-slate-500">弁天倉庫 <span class="text-[10px] text-slate-400 ml-1">退品</span></td>
+                <tr class="bg-slate-50/40">
+                  <td class="px-3 py-2 font-medium text-slate-500">弁天倉庫 <span class="text-[10px] bg-slate-200 px-1 rounded ml-1">退品</span></td>
                   <td class="px-3 py-2 text-slate-500">—</td>
                   <td class="px-3 py-2 text-right">20</td>
-                  <td class="px-3 py-2 text-right text-slate-300">—</td>
-                  <td class="px-3 py-2 text-right text-slate-300">0</td>
-                  <td class="px-3 py-2 text-right text-slate-300">0</td>
-                  <td class="px-3 py-2 text-right text-slate-300">0</td>
+                  <td class="px-3 py-2 text-right text-slate-400">—</td>
+                  <td class="px-3 py-2 text-right text-slate-400">0</td>
+                  <td class="px-3 py-2 text-right text-slate-400">0</td>
+                  <td class="px-3 py-2 text-right text-slate-400">0</td>
                   <td class="px-3 py-2 text-right text-slate-500">¥292.79</td>
                   <td class="px-3 py-2 text-right">¥5,856</td>
                 </tr>
-                <tr>
-                  <td class="px-3 py-2 text-slate-500">弁天倉庫 <span class="text-[10px] text-slate-400 ml-1">退品</span></td>
+                <tr class="bg-slate-50/40">
+                  <td class="px-3 py-2 font-medium text-slate-500">弁天倉庫 <span class="text-[10px] bg-slate-200 px-1 rounded ml-1">退品</span></td>
                   <td class="px-3 py-2 text-slate-500">FF-3</td>
                   <td class="px-3 py-2 text-right">227</td>
-                  <td class="px-3 py-2 text-right text-slate-300">—</td>
-                  <td class="px-3 py-2 text-right text-slate-300">0</td>
-                  <td class="px-3 py-2 text-right text-slate-300">0</td>
-                  <td class="px-3 py-2 text-right text-slate-300">0</td>
+                  <td class="px-3 py-2 text-right text-slate-400">—</td>
+                  <td class="px-3 py-2 text-right text-slate-400">0</td>
+                  <td class="px-3 py-2 text-right text-slate-400">0</td>
+                  <td class="px-3 py-2 text-right text-slate-400">0</td>
                   <td class="px-3 py-2 text-right text-slate-500">¥292.79</td>
                   <td class="px-3 py-2 text-right">¥66,463</td>
                 </tr>
-                <tr>
-                  <td class="px-3 py-2 text-slate-500">弁天倉庫 <span class="text-[10px] text-slate-400 ml-1">退品</span></td>
+                <tr class="bg-slate-50/40">
+                  <td class="px-3 py-2 font-medium text-slate-500">弁天倉庫 <span class="text-[10px] bg-slate-200 px-1 rounded ml-1">退品</span></td>
                   <td class="px-3 py-2 text-slate-500">HENPIN-EX</td>
                   <td class="px-3 py-2 text-right">33</td>
-                  <td class="px-3 py-2 text-right text-slate-300">—</td>
-                  <td class="px-3 py-2 text-right text-slate-300">0</td>
-                  <td class="px-3 py-2 text-right text-slate-300">0</td>
-                  <td class="px-3 py-2 text-right text-slate-300">0</td>
+                  <td class="px-3 py-2 text-right text-slate-400">—</td>
+                  <td class="px-3 py-2 text-right text-slate-400">0</td>
+                  <td class="px-3 py-2 text-right text-slate-400">0</td>
+                  <td class="px-3 py-2 text-right text-slate-400">0</td>
                   <td class="px-3 py-2 text-right text-slate-500">¥292.79</td>
                   <td class="px-3 py-2 text-right">¥9,662</td>
                 </tr>
               </tbody>
-              <tfoot class="text-xs">
-                <tr class="bg-slate-50">
+              <tfoot class="bg-slate-100 text-xs">
+                <tr>
                   <td colspan="2" class="px-3 py-2 font-medium">合計</td>
-                  <td class="px-3 py-2 text-right font-semibold">1,019</td>
-                  <td colspan="5"></td>
-                  <td class="px-3 py-2 text-right font-semibold">¥298,352</td>
+                  <td class="px-3 py-2 text-right font-bold">1,019</td>
+                  <td colspan="5" class="px-3 py-2"></td>
+                  <td class="px-3 py-2 text-right font-bold">¥298,352</td>
                 </tr>
               </tfoot>
             </table>
           </div>
 
-          <div class="p-6">
+          <!-- 销售明细 -->
+          <div class="p-5">
             <div class="flex items-center justify-between mb-3">
-              <h4 class="text-sm font-medium text-slate-900">销售明细</h4>
-              <select class="text-xs border border-gray-200 rounded px-2 py-1 bg-white">
+              <h4 class="text-sm font-semibold text-slate-700">📊 销售明细</h4>
+              <select class="text-xs border border-slate-200 rounded px-2 py-1">
                 <option>近 3 个月</option>
               </select>
             </div>
             <table class="w-full text-sm">
-              <thead class="text-xs text-slate-500 bg-slate-50/60">
+              <thead class="bg-slate-50 text-xs text-slate-500">
                 <tr>
-                  <th class="px-3 py-2 text-left font-medium">来源</th>
-                  <th class="px-3 py-2 text-left font-medium">期间</th>
-                  <th class="px-3 py-2 text-left font-medium">店铺</th>
-                  <th class="px-3 py-2 text-right font-medium">销量</th>
-                  <th class="px-3 py-2 text-right font-medium">收入</th>
-                  <th class="px-3 py-2 text-right font-medium">毛利</th>
-                  <th class="px-3 py-2 text-right font-medium">毛利率</th>
+                  <th class="px-3 py-2 text-left">来源</th>
+                  <th class="px-3 py-2 text-left">期间</th>
+                  <th class="px-3 py-2 text-left">店铺</th>
+                  <th class="px-3 py-2 text-right">销量</th>
+                  <th class="px-3 py-2 text-right">收入</th>
+                  <th class="px-3 py-2 text-right">毛利</th>
+                  <th class="px-3 py-2 text-right">毛利率</th>
                 </tr>
               </thead>
-              <tbody class="divide-y divide-gray-100">
+              <tbody class="divide-y divide-slate-100">
                 <tr>
                   <td class="px-3 py-2 text-xs text-slate-500">asean_monthly</td>
                   <td class="px-3 py-2 text-xs">2026-04</td>
@@ -657,7 +646,7 @@
                   <td class="px-3 py-2 text-right">69</td>
                   <td class="px-3 py-2 text-right">¥51,881</td>
                   <td class="px-3 py-2 text-right">¥31,871</td>
-                  <td class="px-3 py-2 text-right">61.4%</td>
+                  <td class="px-3 py-2 text-right text-green-700">61.4%</td>
                 </tr>
                 <tr>
                   <td class="px-3 py-2 text-xs text-slate-500">asean_monthly</td>
@@ -666,7 +655,7 @@
                   <td class="px-3 py-2 text-right">61</td>
                   <td class="px-3 py-2 text-right">¥50,496</td>
                   <td class="px-3 py-2 text-right">¥32,807</td>
-                  <td class="px-3 py-2 text-right">65.0%</td>
+                  <td class="px-3 py-2 text-right text-green-700">65.0%</td>
                 </tr>
                 <tr>
                   <td class="px-3 py-2 text-xs text-slate-500">asean_daily</td>
@@ -675,7 +664,7 @@
                   <td class="px-3 py-2 text-right">23</td>
                   <td class="px-3 py-2 text-right">¥17,552</td>
                   <td class="px-3 py-2 text-right">¥10,882</td>
-                  <td class="px-3 py-2 text-right">62.0%</td>
+                  <td class="px-3 py-2 text-right text-green-700">62.0%</td>
                 </tr>
               </tbody>
             </table>
@@ -686,122 +675,126 @@
 
     <!-- ===== View: 财务 ===== -->
     <div data-view-content="finance" class="hidden">
-      <header class="bg-white border-b border-gray-200 px-10 py-5 sticky top-0 z-10">
-        <div class="text-xs text-slate-400">销售数据 / 財務</div>
-        <h1 class="text-lg font-semibold text-slate-900 mt-0.5">財務 · NST 上传颗粒度对齐</h1>
+      <header class="bg-white border-b border-slate-200 px-8 py-4 sticky top-0 z-10">
+        <div class="text-xs text-slate-500">销售数据 / 財務</div>
+        <h1 class="text-xl font-bold text-slate-900">💱 財務 · NST 上传颗粒度对齐</h1>
       </header>
 
-      <div class="p-10 space-y-6">
-        <div class="flex gap-2">
-          <button class="btn-primary px-4 py-2 text-sm rounded-md">Shopee / Lazada (东南亚)</button>
-          <button class="btn-ghost px-4 py-2 text-sm rounded-md">Shopify 自建站</button>
+      <div class="p-8 space-y-5">
+        <!-- Section radio -->
+        <div class="bg-white border border-slate-200 rounded-xl p-4 flex gap-2">
+          <button class="px-4 py-2 text-sm bg-blue-600 text-white rounded-md">🛒 Shopee / Lazada (东南亚)</button>
+          <button class="px-4 py-2 text-sm border border-slate-200 rounded-md hover:bg-slate-50">🛍 Shopify 自建站</button>
         </div>
 
-        <div class="card p-4 grid grid-cols-5 gap-4">
+        <!-- Filters -->
+        <div class="bg-white border border-slate-200 rounded-xl p-4 grid grid-cols-5 gap-3">
           <div>
             <label class="text-[11px] text-slate-500 mb-1 block">粒度</label>
-            <div class="flex gap-3">
-              <label class="text-sm flex items-center gap-1"><input type="radio" name="g" checked> 月</label>
-              <label class="text-sm flex items-center gap-1"><input type="radio" name="g"> 周</label>
+            <div class="flex gap-1">
+              <label class="text-xs flex items-center gap-1"><input type="radio" name="g" checked> 按月</label>
+              <label class="text-xs flex items-center gap-1"><input type="radio" name="g"> 按周</label>
             </div>
           </div>
           <div>
             <label class="text-[11px] text-slate-500 mb-1 block">订单成立月份</label>
-            <select class="w-full text-sm border border-gray-200 rounded-md px-2 py-1.5">
+            <select class="w-full text-sm border border-slate-200 rounded-md px-2 py-1.5">
               <option>2026-04</option>
             </select>
           </div>
           <div>
             <label class="text-[11px] text-slate-500 mb-1 block">市场</label>
-            <select class="w-full text-sm border border-gray-200 rounded-md px-2 py-1.5">
+            <select class="w-full text-sm border border-slate-200 rounded-md px-2 py-1.5">
               <option>东南亚</option>
             </select>
           </div>
           <div>
             <label class="text-[11px] text-slate-500 mb-1 block">国家</label>
-            <select class="w-full text-sm border border-gray-200 rounded-md px-2 py-1.5">
+            <select class="w-full text-sm border border-slate-200 rounded-md px-2 py-1.5">
               <option>全部</option>
             </select>
           </div>
           <div>
             <label class="text-[11px] text-slate-500 mb-1 block">店铺账号</label>
-            <select class="w-full text-sm border border-gray-200 rounded-md px-2 py-1.5">
+            <select class="w-full text-sm border border-slate-200 rounded-md px-2 py-1.5">
               <option>全部</option>
             </select>
           </div>
         </div>
 
+        <!-- KPI -->
         <div class="grid grid-cols-5 gap-3">
-          <div class="card p-4">
+          <div class="bg-white border border-slate-200 rounded-xl p-4">
             <div class="text-xs text-slate-500">覆盖月份</div>
-            <div class="text-xl font-semibold mt-1">3</div>
+            <div class="text-xl font-bold mt-1">3</div>
           </div>
-          <div class="card p-4">
+          <div class="bg-white border border-slate-200 rounded-xl p-4">
             <div class="text-xs text-slate-500">订单数</div>
-            <div class="text-xl font-semibold mt-1">12,847</div>
+            <div class="text-xl font-bold mt-1">12,847</div>
           </div>
-          <div class="card p-4">
-            <div class="text-xs text-slate-500">付款金额</div>
-            <div class="text-xl font-semibold mt-1">¥4,420,591</div>
+          <div class="bg-white border border-slate-200 rounded-xl p-4">
+            <div class="text-xs text-slate-500">付款金额合计</div>
+            <div class="text-xl font-bold mt-1">¥4,420,591</div>
           </div>
-          <div class="card p-4">
-            <div class="text-xs text-slate-500">账单金额</div>
-            <div class="text-xl font-semibold mt-1">¥1,247,830</div>
+          <div class="bg-white border border-slate-200 rounded-xl p-4">
+            <div class="text-xs text-slate-500">账单金额合计</div>
+            <div class="text-xl font-bold text-red-700 mt-1">¥1,247,830</div>
           </div>
-          <div class="card p-4">
-            <div class="text-xs text-slate-500">拨款金额</div>
-            <div class="text-xl font-semibold mt-1">¥3,172,761</div>
+          <div class="bg-white border border-slate-200 rounded-xl p-4">
+            <div class="text-xs text-slate-500">拨款金额合计</div>
+            <div class="text-xl font-bold text-green-700 mt-1">¥3,172,761</div>
           </div>
         </div>
 
-        <div class="card overflow-hidden">
-          <div class="border-b border-gray-200 px-4 flex gap-1 overflow-x-auto">
-            <button class="px-4 py-3 text-sm font-medium text-sky-700 border-b-2 border-sky-500 -mb-px whitespace-nowrap">NST 上传明细</button>
-            <button class="px-4 py-3 text-sm text-slate-500 whitespace-nowrap">月 × 市场</button>
-            <button class="px-4 py-3 text-sm text-slate-500 whitespace-nowrap">月 × 国家</button>
-            <button class="px-4 py-3 text-sm text-slate-500 whitespace-nowrap">月 × 店铺</button>
-            <button class="px-4 py-3 text-sm text-slate-500 whitespace-nowrap">月 × 平台</button>
-            <button class="px-4 py-3 text-sm text-slate-500 whitespace-nowrap">拨款明细</button>
-            <button class="px-4 py-3 text-sm text-slate-500 whitespace-nowrap">订单导出</button>
+        <!-- Tabs -->
+        <div class="bg-white border border-slate-200 rounded-xl">
+          <div class="border-b border-slate-200 px-4 flex gap-1 overflow-x-auto">
+            <button class="px-4 py-3 text-sm font-medium text-blue-700 border-b-2 border-blue-500 whitespace-nowrap">📤 NST 上传明细 (6 列)</button>
+            <button class="px-4 py-3 text-sm text-slate-500 whitespace-nowrap">🌍 月 × 市场</button>
+            <button class="px-4 py-3 text-sm text-slate-500 whitespace-nowrap">📅 月 × 国家</button>
+            <button class="px-4 py-3 text-sm text-slate-500 whitespace-nowrap">🏪 月 × 店铺</button>
+            <button class="px-4 py-3 text-sm text-slate-500 whitespace-nowrap">📱 月 × 平台</button>
+            <button class="px-4 py-3 text-sm text-slate-500 whitespace-nowrap">💰 拨款明细</button>
+            <button class="px-4 py-3 text-sm text-slate-500 whitespace-nowrap">📦 订单导出</button>
           </div>
           <div class="p-5">
-            <h4 class="text-sm font-medium text-slate-900 mb-3">NST 文件清单</h4>
+            <h4 class="text-sm font-semibold text-slate-700 mb-3">📂 NST 文件清单</h4>
             <table class="w-full text-sm">
-              <thead class="text-xs text-slate-500 bg-slate-50/60">
+              <thead class="bg-slate-50 text-xs text-slate-500">
                 <tr>
-                  <th class="px-3 py-2 text-left font-medium">店铺账号</th>
-                  <th class="px-3 py-2 text-left font-medium">订单成立月份</th>
-                  <th class="px-3 py-2 text-right font-medium">行数</th>
-                  <th class="px-3 py-2 text-right font-medium">文件数</th>
-                  <th class="px-3 py-2 text-right font-medium">付款合计</th>
-                  <th class="px-3 py-2 text-right font-medium">退款合计</th>
-                  <th class="px-3 py-2 text-right font-medium">账单合计</th>
+                  <th class="px-3 py-2 text-left">店铺账号</th>
+                  <th class="px-3 py-2 text-left">订单成立月份</th>
+                  <th class="px-3 py-2 text-right">行数</th>
+                  <th class="px-3 py-2 text-right">文件数</th>
+                  <th class="px-3 py-2 text-right">付款合计</th>
+                  <th class="px-3 py-2 text-right">退款合计</th>
+                  <th class="px-3 py-2 text-right">账单合计</th>
                 </tr>
               </thead>
-              <tbody class="divide-y divide-gray-100">
+              <tbody class="divide-y divide-slate-100">
                 <tr>
                   <td class="px-3 py-2 font-mono text-xs">mtkshop.ph</td>
                   <td class="px-3 py-2">2026-04</td>
                   <td class="px-3 py-2 text-right">2,134</td>
-                  <td class="px-3 py-2 text-right">3</td>
+                  <td class="px-3 py-2 text-right"><span class="bg-yellow-100 text-yellow-800 px-1.5 py-0.5 rounded text-xs">3</span></td>
                   <td class="px-3 py-2 text-right">¥1,247,890</td>
-                  <td class="px-3 py-2 text-right">¥−12,453</td>
-                  <td class="px-3 py-2 text-right">¥−381,234</td>
+                  <td class="px-3 py-2 text-right">¥-12,453</td>
+                  <td class="px-3 py-2 text-right text-red-700">¥-381,234</td>
                 </tr>
                 <tr>
                   <td class="px-3 py-2 font-mono text-xs">mtkshop.tw</td>
                   <td class="px-3 py-2">2026-04</td>
                   <td class="px-3 py-2 text-right">456</td>
-                  <td class="px-3 py-2 text-right">1</td>
+                  <td class="px-3 py-2 text-right"><span class="bg-green-100 text-green-800 px-1.5 py-0.5 rounded text-xs">1</span></td>
                   <td class="px-3 py-2 text-right">¥587,623</td>
-                  <td class="px-3 py-2 text-right">¥−8,910</td>
-                  <td class="px-3 py-2 text-right">¥−176,234</td>
+                  <td class="px-3 py-2 text-right">¥-8,910</td>
+                  <td class="px-3 py-2 text-right text-red-700">¥-176,234</td>
                 </tr>
               </tbody>
             </table>
             <div class="mt-4 flex gap-2">
-              <button class="btn-primary px-3 py-1.5 text-xs rounded-md">📥 NST 6 列 CSV</button>
-              <button class="btn-ghost px-3 py-1.5 text-xs rounded-md">📦 ZIP 打包 (按 899 行切分)</button>
+              <button class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-md">📥 NST 6 列 CSV</button>
+              <button class="px-3 py-1.5 text-xs bg-slate-100 text-slate-700 rounded-md hover:bg-slate-200">📦 ZIP 打包 (按 899 行切分)</button>
             </div>
           </div>
         </div>
@@ -812,6 +805,7 @@
 </div>
 
 <script>
+// === Tab/Nav switching ===
 const navItems = document.querySelectorAll('.nav-item[data-view]');
 const views = document.querySelectorAll('[data-view-content]');
 navItems.forEach(item => {
@@ -826,7 +820,7 @@ navItems.forEach(item => {
   });
 });
 
-// 单色蓝灰 chart 配色
+// === Charts (Dashboard) ===
 window.addEventListener('load', () => {
   const ctx1 = document.getElementById('chartSales');
   if (ctx1) new Chart(ctx1, {
@@ -836,26 +830,24 @@ window.addEventListener('load', () => {
       datasets: [{
         label: '销售额 (万円)',
         data: [382, 419, 458, 503, 482, 442],
-        borderColor: '#0ea5e9',
-        backgroundColor: 'rgba(14, 165, 233, 0.08)',
+        borderColor: '#2563eb',
+        backgroundColor: 'rgba(37, 99, 235, 0.1)',
         fill: true,
-        tension: 0.35,
-        pointRadius: 3,
+        tension: 0.3,
       }, {
         label: '毛利 (万円)',
         data: [228, 251, 282, 312, 297, 271],
-        borderColor: '#94a3b8',
-        backgroundColor: 'rgba(148, 163, 184, 0.05)',
+        borderColor: '#16a34a',
+        backgroundColor: 'rgba(22, 163, 74, 0.1)',
         fill: true,
-        tension: 0.35,
-        pointRadius: 3,
+        tension: 0.3,
       }],
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { legend: { position: 'bottom', labels: { font: { size: 11 }, boxWidth: 12 } } },
-      scales: { y: { beginAtZero: true, grid: { color: '#f1f5f9' } }, x: { grid: { display: false } } },
+      plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } },
+      scales: { y: { beginAtZero: true } },
     },
   });
 
@@ -866,16 +858,14 @@ window.addEventListener('load', () => {
       labels: ['Shopee TW', 'Shopee SG', 'Shopee PH', 'Lazada PH', 'Lazada SG', 'その他'],
       datasets: [{
         data: [1280, 1102, 894, 561, 320, 263],
-        // 同色相单色阶
-        backgroundColor: ['#0c4a6e', '#0369a1', '#0ea5e9', '#7dd3fc', '#bae6fd', '#e0f2fe'],
+        backgroundColor: ['#2563eb', '#16a34a', '#ea580c', '#9333ea', '#0891b2', '#94a3b8'],
         borderWidth: 0,
       }],
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      cutout: '65%',
-      plugins: { legend: { position: 'right', labels: { font: { size: 10 }, boxWidth: 10 } } },
+      plugins: { legend: { position: 'right', labels: { font: { size: 10 } } } },
     },
   });
 });
