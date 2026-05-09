@@ -285,6 +285,244 @@ def ingest_inventory_snapshot(
 
 
 # ============================================================
+# Ingestor 1b：inventory_snapshot_multi（在庫のスナップショット-980 · 多仓多级表头）
+# ============================================================
+# 子表头按仓库循环出现的 8 列字段
+_MULTI_SUB_FIELDS = (
+    "適正在庫水準", "手持", "注文済", "確保済",
+    "注文待ち", "輸送中", "平均原価", "定義原価",
+)
+# 主表头前 6 列（物品级元数据）
+_MULTI_META_COLS = ("内部ID", "UPCコード", "在庫アイテム: 表示名", "ランク", "取扱区分", "保管棚番号")
+
+
+def _parse_multi_warehouse_header(rows: list[list]) -> tuple[list[str], dict[str, dict[str, int]]]:
+    """从 row 6 (主表头) + row 7 (子表头) 解析仓库列表 + 列索引映射。
+
+    返回:
+      warehouses: 仓库名顺序列表（含「合計」, 末尾）
+      col_index: { warehouse_name: { sub_field_name: col_idx } }
+    """
+    main = rows[6]
+    sub = rows[7]
+    warehouses: list[str] = []
+    col_index: dict[str, dict[str, int]] = {}
+
+    # 仓库块从 col 6 起（前 6 列是物品级 meta），每块占 8 列
+    n_meta = len(_MULTI_META_COLS)  # 6
+    block_size = len(_MULTI_SUB_FIELDS)  # 8
+
+    col = n_meta
+    while col < len(main):
+        wh = main[col]
+        if wh:
+            warehouses.append(str(wh).strip())
+            col_index[str(wh).strip()] = {
+                fld: col + i for i, fld in enumerate(_MULTI_SUB_FIELDS) if (col + i) < len(sub)
+            }
+        col += block_size
+    return warehouses, col_index
+
+
+def ingest_inventory_snapshot_multi(
+    path, conn: sqlite3.Connection, *, source_name: str | None = None
+) -> dict:
+    """新格式 在庫のスナップショット-980.xls · 多仓库多级表头.
+
+    - 解析 row 6 (主表头, 仓库列表) + row 7 (子表头, 8 子字段)
+    - 写入 item_inventory_snapshot_v2: 每个 (jan, location) 一行（不含合計行）
+    - total_amount = 平均原価 × (手持 + 注文待ち + 輸送中)
+    - 同步 item_v2.{on_hand_total, on_order_total, qty_committed_total, total_amount}
+    """
+    path = Path(path)
+    source_name = source_name or path.name
+    snapshot_at = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).isoformat()
+
+    run_id = _start_run(conn, "item_inventory_snapshot_v2.multi", source_name)
+    inserted = errors = skipped_no_jan = skipped_other_loc = 0
+
+    # 整表覆盖（最新快照）
+    conn.execute("DELETE FROM item_inventory_snapshot_v2")
+
+    rows = list(iter_rows(path))
+    if len(rows) < 9:
+        _finalize_run(conn, run_id, total=0, inserted=0, errors=1)
+        return {
+            "run_id": run_id, "total": 0, "inserted": 0, "errors": 1,
+            "period_start": None, "period_end": None,
+        }
+
+    warehouses, col_index = _parse_multi_warehouse_header(rows)
+    # 数据仓库列表（去掉「合計」）
+    data_warehouses = [w for w in warehouses if w != "合計"]
+
+    sql = """
+        INSERT OR REPLACE INTO item_inventory_snapshot_v2 (
+            jan, item_code, internal_id, display_name,
+            location, bin_number, snapshot_at,
+            qty_on_hand, qty_committed, qty_backorder,
+            std_cost, avg_cost, total_amount,
+            handling_status, status, owner, department,
+            imported_at
+        ) VALUES (
+            :jan, :item_code, :internal_id, :display_name,
+            :location, :bin_number, :snapshot_at,
+            :qty_on_hand, :qty_committed, :qty_backorder,
+            :std_cost, :avg_cost, :total_amount,
+            :handling_status, :status, :owner, :department,
+            :imported_at
+        )
+    """
+    now = _now_iso()
+
+    # item_v2 汇总：用「合計」列拿数量类（NetSuite 已聚合）, total_amount 用每仓 avg×qty 后再 SUM
+    # 因「合計」列的 平均原価 是各仓 SUM(非真平均), 所以 total_amount 必须 per-warehouse 算后求和
+    item_totals: dict[str, dict] = {}  # jan -> {on_hand, on_order, committed, total_amount}
+    total_idx = col_index.get("合計", {})
+
+    # 遍历数据行（从 row 8 起）
+    total_data_rows = 0
+    for n, raw in enumerate(rows[8:], start=9):
+        try:
+            internal_id = _to_str(raw[0]) if len(raw) > 0 else None
+            jan = _to_str(raw[1]) if len(raw) > 1 else None
+            display_name = _to_str(raw[2]) if len(raw) > 2 else None
+            rank = _to_str(raw[3]) if len(raw) > 3 else None
+            handling_status = _to_str(raw[4]) if len(raw) > 4 else None
+            bin_number = _to_str(raw[5]) if len(raw) > 5 else None
+
+            # 跳过空行 / 合計行
+            if not internal_id:
+                continue
+            if internal_id in ("総合計", "合計", "合 計"):
+                continue
+            total_data_rows += 1
+            # JAN 强制 8-13 位数字
+            if not _is_valid_jan(jan):
+                skipped_no_jan += 1
+                continue
+
+            # 用「合計」列计算 item_v2 汇总（每 jan 累加保险，但这文件 jan 唯一）
+            def _cell(idx_map: dict[str, int], fld: str):
+                idx = idx_map.get(fld)
+                if idx is None or idx >= len(raw):
+                    return None
+                return _to_float(raw[idx])
+
+            # 数量类用「合計」列（NetSuite 已聚合）
+            tot_oh = _cell(total_idx, "手持") or 0.0
+            tot_oo = _cell(total_idx, "注文済") or 0.0
+            tot_cm = _cell(total_idx, "確保済") or 0.0
+            # 金额类: per-warehouse avg × qty 后求和（合計 列的平均原価 是各仓 SUM 不可直用）
+            jan_total_amt = 0.0
+            for wh in data_warehouses:
+                idx_map = col_index.get(wh, {})
+                wh_avg = _cell(idx_map, "平均原価") or 0.0
+                wh_oh = _cell(idx_map, "手持") or 0.0
+                wh_wt = _cell(idx_map, "注文待ち") or 0.0
+                wh_tr = _cell(idx_map, "輸送中") or 0.0
+                jan_total_amt += wh_avg * (wh_oh + wh_wt + wh_tr)
+            item_totals[jan] = {
+                "on_hand_total": tot_oh,
+                "on_order_total": tot_oo,
+                "qty_committed_total": tot_cm,
+                "total_amount": jan_total_amt,
+            }
+
+            # 每仓库一行（白名单内）
+            for wh in data_warehouses:
+                if wh not in ALLOWED_INVENTORY_LOCATIONS:
+                    skipped_other_loc += 1
+                    continue
+                idx_map = col_index.get(wh, {})
+                qty_on_hand = _cell(idx_map, "手持")
+                qty_committed = _cell(idx_map, "確保済")
+                qty_waiting = _cell(idx_map, "注文待ち")
+                qty_transit = _cell(idx_map, "輸送中")
+                avg_cost = _cell(idx_map, "平均原価")
+                std_cost = _cell(idx_map, "定義原価")
+                # backorder 在新文件不存在; 用「注文待ち」近似（语义最接近）
+                qty_backorder = qty_waiting
+
+                # total_amount = 平均原価 × (手持 + 注文待ち + 輸送中)
+                qty_for_amt = (qty_on_hand or 0.0) + (qty_waiting or 0.0) + (qty_transit or 0.0)
+                total_amount = (avg_cost or 0.0) * qty_for_amt if avg_cost else None
+
+                payload = {
+                    "jan": jan,
+                    "item_code": None,  # 新文件无 アイテム 列
+                    "internal_id": internal_id,
+                    "display_name": display_name,
+                    "location": wh,
+                    "bin_number": bin_number or "",
+                    "snapshot_at": snapshot_at,
+                    "qty_on_hand": qty_on_hand,
+                    "qty_committed": qty_committed,
+                    "qty_backorder": qty_backorder,
+                    "std_cost": std_cost,
+                    "avg_cost": avg_cost,
+                    "total_amount": total_amount,
+                    "handling_status": handling_status,
+                    "status": rank,  # ランク 放 status 暂存
+                    "owner": None,
+                    "department": None,
+                    "imported_at": now,
+                }
+                conn.execute(sql, payload)
+                inserted += 1
+        except Exception as e:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            errors += 1
+            try:
+                _record_error(conn, run_id, n, str(e), {"row": list(raw[:6]) if raw else []})
+                conn.commit()
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+
+    # 同步 item_v2 汇总字段（用「合計」列直接算的值，per jan）
+    if item_totals:
+        try:
+            for jan, agg in item_totals.items():
+                conn.execute(
+                    """
+                    UPDATE item_v2 SET
+                      on_hand_total = ?,
+                      on_order_total = ?,
+                      qty_committed_total = ?,
+                      total_amount = ?,
+                      updated_at = ?
+                    WHERE jan = ?
+                    """,
+                    (
+                        agg["on_hand_total"],
+                        agg["on_order_total"],
+                        agg["qty_committed_total"],
+                        agg["total_amount"],
+                        now,
+                        jan,
+                    ),
+                )
+        except Exception:
+            pass  # item_v2 不存在则跳过
+
+    _finalize_run(conn, run_id, total=total_data_rows, inserted=inserted, errors=errors)
+    return {
+        "run_id": run_id, "total": total_data_rows,
+        "inserted": inserted, "errors": errors,
+        "skipped_no_jan": skipped_no_jan,
+        "skipped_other_loc": skipped_other_loc,
+        "warehouses": data_warehouses,
+        "period_start": None, "period_end": None,
+    }
+
+
+# ============================================================
 # Ingestor 2-5：sales_line（4 个销售导出，source 不同）
 # ============================================================
 _STORE_PREFIXES = ("Shopee", "Lazada", "Tokopedia")
@@ -1022,6 +1260,7 @@ def ingest_monthly_turnover(
 # ============================================================
 INGESTOR_REGISTRY: dict[str, callable] = {
     "inventory": ingest_inventory_snapshot,
+    "inventory_multi": ingest_inventory_snapshot_multi,
     "asean_monthly": ingest_sales_asean_monthly,
     "asean_daily": ingest_sales_asean_daily,
     "export_item": ingest_sales_export_item,
@@ -1037,7 +1276,10 @@ INGESTOR_REGISTRY: dict[str, callable] = {
 def detect_ingestor(filename: str) -> str | None:
     """根据文件名启发式判断使用哪个 ingestor。"""
     n = filename
-    if "在庫数残数" in n or "通常在庫" in n or "在庫のスナップショット" in n:
+    # 新格式（多仓多级表头）：在庫のスナップショット-980 / -xxx → inventory_multi
+    if "在庫のスナップショット" in n:
+        return "inventory_multi"
+    if "在庫数残数" in n or "通常在庫" in n:
         return "inventory"
     if "月完売率" in n or "完売率" in n:
         return "monthly_turnover"
