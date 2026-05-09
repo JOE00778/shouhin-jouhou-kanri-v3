@@ -132,19 +132,34 @@ BILL_FEE_COLS = [
     "fbs_fee",                                             # FBS Fee
 ]
 
-# 单条扣款项目展开 (与 Boss 截图 K-P 等列对齐, 用于扣款明细 Tab)
-BILL_BREAKDOWN_COLS = [
-    ("seller_voucher_total",  "卖家优惠券折扣", ["seller_voucher", "seller_voucher_jv"]),
-    ("seller_coin_total",     "卖家 Shopee 币回扣", ["seller_shopee_coin", "seller_shopee_coin_jv"]),
-    ("shopee_rebate",         "Shopee 回扣金额", ["shopee_rebate"]),
-    ("commission",            "佣金",         ["commission", "affiliate_commission"]),
-    ("service_fee",           "服务费",       ["service_fee"]),
-    ("transaction_fee",       "交易费",       ["transaction_fee"]),
-    ("return_shipping_total", "退货运费",     ["return_shipping", "return_to_seller_ship"]),
-    ("insurance_total",       "运费险",       ["shipping_insurance_save", "shipping_insurance_fee"]),
-    ("fbs_total",             "FBS / 海外免退", ["fbs_fee", "fbs_overseas_fail", "fbs_overseas_return"]),
-    # 截图中存在但当前 ingester 未捕获 (待补):
-    # AMS佣金 / 线下调整金额 — 需要在 xls_ingest.NAME_MAP 中追加
+# 拨款 Summary 项目: 与 Shopee Income 表列顺序对齐 (Boss 截图 G-P 等)
+# 顺序: 商品原价 → 商品折扣 → 运费类 (J 左侧) → 退款金额 → 退款右侧扣款 → 拨款金额
+SUMMARY_FEE_COLS = [
+    # 退款金额左侧
+    ("商品原价",          ["gross_price"],                 "income"),
+    ("商品折扣",          ["product_discount"],            "income"),
+    ("买家支付运费",      ["buyer_shipping"],              "income"),
+    ("第三方物流费",      ["seller_shipping"],             "income"),
+    ("Shopee 运费回扣",   ["shopee_shipping_subsidy"],     "income"),
+    ("退款金额",          ["refund_amount"],               "refund"),
+
+    # 退款金额右侧 (账单金额组成项)
+    ("卖家优惠券折扣",    ["seller_voucher", "seller_voucher_jv"],            "bill"),
+    ("卖家 Shopee 币回扣", ["seller_shopee_coin", "seller_shopee_coin_jv"],   "bill"),
+    ("Shopee 回扣金额",   ["shopee_rebate"],                                  "bill"),
+    ("佣金",             ["commission", "affiliate_commission"],             "bill"),
+    ("服务费",           ["service_fee"],                                    "bill"),
+    ("交易费",           ["transaction_fee"],                                "bill"),
+    ("退货运费",         ["return_shipping", "return_to_seller_ship"],       "bill"),
+    ("运费险",           ["shipping_insurance_save", "shipping_insurance_fee"], "bill"),
+    ("FBS / 海外免退",    ["fbs_fee", "fbs_overseas_fail", "fbs_overseas_return"], "bill"),
+
+    # 截图中存在但 ingester 未捕获 (待补)
+    ("AMS 佣金",         [],  "missing"),
+    ("线下调整金额",      [],  "missing"),
+
+    # 拨款金额 (右侧终点)
+    ("拨款金额",         ["payout_amount"],                                  "payout"),
 ]
 
 
@@ -499,31 +514,65 @@ with tab_nst:
         st.subheader(t("📂 NST 文件清单 (按店铺 × 月份)"))
         st.dataframe(files_df, use_container_width=True, hide_index=True, height=280)
 
-        # 扣款项目分解 (与 Boss 截图 K 列起对齐 — 按月份汇总每个费用项)
-        st.subheader(t("💸 扣款项目分解 (按订单成立月份)"))
+        # 拨款 Summary (与 Shopee Income 表 Summary 对齐 · 列顺序 = G→P→拨款金额)
+        st.subheader(t("📊 拨款 Summary (按订单成立月份)"))
         st.caption(t(
-            "🎯 与 Income 表【退款金额】右侧到【拨款金额】左侧的费用列对齐 · "
-            "原币种 (未换汇) · ⚠️ AMS佣金 / 线下调整金额 当前 ingester 未捕获, 待补"
+            "🎯 列顺序与 Shopee Income 表 Summary 一致 (商品原价 → 运费类 → 退款金额 → 扣款项 → 拨款金额) · "
+            "原币种 (未换汇) · ⚠️ AMS 佣金 / 线下调整金额 当前 ingester 未捕获 (列值显示 N/A)"
         ))
 
-        breakdown_rows = []
-        for month, g in nst_df.groupby("order_create_month", sort=True):
-            row = {t("订单成立月份"): month, t("订单数"): int(g["order_no"].nunique())}
-            for key, label_zh, src_cols in BILL_BREAKDOWN_COLS:
-                present = [c for c in src_cols if c in g.columns]
-                row[t(label_zh)] = round(float(g[present].sum().sum()), 2) if present else 0.0
-            row[t("账单金额合计")] = round(float(g["账单金额"].sum()), 2)
-            breakdown_rows.append(row)
-        breakdown_df = pd.DataFrame(breakdown_rows).sort_values(
-            t("订单成立月份"), ascending=False,
+        # 选择展示视角: 月份 × 国家 / 月份 × 店铺账号 / 仅按月份
+        view_mode = st.radio(
+            t("Summary 维度"),
+            [t("订单成立月份"), t("月份 × 国家"), t("月份 × 店铺账号")],
+            horizontal=True,
+            key="summary_view_mode",
         )
-        money_cols_b = [
-            t(label_zh) for _, label_zh, _ in BILL_BREAKDOWN_COLS
+        if view_mode == t("月份 × 国家"):
+            group_keys = ["order_create_month", "country"]
+            label_keys = [t("订单成立月份"), t("国家")]
+        elif view_mode == t("月份 × 店铺账号"):
+            group_keys = ["order_create_month", "seller_account"]
+            label_keys = [t("订单成立月份"), t("店铺账号")]
+        else:
+            group_keys = ["order_create_month"]
+            label_keys = [t("订单成立月份")]
+
+        summary_rows = []
+        for keys, g in nst_df.groupby(group_keys, sort=True, dropna=False):
+            if not isinstance(keys, tuple):
+                keys = (keys,)
+            row = dict(zip(label_keys, keys))
+            row[t("订单数")] = int(g["order_no"].nunique())
+            for label_zh, src_cols, kind in SUMMARY_FEE_COLS:
+                if kind == "missing":
+                    row[t(label_zh)] = "N/A"
+                    continue
+                present = [c for c in src_cols if c in g.columns]
+                if not present:
+                    row[t(label_zh)] = 0.0
+                else:
+                    row[t(label_zh)] = round(float(g[present].sum().sum()), 2)
+            row[t("账单金额合计")] = round(float(g["账单金额"].sum()), 2)
+            summary_rows.append(row)
+        summary_df = pd.DataFrame(summary_rows)
+        if t("订单成立月份") in summary_df.columns:
+            summary_df = summary_df.sort_values(label_keys, ascending=[False] * len(label_keys))
+
+        money_cols_s = [
+            t(label_zh) for label_zh, _, kind in SUMMARY_FEE_COLS if kind != "missing"
         ] + [t("账单金额合计")]
-        for c in money_cols_b:
-            if c in breakdown_df.columns:
-                breakdown_df[c] = breakdown_df[c].map(_fmt_money)
-        st.dataframe(breakdown_df, use_container_width=True, hide_index=True, height=240)
+        for c in money_cols_s:
+            if c in summary_df.columns:
+                summary_df[c] = summary_df[c].map(_fmt_money)
+        st.dataframe(summary_df, use_container_width=True, hide_index=True, height=320)
+        st.download_button(
+            t("📥 拨款 Summary CSV"),
+            data=summary_df.to_csv(index=False).encode("utf-8-sig"),
+            file_name="shopee_payout_summary.csv",
+            mime="text/csv",
+            key="dl_payout_summary",
+        )
 
         st.subheader(t("📋 NST 6 列明细"))
         nst_6cols = nst_df[[
