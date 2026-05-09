@@ -584,6 +584,7 @@ _NAV_GROUPS: list[tuple[str | None, list[tuple[str, str]]]] = [
     ]),
     ("📦 订货决策", [
         ("pages/08_📦_発注AI.py", "📦 発注AI"),
+        ("pages/18_📦_订货依据.py", "📦 订货依据 (完売率)"),
         ("pages/10_📦_発注書作成.py", "📦 発注書作成"),
         ("pages/09_📜_発注履歴.py", "📜 発注履歴"),
         ("pages/17_💰_价格改善.py", "💰 价格改善"),
