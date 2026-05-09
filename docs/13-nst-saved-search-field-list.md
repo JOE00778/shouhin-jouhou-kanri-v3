@@ -1,7 +1,15 @@
 # NST Saved Search · 字段配置清单 (Boss 配置用)
 
-> 状态：v1 · 2026-05-09
-> 目的：Boss 在 NetSuite 配置 3 个 Saved Search 时，按本清单逐项添加「結果」列，确认字段存在 / 决定是否新增 custom field。
+> 状态：v2 · 2026-05-09 (Boss 反馈修正)
+> 目的：Boss 在 NetSuite 配置 Saved Search 时，按本清单逐项添加「結果」列，确认字段存在 / 决定是否新增 custom field。
+
+**Boss 2026-05-09 决策：**
+- ✅ **先做 Report A** (商品主档)
+- 🔄 **Report B (库存快照) 移交「自动采购模块」**（新项目, 不在本次 NST 整合范围）
+- 📅 **Report C (销售) 维持** 在本次 NST 整合范围 (A 完成后接续)
+- ❌ skuID 不需要（移除）
+- 🔄 最安原価 移交「自动采购模块」（移除）
+- ✅ 発注ロット 保留在 Report A
 
 字段类型说明：
 - **Std** = NetSuite 标准字段（直接选）
@@ -12,10 +20,10 @@
 
 ## 📋 Report A · `SS_Item_Master_Daily`（商品主档 + 库存汇总）
 
-> 基于「輸出アイテム(JO)」view 扩展。Boss 截图已有 14 列 (✅), 待加 11 列 (⭐)
+> 基于「輸出アイテム(JO)」view 扩展。Boss 截图已有 13 列 (✅), 待加 9 列 (⭐) = 共 22 列
 > 触发：每日 04:00 JST · 全量 (~7,400 行) · Filter 条件：全部含失効/停止
 
-### 25 个字段（按推荐添加顺序）
+### 22 个字段（按推荐添加顺序）
 
 | # | NetSuite 字段名 (JP UI) | 类型 | 当前状态 | DB 落点 (`item_v2.*`) | 备注 |
 |---|---|---|---|---|---|
@@ -32,46 +40,27 @@
 | 11 | 平均原価 | Std (Average Cost) | ✅ | `avg_cost` | |
 | 12 | アイテム定義原価 | Std (Standard Cost) | ✅ | `std_cost` | |
 | 13 | 前回購入価格 | Std (Last Purchase Price) | ✅ | `actual_cost` | |
-| 14 | 最安原価 | Custom | ⭐ 新加 | `min_cost` | 公司管理用，可能 custom |
-| 15 | カートン入数 | Std (Units per Case) | ✅ | `case_qty` | |
-| 16 | 発注ロット | Custom | ⭐ 新加 | `order_lot` | 最小订货量 |
-| 17 | 重量 | Std (Weight) | ⭐ 新加 | `weight` | 单 SKU 重量 |
-| 18 | 手持 | Std (Quantity On Hand) | ✅ | `on_hand_total` | |
-| 19 | 確保済 | Std (Quantity Committed) | ✅ | `qty_committed_total` | |
-| 20 | 注文済 | Std (Quantity On Order) | ✅ | `on_order_total` | |
-| 21 | 利用可能 | Std (Quantity Available) | ✅ | (DB 不存, 派生) | 用于校验 = 手持-確保済 |
-| 22 | 在庫金額合計 | Calc | ⭐ 新加 | `total_amount` | = 平均原価 × 手持 |
-| 23 | skuID | Custom | ✅ | `sku_id` | 公司 SKU ID |
-| 24 | 仕入サイクル日数 | Custom | ⭐ 新加 | `supply_cycle_days` | 仕入バケット派生用 |
-| 25 | 作成日 | Std (Date Created) | ⭐ 新加 | `created_at` | 用于新品识别 |
+| 14 | カートン入数 | Std (Units per Case) | ✅ | `case_qty` | |
+| 15 | 発注ロット | Custom | ⭐ 新加 | `order_lot` | 最小订货量 |
+| 16 | 重量 | Std (Weight) | ⭐ 新加 | `weight` | 单 SKU 重量 |
+| 17 | 手持 | Std (Quantity On Hand) | ✅ | `on_hand_total` | |
+| 18 | 確保済 | Std (Quantity Committed) | ✅ | `qty_committed_total` | |
+| 19 | 注文済 | Std (Quantity On Order) | ✅ | `on_order_total` | |
+| 20 | 利用可能 | Std (Quantity Available) | ✅ | (DB 不存, 派生) | 用于校验 = 手持-確保済 |
+| 21 | 在庫金額合計 | Calc | ⭐ 新加 | `total_amount` | = 平均原価 × 手持 |
+| 22 | 仕入サイクル日数 | Custom | ⭐ 新加 | `supply_cycle_days` | 仕入バケット派生用 (page 06 健康度) |
+
+**已移除 (Boss 2026-05-09 决策)：**
+- ~~skuID~~ → 不需要
+- ~~最安原価~~ → 移交「自动采购模块」
+- ~~作成日~~ → 暂不必需 (新品识别可以晚点加)
 
 ---
 
-## 📋 Report B · `SS_Inventory_Snapshot_Daily`（多仓库库存快照）
+## 📋 ~~Report B · `SS_Inventory_Snapshot_Daily`（多仓库库存快照）~~ → 移交自动采购模块
 
-> 触发：每日 04:30 JST · 全量 location × bin · 仅当 `数量 > 0` 或 `預約 > 0` 的 bin
-
-### 17 个字段（按推荐添加顺序）
-
-| # | NetSuite 字段名 (JP UI) | 类型 | DB 落点 (`item_inventory_snapshot_v2.*`) | 备注 |
-|---|---|---|---|---|
-| 1 | 内部ID | Std | `internal_id` | item record ID |
-| 2 | 名前 | Std | `item_code` | |
-| 3 | UPCコード | Std | `jan` | |
-| 4 | 表示名 | Std | `display_name` | |
-| 5 | 場所 | Std (Location) | `location` | 仓库名 |
-| 6 | 保管棚番号 | Std (Bin Number) | `bin_number` | bin |
-| 7 | ステータス | Std (Item Status) | `status` | 通常在庫 等 |
-| 8 | 取扱区分 | Custom | `handling_status` | 与 Report A 一致 |
-| 9 | 部門 | Std | `department` | |
-| 10 | 商品担当者 | Std/Custom | `owner` | |
-| 11 | 手持 | Std (Qty On Hand) | `qty_on_hand` | 该 bin 内 |
-| 12 | 確保済 | Std (Qty Committed) | `qty_committed` | |
-| 13 | バックオーダー | Std (Qty Backorder) | `qty_backorder` | |
-| 14 | 平均原価 | Std | `avg_cost` | 重复给方便单查 |
-| 15 | アイテム定義原価 | Std | `std_cost` | |
-| 16 | 合計金額 | Calc | `total_amount` | = 平均原価 × 手持 |
-| 17 | 快照日時 | Calc | `snapshot_at` | NetSuite formula `{today}`, ingest 端用 API 拉取时间戳覆盖 |
+> 🔄 **Boss 2026-05-09 决策**：库存快照（含多仓库 × bin 维度 + 最安原価）整体移交「自动采购模块」（新项目, 待开 backlog）
+> 本次 NST 整合不实现 Report B; 现有 inventory ingester 维持 XLSX fallback 直到自动采购模块上线接管
 
 ---
 
@@ -103,23 +92,20 @@
 
 ---
 
-## 🚦 Custom Field 确认清单（重点关注）
+## 🚦 Custom Field 确认清单（Report A 必需）
 
 下面 ⭐ 标的字段如果在 NetSuite Item record 上不存在 standard 字段，需要 Boss 先在 NetSuite 后台新建 custom field（Customization → Lists, Records, & Fields → Item Fields）：
 
-| 字段名 (JP) | 用途 | 推荐 type | 推荐 ID |
-|---|---|---|---|
-| ランク | ABC 等级 / 商品 rank | List/Record (含值 A/B/C/...) | `custitem_rank` |
-| 取扱区分 | 取扱中/停止/廃番/輸出専用 等 | List/Record | `custitem_handling_status` |
-| 最安原価 | 历史最低原価 | Currency | `custitem_min_cost` |
-| 発注ロット | 最小订货量 | Integer | `custitem_order_lot` |
-| skuID | 公司内部 SKU 代码 | Free-Form Text | `custitem_sku_id` |
-| 仕入サイクル日数 | 仕入周期 (用于 bucket 分类) | Integer | `custitem_supply_cycle_days` |
+| 字段名 (JP) | 用途 | 推荐 type | 推荐 ID | 优先级 |
+|---|---|---|---|---|
+| 取扱区分 | 取扱中/停止/廃番/輸出専用 等 | List/Record | `custitem_handling_status` | 🔴 先决 |
+| ランク | ABC 等级 / 商品 rank | List/Record (含值 A/B/C/...) | `custitem_rank` | 🔴 先决 |
+| 仕入サイクル日数 | 仕入周期 (用于 bucket 分类) | Integer | `custitem_supply_cycle_days` | 🟡 次决 |
+| 発注ロット | 最小订货量 | Integer | `custitem_order_lot` | 🟢 可选 |
 
-⚠️ 如果上面字段在 NetSuite 都不存在，建议优先级：
-1. **先决：取扱区分 + ランク**（page 03 / 06 / 07 全靠这俩）
-2. **次决：仕入サイクル日数**（page 06 健康度依赖）
-3. **可选：skuID / 最安原価 / 発注ロット**（业务参考）
+**移除项**：
+- ~~skuID~~ → Boss 决定不需要
+- ~~最安原価~~ → 移交「自动采购模块」
 
 ---
 
@@ -146,10 +132,22 @@
 
 ---
 
-## ⏭️ Boss 操作步骤建议
+## ⏭️ Boss 操作步骤建议（按 v2 决策 · A 先做）
 
-1. **打开 NetSuite Setup → Customization → Lists, Records, & Fields → Item Fields**，确认 6 个 custom field 是否存在；不存在则按上表新建
-2. **复制「輸出アイテム(JO)」view → 改名为 `SS_Item_Master_Daily`**，按 Report A 25 个字段排好
-3. **新建 Inventory Detail 类型 saved search → `SS_Inventory_Snapshot_Daily`**，按 Report B 17 个字段排好
-4. **新建 2 个 Item Sales saved search → `SS_Sales_Monthly` / `SS_Sales_Daily`**，按 Report C 16 个字段排好（共享字段 schema）
-5. **存档 ID + 截图**给我 → CC 这边写 nst_api.py 接 RESTlet
+### 🥇 第一步：Report A · SS_Item_Master_Daily
+
+1. 打开 **NetSuite Setup → Customization → Lists, Records, & Fields → Item Fields**，确认 4 个 custom field 是否存在；不存在则按上表新建
+   - 必加：取扱区分 / ランク
+   - 推荐：仕入サイクル日数 / 発注ロット
+2. **复制「輸出アイテム(JO)」view → 改名为 `SS_Item_Master_Daily`**，按 Report A 22 个字段排好顺序
+3. 存档 saved search ID + 截图发我 → CC 这边写 ingester 直写 `item_v2`
+
+### 🥈 第二步：Report C · SS_Sales_Daily / SS_Sales_Monthly （A 完成后接续）
+
+4. 新建 2 个 Item Sales saved search → `SS_Sales_Monthly` / `SS_Sales_Daily`，按 Report C 16 个字段排好（共享字段 schema）
+
+### 🚧 移交自动采购模块（不在本次范围）
+
+- Report B (库存快照, 多仓库 × bin)
+- 最安原価 字段
+- 仕入先报价 / 供应商管理 / 自动询价等

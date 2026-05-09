@@ -1,7 +1,9 @@
-# NST 数据源整合方案 · 9 ingester → 3 NetSuite Saved Search + API
+# NST 数据源整合方案 · 9 ingester → 2 NetSuite Saved Search + API
 
-> 状态：v1 草案 · 2026-05-09
-> 目标：把现有 7 个 NetSuite XLSX 上传 ingester 整合为 **3 个 Saved Search**，通过 NetSuite REST API 每日自动拉取。Shopee 的 2 个 ingester 维持现状（属平台数据，非 NST）。
+> 状态：v2 · 2026-05-09 (Boss 反馈修正)
+> 目标：把现有 NetSuite XLSX 上传 ingester 整合为 **2 个 Saved Search**（A 商品主档 / C 销售），通过 NetSuite REST API 每日自动拉取。
+> Report B (库存快照) 移交「自动采购模块」（新项目）。Shopee 2 个 ingester 维持现状（平台数据）。
+> 详细字段清单见 [13-nst-saved-search-field-list.md](./13-nst-saved-search-field-list.md)。
 
 ---
 
