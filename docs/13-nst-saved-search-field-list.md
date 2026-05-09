@@ -227,10 +227,10 @@ sell_through_rate = qty_sold / (open_qty + qty_total_in)
 suggested_order_qty = avg_monthly_demand * (1 + safety_buffer)
 where avg_monthly_demand = mean(qty_sold over last 3 months)
 
-# 风险标记
+# 风险标记 (初始阈值, 待业务验证后调整)
 if sell_through_rate >= 0.9: risk = "断货风险"  → 加大订货
-elif sell_through_rate <= 0.3: risk = "压库存"  → 减少订货
-else: risk = "正常"
+elif sell_through_rate < 0.5: risk = "压库存"   → 减少订货
+else: risk = "正常"  # 0.5 ≤ rate < 0.9
 ```
 
 ---
