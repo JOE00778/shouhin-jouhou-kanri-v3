@@ -144,6 +144,7 @@ class _PostgresAdapter:
         "item_sales_history": ("jan", "period_start", "period_end", "channel", "source"),
         "item_inventory_snapshot_v2": ("jan", "location", "bin_number", "snapshot_at"),
         "shop_sales": ("shop_id", "jan", "period_start", "period_end", "source"),
+        "item_supplier_link": ("jan", "supplier_name"),
     }
 
     _RE_OR_REPLACE = re.compile(

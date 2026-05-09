@@ -715,6 +715,150 @@ def step_item_purchase_history(conn) -> dict:
 
 
 # ============================================================
+# Step 10 · item_supplier_link（合并 supplier_cost + supplier_jan_list）
+# ============================================================
+def step_item_supplier_link(conn) -> dict:
+    read = written = errors = skipped = 0
+    now = _now()
+    merged: dict[tuple[str, str], dict] = {}
+
+    if _table_exists(conn, "supplier_cost"):
+        for r in conn.execute(
+            "SELECT jan, supplier_name, cost_class, unit_cost, currency FROM supplier_cost"
+        ).fetchall():
+            read += 1
+            jan = (r["jan"] or "").strip()
+            sup = (r["supplier_name"] or "").strip()
+            if not _is_valid_jan(jan) or not sup:
+                skipped += 1
+                continue
+            key = (jan, sup)
+            merged[key] = {
+                "jan": jan, "supplier_name": sup,
+                "cost_class": r["cost_class"], "unit_cost": r["unit_cost"],
+                "currency": r["currency"], "status": None,
+                "source": "supplier_cost",
+            }
+
+    if _table_exists(conn, "supplier_jan_list"):
+        for r in conn.execute(
+            "SELECT jan, supplier_name, status FROM supplier_jan_list"
+        ).fetchall():
+            read += 1
+            jan = (r["jan"] or "").strip()
+            sup = (r["supplier_name"] or "").strip()
+            if not _is_valid_jan(jan) or not sup:
+                skipped += 1
+                continue
+            key = (jan, sup)
+            existing = merged.get(key, {
+                "jan": jan, "supplier_name": sup,
+                "cost_class": None, "unit_cost": None,
+                "currency": None, "status": None,
+                "source": "supplier_jan_list",
+            })
+            existing["status"] = r["status"]
+            if existing["source"] == "supplier_cost":
+                existing["source"] = "merged"
+            merged[key] = existing
+
+    for payload in merged.values():
+        try:
+            conn.execute(
+                "INSERT OR REPLACE INTO item_supplier_link "
+                "(jan, supplier_name, cost_class, unit_cost, currency, status, source, imported_at) "
+                "VALUES (:jan, :supplier_name, :cost_class, :unit_cost, :currency, :status, :source, :ts)",
+                {**payload, "ts": now},
+            )
+            written += 1
+        except Exception:
+            errors += 1
+
+    # 回填 item_v2.supplier_default（每 jan 取 cost_class='AB' 第一个供应商，没有就第一个）
+    if _table_exists(conn, "item_v2") and merged:
+        try:
+            jans_with_supplier: dict[str, str] = {}
+            for (jan, sup), p in merged.items():
+                if jan not in jans_with_supplier or p.get("cost_class") == "AB":
+                    jans_with_supplier[jan] = sup
+            for jan, sup in jans_with_supplier.items():
+                conn.execute(
+                    "UPDATE item_v2 SET supplier_default = ? WHERE jan = ? "
+                    "AND (supplier_default IS NULL OR supplier_default = '')",
+                    (sup, jan),
+                )
+        except Exception as e:
+            print(f"[item_v2.supplier_default backfill] {e}")
+
+    conn.commit()
+    _record_run(conn, "item_supplier_link", "supplier_cost+supplier_jan_list",
+                read, written, errors,
+                f"unique_pairs={len(merged)}, skipped={skipped}")
+    return {"step": "item_supplier_link", "read": read, "written": written,
+            "errors": errors, "notes": f"pairs={len(merged)}"}
+
+
+# ============================================================
+# Step 11 · 扩展库存：benten_stock + warehouse_stock → item_inventory_snapshot_v2
+# 用 location 字段区分（'benten' / 'warehouse_<source_file>'）
+# ============================================================
+def step_item_inventory_extra(conn) -> dict:
+    read = written = errors = skipped = 0
+    now = _now()
+
+    # benten_stock（弁天仓库，PK = (jan, snapshot_at)）
+    if _table_exists(conn, "benten_stock"):
+        for r in conn.execute(
+            "SELECT jan, stock, snapshot_at FROM benten_stock"
+        ).fetchall():
+            read += 1
+            jan = (r["jan"] or "").strip()
+            if not _is_valid_jan(jan):
+                skipped += 1
+                continue
+            snap = r["snapshot_at"] or now
+            try:
+                conn.execute(
+                    "INSERT OR REPLACE INTO item_inventory_snapshot_v2 "
+                    "(jan, location, bin_number, snapshot_at, qty_on_hand, imported_at) "
+                    "VALUES (?, 'benten', '-', ?, ?, ?)",
+                    (jan, snap, r["stock"], now),
+                )
+                written += 1
+            except Exception:
+                errors += 1
+
+    # warehouse_stock（外部仓库快照，按 product_code + snapshot_at 唯一）
+    if _table_exists(conn, "warehouse_stock"):
+        for r in conn.execute(
+            "SELECT product_code, jan, stock_available, snapshot_at FROM warehouse_stock"
+        ).fetchall():
+            read += 1
+            jan = (r["jan"] or r["product_code"] or "").strip()
+            if not _is_valid_jan(jan):
+                skipped += 1
+                continue
+            snap = r["snapshot_at"] or now
+            try:
+                conn.execute(
+                    "INSERT OR REPLACE INTO item_inventory_snapshot_v2 "
+                    "(jan, location, bin_number, snapshot_at, qty_on_hand, imported_at) "
+                    "VALUES (?, 'warehouse', ?, ?, ?, ?)",
+                    (jan, r["product_code"] or "-", snap, r["stock_available"], now),
+                )
+                written += 1
+            except Exception:
+                errors += 1
+
+    conn.commit()
+    _record_run(conn, "item_inventory_snapshot_v2_extra",
+                "benten_stock+warehouse_stock",
+                read, written, errors, f"skipped={skipped}")
+    return {"step": "item_inventory_extra", "read": read, "written": written,
+            "errors": errors, "notes": f"skipped_no_jan={skipped}"}
+
+
+# ============================================================
 # Step 9 · item_cost_history（从 std_cost_history 转换）
 # ============================================================
 def step_item_cost_history(conn) -> dict:
@@ -760,8 +904,10 @@ RUN_STEPS: list[tuple[str, Callable[[Any], dict]]] = [
     ("shop_sales",                step_shop_sales),
     ("item_sales_history",        step_item_sales_history),
     ("item_inventory_snapshot_v2", step_item_inventory),
+    ("item_inventory_extra",      step_item_inventory_extra),
     ("item_purchase_history",     step_item_purchase_history),
     ("item_cost_history",         step_item_cost_history),
+    ("item_supplier_link",        step_item_supplier_link),
 ]
 
 

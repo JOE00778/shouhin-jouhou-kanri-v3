@@ -1048,3 +1048,23 @@ CREATE TABLE IF NOT EXISTS _v2_migration_runs (
   ran_at        TEXT NOT NULL,
   notes         TEXT
 );
+
+-- ============================================================
+-- v2 补充表 · Phase 3.6（2026-05-09）
+-- 合并 supplier_cost + supplier_jan_list → item_supplier_link
+-- benten_stock + warehouse_stock 通过 ETL 写入 item_inventory_snapshot_v2
+-- ============================================================
+CREATE TABLE IF NOT EXISTS item_supplier_link (
+  jan           TEXT NOT NULL,
+  supplier_name TEXT NOT NULL,
+  cost_class    TEXT,                  -- 'AB' / 'C'（来自 supplier_cost）
+  unit_cost     REAL,                  -- 报价（来自 supplier_cost）
+  currency      TEXT,                  -- 报价货币
+  status        TEXT,                  -- 在该供应商的状态（来自 supplier_jan_list）
+  source        TEXT,                  -- 'supplier_cost' / 'supplier_jan_list' / 'merged'
+  imported_at   TEXT,
+  PRIMARY KEY (jan, supplier_name)
+);
+CREATE INDEX IF NOT EXISTS idx_isl_jan      ON item_supplier_link(jan);
+CREATE INDEX IF NOT EXISTS idx_isl_supplier ON item_supplier_link(supplier_name);
+CREATE INDEX IF NOT EXISTS idx_isl_class    ON item_supplier_link(cost_class);

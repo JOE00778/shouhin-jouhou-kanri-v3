@@ -1064,3 +1064,19 @@ CREATE TABLE IF NOT EXISTS _v2_migration_runs (
   ran_at        TEXT NOT NULL,
   notes         TEXT
 );
+
+-- v2 补充表 · Phase 3.6
+CREATE TABLE IF NOT EXISTS item_supplier_link (
+  jan           TEXT NOT NULL,
+  supplier_name TEXT NOT NULL,
+  cost_class    TEXT,
+  unit_cost     DOUBLE PRECISION,
+  currency      TEXT,
+  status        TEXT,
+  source        TEXT,
+  imported_at   TEXT,
+  PRIMARY KEY (jan, supplier_name)
+);
+CREATE INDEX IF NOT EXISTS idx_isl_jan      ON item_supplier_link(jan);
+CREATE INDEX IF NOT EXISTS idx_isl_supplier ON item_supplier_link(supplier_name);
+CREATE INDEX IF NOT EXISTS idx_isl_class    ON item_supplier_link(cost_class);

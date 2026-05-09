@@ -46,9 +46,9 @@ def render_v2_quickview(conn: Any, *, key_prefix: str = "v2qv_") -> None:
 
         st.caption(f"item_v2 当前 {total:,} 个 JAN")
 
-        # 三个子查询 Tab
-        tab_brand, tab_jan, tab_overview = st.tabs(
-            ["按品牌查", "按 JAN 查", "整体概览"]
+        # 四个子查询 Tab
+        tab_brand, tab_jan, tab_supplier, tab_overview = st.tabs(
+            ["按品牌查", "按 JAN 查", "按供应商查", "整体概览"]
         )
 
         # ─ Tab 1: 按 maker 过滤 ─
@@ -149,15 +149,56 @@ def render_v2_quickview(conn: Any, *, key_prefix: str = "v2qv_") -> None:
                 except Exception as e:
                     st.warning(f"查询失败：{e}")
 
-        # ─ Tab 3: 整体概览 ─
+        # ─ Tab 3: 按供应商查 ─
+        with tab_supplier:
+            if not _table_exists(conn, "item_supplier_link"):
+                st.info("item_supplier_link 表还没建。先 page 99 → Tab 6 跑一次 ETL。")
+            else:
+                try:
+                    suppliers = conn.execute(
+                        "SELECT supplier_name, COUNT(*) AS n FROM item_supplier_link "
+                        "GROUP BY supplier_name ORDER BY n DESC LIMIT 100"
+                    ).fetchall()
+                    if not suppliers:
+                        st.info("item_supplier_link 还没数据")
+                    else:
+                        opts = [f"{r['supplier_name']} ({r['n']})" for r in suppliers]
+                        sel = st.selectbox(
+                            "供应商",
+                            opts,
+                            key=f"{key_prefix}supplier_sel",
+                        )
+                        chosen = sel.rsplit(" (", 1)[0]
+                        rows = conn.execute(
+                            """
+                            SELECT l.jan, l.cost_class, l.unit_cost, l.currency, l.status,
+                                   v.display_name, v.maker, v.rank, v.handling_status
+                            FROM item_supplier_link l
+                            LEFT JOIN item_v2 v ON v.jan = l.jan
+                            WHERE l.supplier_name = ?
+                            ORDER BY l.cost_class, v.display_name
+                            LIMIT 300
+                            """,
+                            (chosen,),
+                        ).fetchall()
+                        st.dataframe(
+                            [dict(r) for r in rows],
+                            use_container_width=True, hide_index=True,
+                        )
+                        st.caption(f"{chosen} · 显示前 300 个商品")
+                except Exception as e:
+                    st.warning(f"按供应商查询失败：{e}")
+
+        # ─ Tab 4: 整体概览 ─
         with tab_overview:
             try:
-                cols = st.columns(4)
+                cols = st.columns(5)
                 cols[0].metric("item_v2", f"{total:,}")
                 for tbl, lbl, idx in [
                     ("shop", "店铺", 1),
                     ("shop_sales", "店铺销售", 2),
                     ("item_inventory_snapshot_v2", "库存快照", 3),
+                    ("item_supplier_link", "供应商关联", 4),
                 ]:
                     if _table_exists(conn, tbl):
                         try:
