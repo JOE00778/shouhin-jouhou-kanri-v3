@@ -732,7 +732,14 @@ def ingest_sales_export_store(path, conn, **kw):
 def ingest_inventory_turnover(
     path, conn, *, source_name: str | None = None
 ) -> dict:
-    """在庫回転率：(item_code, period) UPSERT。"""
+    """在庫回転率：(item_code, period) UPSERT.
+
+    兼容多版本 NetSuite 导出:
+    - 旧版 header: アイテム / 説明 / 原価 / 平均値 / 回転率 / 平均手持日数
+    - 新版 header: 部門:名前 / アイテムの種類 / アイテム / 取扱区分 / 原価 / 平均値 / 回転率 / 平均在庫日数
+    动态检测 header_row + 列名别名.
+    """
+    from shared.xml_xls import detect_header_row
     path = Path(path)
     source_name = source_name or path.name
     period_start, period_end = _extract_period(path)
@@ -747,7 +754,9 @@ def ingest_inventory_turnover(
         (period_start, period_end),
     )
 
-    rows = parse_to_dicts(path, header_row=6)
+    # 动态检测 header (旧版 row 6, 新版可能不同)
+    header_row = detect_header_row(path)
+    rows = parse_to_dicts(path, header_row=header_row)
     sql = """
         INSERT OR REPLACE INTO inventory_turnover (
             item_code, description, cost, avg_value, turnover_rate, avg_days_on_hand,
@@ -757,19 +766,31 @@ def ingest_inventory_turnover(
             :period_start, :period_end, :source_file, :imported_at
         )
     """
+
+    def _pick(raw: dict, *keys):
+        """支持多个候选列名 (新旧版)."""
+        for k in keys:
+            v = raw.get(k)
+            if v is not None and v != "":
+                return v
+        return None
+
     now = _now_iso()
     for n, raw in enumerate(rows, start=1):
         try:
             item_code = _to_str(raw.get("アイテム"))
-            if not item_code or item_code in ("在庫アイテム", "合計", "総合計"):
-                continue  # 跳过分组标题行
+            if not item_code or item_code in (
+                "在庫アイテム", "合計", "総合計", "総計", "アイテムの種類",
+            ):
+                continue  # 跳过分组标题行 / 表头重复
             payload = {
                 "item_code": item_code,
-                "description": _to_str(raw.get("説明")),
+                "description": _to_str(_pick(raw, "説明", "表示名")),
                 "cost": _to_float(raw.get("原価")),
                 "avg_value": _to_float(raw.get("平均値")),
                 "turnover_rate": _to_float(raw.get("回転率")),
-                "avg_days_on_hand": _to_float(raw.get("平均手持日数")),
+                # 列名别名: 旧版「平均手持日数」/ 新版「平均在庫日数」
+                "avg_days_on_hand": _to_float(_pick(raw, "平均手持日数", "平均在庫日数")),
                 "period_start": period_start,
                 "period_end": period_end,
                 "source_file": source_name,

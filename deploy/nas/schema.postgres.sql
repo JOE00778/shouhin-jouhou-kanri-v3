@@ -244,6 +244,44 @@ CREATE INDEX IF NOT EXISTS idx_turnover_item  ON inventory_turnover(item_code);
 CREATE INDEX IF NOT EXISTS idx_turnover_rate  ON inventory_turnover(turnover_rate);
 
 -- ============================================================
+-- 月度完売率 · アイテム月完売率300 → 库存健康度 + 订货依据数据源
+-- (新增 2026-05-09; SCHEMA_VERSION 16)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS item_monthly_turnover (
+  id                BIGSERIAL PRIMARY KEY,
+  item_code         TEXT NOT NULL,
+  jan               TEXT,
+  location          TEXT,
+  department        TEXT,
+  year_month        TEXT NOT NULL,
+  open_qty          DOUBLE PRECISION,
+  open_avg_cost     DOUBLE PRECISION,
+  open_amount       DOUBLE PRECISION,
+  qty_received      DOUBLE PRECISION,
+  qty_other_in      DOUBLE PRECISION,
+  qty_total_in      DOUBLE PRECISION,
+  manual_input      DOUBLE PRECISION,
+  last_received_at  TEXT,
+  qty_sold          DOUBLE PRECISION,
+  qty_other_out     DOUBLE PRECISION,
+  qty_total_out     DOUBLE PRECISION,
+  out_amount        DOUBLE PRECISION,
+  last_sold_at      TEXT,
+  close_qty         DOUBLE PRECISION,
+  close_avg_cost    DOUBLE PRECISION,
+  close_amount      DOUBLE PRECISION,
+  sell_through_rate DOUBLE PRECISION,
+  risk_label        TEXT,
+  imported_at       TEXT NOT NULL,
+  UNIQUE(item_code, location, year_month)
+);
+CREATE INDEX IF NOT EXISTS idx_imt_item ON item_monthly_turnover(item_code);
+CREATE INDEX IF NOT EXISTS idx_imt_jan  ON item_monthly_turnover(jan);
+CREATE INDEX IF NOT EXISTS idx_imt_ym   ON item_monthly_turnover(year_month);
+CREATE INDEX IF NOT EXISTS idx_imt_rate ON item_monthly_turnover(sell_through_rate);
+CREATE INDEX IF NOT EXISTS idx_imt_risk ON item_monthly_turnover(risk_label);
+
+-- ============================================================
 -- 模块 #11：difficult_items — 入荷困難商品（人工录入）
 -- ============================================================
 CREATE TABLE IF NOT EXISTS difficult_items (
@@ -909,6 +947,7 @@ CREATE TABLE IF NOT EXISTS item_v2 (
   rank             TEXT,
   handling_status  TEXT,
   department       TEXT,
+  owner            TEXT,
   std_cost         DOUBLE PRECISION,
   avg_cost         DOUBLE PRECISION,
   actual_cost      DOUBLE PRECISION,
