@@ -9,7 +9,7 @@
 from __future__ import annotations
 import streamlit as st
 
-LANGS = {"中文": "zh", "日本語": "ja"}
+LANGS = {"中文": "zh", "日本語": "ja", "English": "en"}
 
 # 所有 UI 可见文本统一中文（key），日文版（value）
 TRANSLATIONS_JA: dict[str, str] = {

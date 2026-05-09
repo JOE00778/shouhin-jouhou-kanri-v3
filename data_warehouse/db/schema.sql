@@ -864,31 +864,34 @@ CREATE INDEX IF NOT EXISTS idx_automation_runs_triggered ON automation_runs(trig
 
 -- ⭐ item v2 主表 · PK = JAN
 CREATE TABLE IF NOT EXISTS item_v2 (
-  jan              TEXT PRIMARY KEY,        -- 13 位 JAN（核心 key）
-  -- 来源 ID
-  item_code        TEXT,                    -- NetSuite アイテム
-  internal_id      TEXT,                    -- NetSuite 内部 ID
-  upc              TEXT,                    -- 兼容老字段（同 jan）
-  -- 基础信息
-  display_name     TEXT,
-  maker            TEXT,                    -- 品牌
-  rank             TEXT,                    -- A/B/C/D 等级
+  jan              TEXT PRIMARY KEY,        -- JAN (PK · 13位)
+  -- ID 区
+  item_code        TEXT,                    -- アイテム
+  internal_id      TEXT,                    -- 内部ID
+  upc              TEXT,                    -- UPCコード（同 jan，兼容老字段）
+  -- 基础区
+  display_name     TEXT,                    -- 表示名
+  maker            TEXT,                    -- メーカー
+  rank             TEXT,                    -- ランク
   handling_status  TEXT,                    -- 取扱区分
-  -- 进货核心
-  std_cost         REAL,                    -- アイテム定義原価
-  avg_cost         REAL,                    -- 平均原価（H 列源）
-  actual_cost      REAL,                    -- 实绩原価
+  department       TEXT,                    -- 部門（Phase 4 新加）
+  -- 進货区
+  std_cost         REAL,                    -- 定義原価
+  avg_cost         REAL,                    -- 平均原価
+  actual_cost      REAL,                    -- 実績原価
   min_cost         REAL,                    -- 最安原価
   case_qty         INTEGER,                 -- ケース入数
   order_lot        INTEGER,                 -- 発注ロット
   weight           REAL,                    -- 重量
-  supplier_default TEXT,                    -- 默认供应商名
-  supply_cycle_days INTEGER,                -- 进货周期
-  bucket           TEXT,                    -- short/normal/long
-  -- 库存当前快照（汇总值，方便快查）
-  on_hand_total    REAL,                    -- 全仓 sum 库存
-  on_order_total   REAL,                    -- 在途 sum
-  -- 状态
+  supplier_default TEXT,                    -- 仕入先（默认）
+  supply_cycle_days INTEGER,                -- 仕入サイクル日数
+  bucket           TEXT,                    -- 仕入バケット（short/normal/long）
+  -- 库存汇总区
+  on_hand_total    REAL,                    -- 手持合計
+  on_order_total   REAL,                    -- 注文済合計
+  qty_committed_total REAL,                 -- 確保済合計（Phase 4 新加）
+  total_amount     REAL,                    -- 在庫金額合計（Phase 4 新加）
+  -- 元数据
   source_priority  TEXT,                    -- nst > supplier > manual
   imported_at      TEXT NOT NULL,
   updated_at       TEXT NOT NULL
@@ -941,18 +944,31 @@ CREATE INDEX IF NOT EXISTS idx_ish_jan      ON item_sales_history(jan);
 CREATE INDEX IF NOT EXISTS idx_ish_channel  ON item_sales_history(channel);
 CREATE INDEX IF NOT EXISTS idx_ish_period   ON item_sales_history(period_start);
 
--- A3. 库存快照（替代 nst_inventory_snapshot 的 jan 视角）
+-- A3. 库存快照（替代 nst_inventory_snapshot · 含全字段方便直查）
 CREATE TABLE IF NOT EXISTS item_inventory_snapshot_v2 (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   jan           TEXT NOT NULL,
-  location      TEXT,
-  bin_number    TEXT,
-  snapshot_at   TEXT,
-  qty_on_hand   REAL,
-  qty_committed REAL,
-  qty_backorder REAL,
-  std_cost      REAL,
-  avg_cost      REAL,
+  -- ID 区（Phase 4 新加，方便不查 item_v2 直接看）
+  item_code     TEXT,                   -- アイテム
+  internal_id   TEXT,                   -- 内部ID
+  display_name  TEXT,                   -- 表示名
+  -- 库存维度
+  location      TEXT,                   -- 場所（仓库）
+  bin_number    TEXT,                   -- 保管棚番号
+  snapshot_at   TEXT,                   -- 快照时点
+  -- 库存量
+  qty_on_hand   REAL,                   -- 手持合計
+  qty_committed REAL,                   -- 確保済合計
+  qty_backorder REAL,                   -- バック・オーダー合計
+  -- 价值
+  std_cost      REAL,                   -- 定義原価
+  avg_cost      REAL,                   -- 平均原価
+  total_amount  REAL,                   -- 合計金額（Phase 4 新加）
+  -- 业务字段
+  handling_status TEXT,                 -- 取扱区分（Phase 4 新加）
+  status        TEXT,                   -- ステータス（通常在庫 等，Phase 4 新加）
+  owner         TEXT,                   -- 担当者（Phase 4 新加）
+  department    TEXT,                   -- 部門（Phase 4 新加）
   imported_at   TEXT,
   UNIQUE(jan, location, bin_number, snapshot_at)
 );
@@ -998,27 +1014,32 @@ CREATE TABLE IF NOT EXISTS shop (
 CREATE INDEX IF NOT EXISTS idx_shop_market   ON shop(market_id);
 CREATE INDEX IF NOT EXISTS idx_shop_platform ON shop(platform);
 
--- B2. shop × SKU 销售明细
+-- B2. shop × SKU 销售明细（含时间粒度）
 CREATE TABLE IF NOT EXISTS shop_sales (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   shop_id       TEXT NOT NULL,
   jan           TEXT NOT NULL,
-  period_start  TEXT,
-  period_end    TEXT,
+  -- 时间维度（Boss 强调：销售必须按粒度切片）
+  granularity   TEXT NOT NULL DEFAULT 'monthly',  -- 'daily' / 'monthly' / 'cumulative'
+  period_start  TEXT NOT NULL,
+  period_end    TEXT NOT NULL,
+  -- 销售指标
   qty_sold      REAL,
   revenue       REAL,                   -- 当地币
   revenue_jpy   REAL,                   -- 折算 JPY
-  cost          REAL,
-  gross_profit  REAL,
-  gross_margin  REAL,
-  rank          TEXT,                   -- 商品 ランク
-  source        TEXT,
+  unit_price    REAL,                   -- 単価（Phase 4 新加）
+  cost          REAL,                   -- 原価
+  gross_profit  REAL,                   -- 粗利
+  gross_margin  REAL,                   -- 粗利率
+  rank          TEXT,                   -- 商品ランク
+  source        TEXT,                   -- 'asean_monthly' / 'asean_daily' / 'export_item' / 'export_store' / 'shopee_orders'
   imported_at   TEXT,
-  UNIQUE(shop_id, jan, period_start, period_end, source)
+  UNIQUE(shop_id, jan, granularity, period_start, period_end, source)
 );
-CREATE INDEX IF NOT EXISTS idx_ss_shop   ON shop_sales(shop_id);
-CREATE INDEX IF NOT EXISTS idx_ss_jan    ON shop_sales(jan);
-CREATE INDEX IF NOT EXISTS idx_ss_period ON shop_sales(period_start);
+CREATE INDEX IF NOT EXISTS idx_ss_shop        ON shop_sales(shop_id);
+CREATE INDEX IF NOT EXISTS idx_ss_jan         ON shop_sales(jan);
+CREATE INDEX IF NOT EXISTS idx_ss_period      ON shop_sales(period_start);
+CREATE INDEX IF NOT EXISTS idx_ss_granularity ON shop_sales(granularity);
 
 -- B3. shop 月度 KPI（替代 store_monthly）
 CREATE TABLE IF NOT EXISTS shop_monthly (

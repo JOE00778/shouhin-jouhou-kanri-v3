@@ -14,13 +14,27 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 SCHEMA_FILE = Path(__file__).parent / "schema.sql"
 
 # 增量 ALTER（旧 db 已建过表,补充缺失列）
 # 格式: (table, column_def_in_ALTER) — 如果列已存在会被 try/except 吞掉
 ALTERS: list[tuple[str, str]] = [
     ("sales_line", "maker TEXT"),
+    # Phase 4 v2 表字段扩展（旧库 ALTER 加列，新库 CREATE 已含）
+    ("item_v2", "department TEXT"),
+    ("item_v2", "qty_committed_total REAL"),
+    ("item_v2", "total_amount REAL"),
+    ("item_inventory_snapshot_v2", "item_code TEXT"),
+    ("item_inventory_snapshot_v2", "internal_id TEXT"),
+    ("item_inventory_snapshot_v2", "display_name TEXT"),
+    ("item_inventory_snapshot_v2", "total_amount REAL"),
+    ("item_inventory_snapshot_v2", "handling_status TEXT"),
+    ("item_inventory_snapshot_v2", "status TEXT"),
+    ("item_inventory_snapshot_v2", "owner TEXT"),
+    ("item_inventory_snapshot_v2", "department TEXT"),
+    ("shop_sales", "granularity TEXT DEFAULT 'monthly'"),
+    ("shop_sales", "unit_price REAL"),
 ]
 
 # 废弃表清单 — 启动时 DROP TABLE IF EXISTS（仅一次性影响）
@@ -29,6 +43,14 @@ DEPRECATED_TABLES: list[str] = [
     "store_profit_lines",       # 无 SELECT 引用
     "store_profit_daily_lines", # 无 SELECT 引用
     "sales",                    # 空表，sales_line 替代
+]
+
+# Phase 4 v2 表 schema 重大变更（UNIQUE 约束等结构变化）
+# 因为 IF NOT EXISTS 不会重建已有表，shop_sales 的 UNIQUE 改了必须 DROP rebuild
+# 系统未正式启用阶段 v2 数据可丢失（Boss 重导一次即可恢复）
+# 注：这是一次性操作，commit 后 1 周删掉这个列表
+PHASE4_REBUILD_TABLES: list[str] = [
+    "shop_sales",   # UNIQUE 加了 granularity 列
 ]
 
 # 启动时收集 schema 错误（不阻塞 init,但供调试）
@@ -98,6 +120,13 @@ def init_db(db_path: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+
+    # Phase 4 v2 表 schema 重建（必须在 CREATE TABLE 之前 DROP，让 schema.sql 重建）
+    for tbl in PHASE4_REBUILD_TABLES:
+        try:
+            conn.execute(f"DROP TABLE IF EXISTS {tbl}")
+        except sqlite3.Error:
+            pass
 
     SCHEMA_ERRORS.clear()
     sql = SCHEMA_FILE.read_text(encoding="utf-8")

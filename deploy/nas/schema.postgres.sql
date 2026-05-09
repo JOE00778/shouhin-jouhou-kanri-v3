@@ -908,6 +908,7 @@ CREATE TABLE IF NOT EXISTS item_v2 (
   maker            TEXT,
   rank             TEXT,
   handling_status  TEXT,
+  department       TEXT,
   std_cost         DOUBLE PRECISION,
   avg_cost         DOUBLE PRECISION,
   actual_cost      DOUBLE PRECISION,
@@ -918,8 +919,10 @@ CREATE TABLE IF NOT EXISTS item_v2 (
   supplier_default TEXT,
   supply_cycle_days INTEGER,
   bucket           TEXT,
-  on_hand_total    DOUBLE PRECISION,
-  on_order_total   DOUBLE PRECISION,
+  on_hand_total       DOUBLE PRECISION,
+  on_order_total      DOUBLE PRECISION,
+  qty_committed_total DOUBLE PRECISION,
+  total_amount        DOUBLE PRECISION,
   source_priority  TEXT,
   imported_at      TEXT NOT NULL,
   updated_at       TEXT NOT NULL
@@ -970,6 +973,9 @@ CREATE INDEX IF NOT EXISTS idx_ish_period   ON item_sales_history(period_start);
 CREATE TABLE IF NOT EXISTS item_inventory_snapshot_v2 (
   id            BIGSERIAL PRIMARY KEY,
   jan           TEXT NOT NULL,
+  item_code     TEXT,
+  internal_id   TEXT,
+  display_name  TEXT,
   location      TEXT,
   bin_number    TEXT,
   snapshot_at   TEXT,
@@ -978,6 +984,11 @@ CREATE TABLE IF NOT EXISTS item_inventory_snapshot_v2 (
   qty_backorder DOUBLE PRECISION,
   std_cost      DOUBLE PRECISION,
   avg_cost      DOUBLE PRECISION,
+  total_amount  DOUBLE PRECISION,
+  handling_status TEXT,
+  status        TEXT,
+  owner         TEXT,
+  department    TEXT,
   imported_at   TEXT,
   UNIQUE(jan, location, bin_number, snapshot_at)
 );
@@ -1021,9 +1032,11 @@ CREATE TABLE IF NOT EXISTS shop_sales (
   id            BIGSERIAL PRIMARY KEY,
   shop_id       TEXT NOT NULL,
   jan           TEXT NOT NULL,
-  period_start  TEXT,
-  period_end    TEXT,
+  granularity   TEXT NOT NULL DEFAULT 'monthly',
+  period_start  TEXT NOT NULL,
+  period_end    TEXT NOT NULL,
   qty_sold      DOUBLE PRECISION,
+  unit_price    DOUBLE PRECISION,
   revenue       DOUBLE PRECISION,
   revenue_jpy   DOUBLE PRECISION,
   cost          DOUBLE PRECISION,
@@ -1032,10 +1045,11 @@ CREATE TABLE IF NOT EXISTS shop_sales (
   rank          TEXT,
   source        TEXT,
   imported_at   TEXT,
-  UNIQUE(shop_id, jan, period_start, period_end, source)
+  UNIQUE(shop_id, jan, granularity, period_start, period_end, source)
 );
-CREATE INDEX IF NOT EXISTS idx_ss_shop   ON shop_sales(shop_id);
-CREATE INDEX IF NOT EXISTS idx_ss_jan    ON shop_sales(jan);
+CREATE INDEX IF NOT EXISTS idx_ss_shop        ON shop_sales(shop_id);
+CREATE INDEX IF NOT EXISTS idx_ss_jan         ON shop_sales(jan);
+CREATE INDEX IF NOT EXISTS idx_ss_granularity ON shop_sales(granularity);
 CREATE INDEX IF NOT EXISTS idx_ss_period ON shop_sales(period_start);
 
 CREATE TABLE IF NOT EXISTS shop_monthly (

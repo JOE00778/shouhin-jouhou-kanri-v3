@@ -71,13 +71,33 @@ def _get_postgres_connection():
 
     if not _pg_schema_initialized:
         try:
+            from data_warehouse.db.migrations import (
+                DEPRECATED_TABLES, PHASE4_REBUILD_TABLES,
+            )
+            # Phase 4 v2 表 schema 重建（必须在 schema.sql 跑前 DROP）
+            for tbl in PHASE4_REBUILD_TABLES:
+                try:
+                    cur = raw.cursor()
+                    cur.execute(f"DROP TABLE IF EXISTS {tbl} CASCADE")
+                    raw.commit()
+                except Exception:
+                    raw.rollback()
+
             schema_path = PROJECT_ROOT / "deploy" / "nas" / "schema.postgres.sql"
             if schema_path.exists():
                 cur = raw.cursor()
                 cur.execute(schema_path.read_text(encoding="utf-8"))
                 raw.commit()
-            # 同步跑 DEPRECATED_TABLES（与 SQLite 路径对齐）
-            from data_warehouse.db.migrations import DEPRECATED_TABLES
+            # ALTER 加列（与 SQLite ALTERS 对齐，幂等）
+            from data_warehouse.db.migrations import ALTERS
+            for table, col_def in ALTERS:
+                try:
+                    cur = raw.cursor()
+                    cur.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col_def}")
+                    raw.commit()
+                except Exception:
+                    raw.rollback()
+            # 废弃表 DROP
             for tbl in DEPRECATED_TABLES:
                 try:
                     cur = raw.cursor()
@@ -143,7 +163,7 @@ class _PostgresAdapter:
         "item_purchase_history": ("po_number", "jan", "source"),
         "item_sales_history": ("jan", "period_start", "period_end", "channel", "source"),
         "item_inventory_snapshot_v2": ("jan", "location", "bin_number", "snapshot_at"),
-        "shop_sales": ("shop_id", "jan", "period_start", "period_end", "source"),
+        "shop_sales": ("shop_id", "jan", "granularity", "period_start", "period_end", "source"),
         "item_supplier_link": ("jan", "supplier_name"),
     }
 
