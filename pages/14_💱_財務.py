@@ -60,14 +60,16 @@ if section == SECTION_SHOPIFY:
     st.warning(t("🚧 数据接入计划中 · 详见下方接入清单"))
 
     st.markdown(t("""
-##### 📍 待接入市场 (4 个)
+##### 🏪 自建站结构
 
-| 市场 | 站点 | 货币 | 状态 |
-|---|---|---|---|
-| 自建站 PH | smikie.ph (推断) | PHP | 待接入 |
-| 自建站 KR | smikie.kr (推断) | KRW | 待接入 |
-| 自建站 US | smikie.us (推断) | USD | 待接入 |
-| 自建站 SmikieJapan | smikiejapan.com (主站) | JPY | 待接入 |
+- **站点名: SmikieJapan** (smikiejapan.com, 单一 Shopify store)
+- 站下挂 **3 个市场** (Shopify Markets):
+
+| 市场 | 货币 | 状态 |
+|---|---|---|
+| PH (菲律宾) | PHP | 已部署 (Empire 主题) |
+| KR (韩国) | KRW | **新增市场** (财务规划首次确认) |
+| US (美国) | USD | 已部署 |
 
 ##### 🔌 待接入数据源
 
@@ -77,23 +79,23 @@ if section == SECTION_SHOPIFY:
    → 落表 `shopify_orders (order_no, market, order_created_at, total_price, refunds)`
 3. **Adjustments / Refunds** — 跟随 orders 一起导出
 
-##### 🎯 颗粒度对齐 (与 Shopee 一致)
+##### 🎯 颗粒度对齐 (与 Shopee 板块一致)
 
 - 按【订单成立时间】月份切分 (NST 上传规则)
 - 6 列输出: 编号 / 订单编号 / 拨款完成日期 / 付款金额 / 退款金额 / 账单金额
 - 支持按周 / 按月 切换
-- 4 市场可独立查看, 也可汇总为「Shopify 自建」整体
+- 3 市场 (PH/KR/US) 可独立查看, 也可汇总为「SmikieJapan 整体」
 
 ##### ⏭️ 下一步
 
-1. 与 Boss 确认 4 个 Shopify 站点的 store handle / 接入方式 (CSV 导出 vs API)
-2. 设计 `shopify_payouts` / `shopify_orders` 表结构
+1. 与 Boss 确认 Shopify Payments 接入方式 (CSV 导出 vs API)
+2. 设计 `shopify_payouts` / `shopify_orders` 表结构 (`market` 字段值: PH / KR / US)
 3. 实现 ingester (`xls_ingest.ingest_shopify_payouts`)
 4. 在本页添加 Shopify 视角的 NST Tab + 市场维度
 """))
 
     st.info(t(
-        "💡 当前 Shopify 主题已部署 (Empire 主题, US/PH 双市场), "
+        "💡 SmikieJapan store 主题已部署 (Empire 主题, 当前 US/PH 上线; KR 市场为新增), "
         "但 Shopify Payments 财务流尚未对接 NST 上传 pipeline。"
     ))
 
