@@ -36,6 +36,73 @@ lang_selector()
 conn = get_connection()
 
 st.title(t("💱 財務"))
+
+# ============================================================
+# 板块切换 (Shopee / Lazada · Shopify 自建站)
+# ============================================================
+SECTION_SHOPEE = t("🛒 Shopee / Lazada (东南亚)")
+SECTION_SHOPIFY = t("🛍 Shopify 自建站")
+
+section = st.radio(
+    t("📊 财务板块"),
+    [SECTION_SHOPEE, SECTION_SHOPIFY],
+    horizontal=True,
+    key="finance_section",
+)
+st.divider()
+
+
+# ============================================================
+# 板块 2: Shopify 自建站 (规划中)
+# ============================================================
+if section == SECTION_SHOPIFY:
+    st.subheader(t("🛍 Shopify 自建站财务"))
+    st.warning(t("🚧 数据接入计划中 · 详见下方接入清单"))
+
+    st.markdown(t("""
+##### 📍 待接入市场 (4 个)
+
+| 市场 | 站点 | 货币 | 状态 |
+|---|---|---|---|
+| 自建站 PH | smikie.ph (推断) | PHP | 待接入 |
+| 自建站 KR | smikie.kr (推断) | KRW | 待接入 |
+| 自建站 US | smikie.us (推断) | USD | 待接入 |
+| 自建站 SmikieJapan | smikiejapan.com (主站) | JPY | 待接入 |
+
+##### 🔌 待接入数据源
+
+1. **Shopify Payouts** — 通过 Shopify Payments → Reports 导出 CSV 或 GraphQL `payouts` query
+   → 落表 `shopify_payouts (payout_id, market, payout_date, gross, fees, net, currency)`
+2. **Shopify Orders** — Admin → Orders → Export 或 GraphQL `orders` query
+   → 落表 `shopify_orders (order_no, market, order_created_at, total_price, refunds)`
+3. **Adjustments / Refunds** — 跟随 orders 一起导出
+
+##### 🎯 颗粒度对齐 (与 Shopee 一致)
+
+- 按【订单成立时间】月份切分 (NST 上传规则)
+- 6 列输出: 编号 / 订单编号 / 拨款完成日期 / 付款金额 / 退款金额 / 账单金额
+- 支持按周 / 按月 切换
+- 4 市场可独立查看, 也可汇总为「Shopify 自建」整体
+
+##### ⏭️ 下一步
+
+1. 与 Boss 确认 4 个 Shopify 站点的 store handle / 接入方式 (CSV 导出 vs API)
+2. 设计 `shopify_payouts` / `shopify_orders` 表结构
+3. 实现 ingester (`xls_ingest.ingest_shopify_payouts`)
+4. 在本页添加 Shopify 视角的 NST Tab + 市场维度
+"""))
+
+    st.info(t(
+        "💡 当前 Shopify 主题已部署 (Empire 主题, US/PH 双市场), "
+        "但 Shopify Payments 财务流尚未对接 NST 上传 pipeline。"
+    ))
+
+    st.stop()
+
+
+# ============================================================
+# 以下为板块 1: Shopee / Lazada (东南亚)
+# ============================================================
 st.caption(t(
     "颗粒度对齐 NST 上传: 订单成立时间月份 × 6 列 · "
     "数据源: 订单导出.xlsx + *.income.已拨款.*.xlsx"
