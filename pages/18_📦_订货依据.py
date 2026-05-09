@@ -23,7 +23,9 @@ from shared.i18n import lang_selector, t
 
 st.set_page_config(page_title=t("订货依据"), page_icon="📦", layout="wide")
 from shared.auth import require_password
+from shared.theme import inject_theme
 require_password()
+inject_theme()
 lang_selector()
 conn = get_connection()
 
@@ -114,6 +116,87 @@ months = sorted(df_all["year_month"].dropna().unique().tolist(), reverse=True)
 locations_all = sorted([x for x in df_all["location"].dropna().unique().tolist() if str(x).strip()])
 risk_options = ["断货风险", "正常", "压库存", "数据不足", "无数据"]
 
+# ============================================================
+# T6 · 我的看板（5 个预设视图 · mockup tabs/segmented）
+# ============================================================
+PRESETS = {
+    "全部 SKU": {
+        "locations": "all",
+        "risks": [],
+        "rank": [],
+    },
+    "断货 + 压库存": {
+        "locations": "jd",
+        "risks": ["断货风险", "压库存"],
+        "rank": [],
+    },
+    "A/B 商品全部": {
+        "locations": "jd",
+        "risks": [],
+        "rank": ["A", "B"],
+    },
+    "弁天退品观察": {
+        "locations": "benten",
+        "risks": [],
+        "rank": [],
+    },
+    "仅 NEW": {
+        "locations": "jd",
+        "risks": [],
+        "rank": ["NEW"],
+    },
+}
+
+st.markdown(f"##### 🗂️ {t('我的看板')}")
+
+# 兼容老版本 Streamlit 用 radio, 新版本用 segmented_control
+preset_options = list(PRESETS.keys())
+try:
+    sel_preset = st.segmented_control(
+        t("预设视图"),
+        options=preset_options,
+        default="全部 SKU",
+        label_visibility="collapsed",
+    )
+except (AttributeError, TypeError):
+    sel_preset = st.radio(
+        t("预设视图"),
+        options=preset_options,
+        index=0,
+        horizontal=True,
+        label_visibility="collapsed",
+    )
+
+# 兜底（segmented_control 在 None 时）
+if not sel_preset:
+    sel_preset = "全部 SKU"
+
+preset = PRESETS[sel_preset]
+
+# 预设 → 默认值
+def _resolve_locs(loc_key: str) -> list[str]:
+    if loc_key == "all":
+        return locations_all
+    if loc_key == "jd":
+        return [x for x in locations_all if "JD" in str(x)] or locations_all
+    if loc_key == "benten":
+        return [x for x in locations_all if "弁天" in str(x) or "Benten" in str(x).lower()] or locations_all
+    return locations_all
+
+
+_default_locs = _resolve_locs(preset["locations"])
+_default_risks = preset["risks"] if preset["risks"] else ["断货风险", "压库存"]
+_default_ranks = preset["rank"]
+
+# 预设变化时清掉旧 multiselect 状态, 让 default 生效
+_preset_state_key = "page18_last_preset"
+if st.session_state.get(_preset_state_key) != sel_preset:
+    for k in ("page18_locs", "page18_risks", "page18_ranks"):
+        st.session_state.pop(k, None)
+    st.session_state[_preset_state_key] = sel_preset
+
+st.divider()
+
 f1, f2, f3, f4 = st.columns([1.2, 2, 2, 2])
 
 with f1:
@@ -122,23 +205,38 @@ with f1:
 with f2:
     # 默认仅 JD-物流-千葉 (主要仓库)
     # 弁天倉庫 = 退回商品暂存仓 (积攒后不定期发到 JD), 不参与订货决策
-    default_locs = [x for x in locations_all if "JD" in str(x)] or locations_all
     sel_locations = st.multiselect(
         t("仓库 (location)"),
         options=locations_all,
-        default=default_locs,
+        default=_default_locs,
         help=t("默认仅 JD (主仓库)。弁天倉庫 = 退回商品暂存, 不参与订货决策。"),
+        key="page18_locs",
     )
 
 with f3:
     sel_risks = st.multiselect(
         t("风险等级"),
         options=risk_options,
-        default=["断货风险", "压库存"],
+        default=_default_risks,
+        key="page18_risks",
     )
 
 with f4:
     search_kw = st.text_input(t("JAN / item_code 搜索"), placeholder=t("例: 4901111... 或 01-0641-134"))
+
+# Rank 筛选（A/B/NEW 等）—— 仅当预设需要时显示
+sel_ranks = []
+if _default_ranks and "rank" in df_all.columns:
+    rank_opts = sorted([
+        x for x in df_all["rank"].dropna().unique().tolist() if str(x).strip()
+    ])
+    if rank_opts:
+        sel_ranks = st.multiselect(
+            t("Rank 筛选 (来自预设)"),
+            options=rank_opts,
+            default=[r for r in _default_ranks if r in rank_opts],
+            key="page18_ranks",
+        )
 
 # 应用筛选
 df = df_all[df_all["year_month"] == sel_month].copy()
@@ -146,6 +244,8 @@ if sel_locations:
     df = df[df["location"].isin(sel_locations)]
 if sel_risks:
     df = df[df["risk_label"].isin(sel_risks)]
+if sel_ranks and "rank" in df.columns:
+    df = df[df["rank"].astype(str).isin(sel_ranks)]
 if search_kw:
     kw = search_kw.strip()
     df = df[
@@ -157,30 +257,73 @@ st.caption(t(f"当前筛选结果: {len(df)} 行"))
 
 
 # ============================================================
-# 公共显示列 helper
+# T9 · 列显示 toggle  +  T10 · 密度 toggle
 # ============================================================
-DISPLAY_COLS = [
-    "item_code", "jan", "display_name", "location",
-    "qty_sold", "available_qty", "sell_through_rate",
-    "suggest_qty",
+ALL_COLS = [
+    ("item_code", t("item_code")),
+    ("jan", t("JAN")),
+    ("display_name", t("商品名")),
+    ("location", t("仓库")),
+    ("qty_sold", t("月销量")),
+    ("available_qty", t("合计可售")),
+    ("sell_through_rate", t("完売率")),
+    ("suggest_qty", t("建议订货量")),
 ]
-DISPLAY_HEADER = [
-    t("item_code"), t("JAN"), t("商品名"), t("仓库"),
-    t("月销量"), t("合计可售"), t("完売率"),
-    t("建议订货量"),
-]
+
+with st.expander(f"⚙️ {t('显示列设置')}"):
+    cols_grid = st.columns(4)
+    selected_keys = []
+    for i, (key, label) in enumerate(ALL_COLS):
+        with cols_grid[i % 4]:
+            if st.checkbox(label, value=True, key=f"page18_col_{key}"):
+                selected_keys.append(key)
+
+if not selected_keys:
+    selected_keys = [k for k, _ in ALL_COLS]  # 至少留全部, 防止空表
+
+DISPLAY_COLS = selected_keys
+DISPLAY_HEADER = [dict(ALL_COLS)[k] for k in DISPLAY_COLS]
+
+# 密度 toggle
+density_label = st.radio(
+    t("密度"),
+    options=[t("紧凑"), t("标准"), t("宽松")],
+    index=1,
+    horizontal=True,
+    key="page18_density",
+)
+_density_class_map = {
+    t("紧凑"): "density-compact",
+    t("标准"): "",
+    t("宽松"): "density-comfy",
+}
+_density_class = _density_class_map.get(density_label, "")
 
 
 def _render_df_with_csv(d: pd.DataFrame, csv_name: str):
     if d.empty:
         st.info(t("当前 Tab 无数据"))
         return
-    show = d[DISPLAY_COLS].copy()
-    show.columns = DISPLAY_HEADER
+    # 缺列兜底（rank 等可能不存在）
+    available = [c for c in DISPLAY_COLS if c in d.columns]
+    if not available:
+        available = list(d.columns)
+    show = d[available].copy()
+    show.columns = [dict(ALL_COLS).get(c, c) for c in available]
     # 完売率 → 百分比字符串(展示用 copy)
     show_disp = show.copy()
-    show_disp[t("完売率")] = (show_disp[t("完売率")] * 100).round(1).astype(str) + "%"
+    rate_col = t("完売率")
+    if rate_col in show_disp.columns:
+        show_disp[rate_col] = (
+            pd.to_numeric(show_disp[rate_col], errors="coerce").fillna(0) * 100
+        ).round(1).astype(str) + "%"
+
+    if _density_class:
+        st.markdown(f"<div class='{_density_class}'>", unsafe_allow_html=True)
     st.dataframe(show_disp, use_container_width=True, height=420)
+    if _density_class:
+        st.markdown("</div>", unsafe_allow_html=True)
+
     st.download_button(
         t("📥 下载 CSV"),
         data=show.to_csv(index=False).encode("utf-8-sig"),
