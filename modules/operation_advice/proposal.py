@@ -20,7 +20,7 @@ def generate_advice(year_month: str = "2026-04",
         proposals = generate_proposal('2026-Q1', str(db_path))
         rank_map = {p['sku']: p['new_rank'] for p in proposals}
 
-        # 2. 拉双指标
+        # 2. 拉双指标（Postgres 严格要求所有 SELECT 列在 GROUP BY 或聚合内）
         rows = conn.execute("""
             SELECT c.sku, c.gross_margin AS margin_pct, c.turnover AS m_turn,
                    c.cross_ratio,
@@ -31,7 +31,7 @@ def generate_advice(year_month: str = "2026-04",
             LEFT JOIN nst_inventory_snapshot i
                 ON c.sku = i.item_code AND i.location = 'JD-物流-千葉'
             WHERE c.year_month = ?
-            GROUP BY c.sku
+            GROUP BY c.sku, c.gross_margin, c.turnover, c.cross_ratio
         """, (year_month,)).fetchall()
 
         results = []

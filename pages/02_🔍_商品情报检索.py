@@ -45,6 +45,7 @@ if inv_count == 0:
 # ============================================================
 @st.cache_data(ttl=300)
 def load_sku_view() -> pd.DataFrame:
+    # 用参数化 LIKE · psycopg2 把字面量 '%' 当 format placeholder 会报 IndexError
     sql = """
         WITH inv AS (
             SELECT
@@ -62,7 +63,7 @@ def load_sku_view() -> pd.DataFrame:
                 SUM(qty_backorder) AS qty_backorder,
                 SUM(total_amount) AS total_amount
             FROM inventory_snapshot
-            WHERE department LIKE '%輸出%'
+            WHERE department LIKE :dept_pattern
             GROUP BY internal_id
         ),
         sales_agg AS (
@@ -107,7 +108,7 @@ def load_sku_view() -> pd.DataFrame:
         LEFT JOIN sales_agg ON sales_agg.item_code = inv.item_code
         LEFT JOIN turnover ON turnover.item_code = inv.item_code
     """
-    return pd.DataFrame([dict(r) for r in conn.execute(sql).fetchall()])
+    return pd.DataFrame([dict(r) for r in conn.execute(sql, {"dept_pattern": "%輸出%"}).fetchall()])
 
 
 df = load_sku_view()
