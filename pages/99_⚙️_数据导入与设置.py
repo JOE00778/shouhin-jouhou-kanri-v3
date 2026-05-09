@@ -32,12 +32,13 @@ conn = get_connection()
 st.title(t("⚙️ 数据导入与设置"))
 st.caption(t("把 NetSuite 标准导出 .xls 拖到这里，工具自动识别类型并入库"))
 
-tab_import, tab_status, tab_logs, tab_legacy = st.tabs(
+tab_import, tab_status, tab_logs, tab_legacy, tab_lark = st.tabs(
     [
         t("📤 一键导入（NetSuite .xls）"),
         t("📊 数据现状"),
         t("📜 导入历史"),
         t("🛠 旧 CSV（item_master）"),
+        t("🔔 飞书集成"),
     ]
 )
 
@@ -261,3 +262,139 @@ with tab_legacy:
         except Exception as e:
             st.error(f"❌ {e}")
             st.exception(e)
+
+
+# ============================================================
+# Tab 5: 飞书集成（群机器人 + 自建应用 OpenAPI 自检 + 测试）
+# ============================================================
+with tab_lark:
+    from shared import lark_notify, lark_openapi
+    import os as _os
+
+    st.subheader(t("🔔 飞书通知集成"))
+    st.caption(t("两套机制并行：群机器人 webhook（推消息）+ 自建应用 OpenAPI（写表格 / 文档）"))
+
+    # ─────────────────── 1. 群机器人 webhook ───────────────────
+    st.markdown("### 1. 群机器人 Webhook")
+    st.caption("飞书群 → 设置 → 群机器人 → 添加自定义机器人 → 复制 Webhook URL")
+
+    routes = lark_notify.list_configured_routes()
+    if any(routes.values()):
+        st.success(t("✅ 已配置至少一个 webhook"))
+        st.dataframe(
+            [{"路由": k, "URL（前 60 字符）": v} for k, v in routes.items() if v],
+            use_container_width=True, hide_index=True,
+        )
+    else:
+        st.warning(t("⚠️ 还没配置任何群机器人 webhook"))
+
+    with st.expander(t("📖 怎么配（环境变量 / .streamlit/secrets.toml）"), expanded=False):
+        st.code(
+            """# 默认群（必填，作为兜底）
+LARK_WEBHOOK_URL=https://open.feishu.cn/open-apis/bot/v2/hook/xxx
+
+# 按业务模块分群（可选，命中则覆盖默认）
+LARK_WEBHOOK_URL_SHOPEE=https://...      # shopee_mass_upload + image_gen
+LARK_WEBHOOK_URL_DISCONTINUE=https://... # discontinue_confirm
+LARK_WEBHOOK_URL_NST=https://...         # nst_order
+LARK_WEBHOOK_URL_ERROR=https://...       # 任何 status='error' 的兜底群
+
+# 或者完全自定义路由表（JSON，优先级最高）
+LARK_WEBHOOK_ROUTES={"shopee_mass_upload": "https://...", "image_gen": "..."}""",
+            language="bash",
+        )
+
+    # 测试按钮
+    cc1, cc2, cc3 = st.columns(3)
+    if cc1.button(t("发测试消息（默认群）"), key="lark_test_default"):
+        ok = lark_notify.notify_card(
+            title="🧪 CMS 飞书集成测试",
+            rows=[("来源", "page 99 测试按钮"), ("状态", "OK")],
+            status="info",
+        )
+        st.success("✅ 已发送，去飞书群看") if ok else st.error("❌ 失败（检查 webhook URL）")
+    if cc2.button(t("发测试卡片（success 绿）"), key="lark_test_succ"):
+        ok = lark_notify.notify_card(
+            title="✅ 测试 · success 卡片",
+            rows=[("市场", "TW"), ("成功", "12"), ("失败", "0")],
+            status="success", module="shopee_mass_upload",
+        )
+        st.success("✅ 已发送") if ok else st.error("❌ 失败")
+    if cc3.button(t("发测试卡片（error 红）"), key="lark_test_err"):
+        ok = lark_notify.notify_card(
+            title="🔴 测试 · error 卡片",
+            body="模拟一个失败场景",
+            rows=[("error", "ConnectionError")],
+            status="error",
+        )
+        st.success("✅ 已发送") if ok else st.error("❌ 失败")
+
+    st.divider()
+
+    # ─────────────────── 2. 飞书自建应用 OpenAPI ───────────────────
+    st.markdown("### 2. 飞书自建应用 OpenAPI（写表格 / 文档）")
+    st.caption("适用 stock_monitor 写改廃监控表格、把月度报告写飞书文档等场景")
+
+    health = lark_openapi.health_check()
+    if health["configured"]:
+        st.success(f"✅ App ID 已配置 · `{health['app_id']}`")
+        if health["token_ok"]:
+            mins = health["token_expires_in"] // 60
+            st.success(f"✅ tenant_access_token 拉取成功（{mins} 分钟后过期，会自动刷新）")
+        else:
+            st.error(f"❌ token 拉取失败：{health['error']}")
+    else:
+        st.warning(t("⚠️ LARK_APP_ID / LARK_APP_SECRET 未配置"))
+
+    with st.expander(t("📖 怎么注册自建应用 + 申请权限"), expanded=False):
+        st.markdown(
+            """
+**Step 1**：飞书开发者后台 → https://open.feishu.cn/app → 创建企业自建应用
+
+**Step 2**：左侧「凭证与基础信息」复制 **App ID** + **App Secret**，填到 `.env`：
+```
+LARK_APP_ID=cli_xxxxxxxx
+LARK_APP_SECRET=xxxxxxxx
+```
+
+**Step 3**：左侧「权限管理」→ 申请以下权限（再点页面顶部「发布版本」让管理员审核）：
+| 权限 | 用途 |
+|---|---|
+| `sheets:spreadsheet` | 电子表格读写（stock_monitor 改廃报告写飞书表）|
+| `docs:document` | 云文档读写（月度自动报告写飞书 doc）|
+| `im:message:send_as_bot` | 给指定用户/群发卡片消息（双向交互）|
+| `contact:user.id:readonly` | 用户基础信息（按 union_id 查邮箱）|
+
+**Step 4**：左侧「应用发布」→「创建版本」→ 提交审核 → 管理员通过后生效。
+
+**Step 5**：把要写的表格 / 文档**共享给这个 App**（在表格右上角分享 → 添加协作者 → 输入应用名）。
+"""
+        )
+
+    if health["configured"] and health["token_ok"]:
+        st.markdown("**测试 OpenAPI · 表格写入**")
+        col_a, col_b = st.columns(2)
+        with col_a:
+            test_token = st.text_input(
+                "电子表格 token（URL 中 /sheets/<token>）",
+                key="lark_sheet_token",
+            )
+        with col_b:
+            test_sheet_id = st.text_input(
+                "子表 ID（URL 中 ?sheet=xxx）",
+                key="lark_sheet_id",
+            )
+        if st.button(t("📋 追加一行测试数据"), key="lark_test_sheet"):
+            if not (test_token and test_sheet_id):
+                st.warning(t("先填表格 token 和 sheet_id"))
+            else:
+                from datetime import datetime as _dt
+                try:
+                    n = lark_openapi.sheet_append_rows(
+                        test_token, test_sheet_id,
+                        [["CMS 测试", _dt.now().isoformat(timespec="seconds"), "OK"]],
+                        column_range="A:C",
+                    )
+                    st.success(f"✅ 已追加 {n} 行（去飞书表格刷新看）")
+                except Exception as e:
+                    st.error(f"❌ {e}")
