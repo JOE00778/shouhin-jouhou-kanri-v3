@@ -1094,3 +1094,75 @@ CREATE TABLE IF NOT EXISTS item_supplier_link (
 CREATE INDEX IF NOT EXISTS idx_isl_jan      ON item_supplier_link(jan);
 CREATE INDEX IF NOT EXISTS idx_isl_supplier ON item_supplier_link(supplier_name);
 CREATE INDEX IF NOT EXISTS idx_isl_class    ON item_supplier_link(cost_class);
+
+-- ============================================================
+-- Phase 4 · 桥接 VIEW（旧表名透传到 v2）
+-- 让 page / module 的 SELECT 不用改也能读到数据
+-- ============================================================
+CREATE OR REPLACE VIEW v_inventory_snapshot AS
+SELECT
+  internal_id, item_code, jan AS upc, display_name,
+  status, bin_number, location, handling_status,
+  qty_on_hand, qty_committed, qty_backorder,
+  std_cost, total_amount, avg_cost,
+  owner, department, snapshot_at,
+  ''::TEXT AS source_file, imported_at
+FROM item_inventory_snapshot_v2;
+
+CREATE OR REPLACE VIEW v_nst_inventory_snapshot AS
+SELECT * FROM v_inventory_snapshot;
+
+CREATE OR REPLACE VIEW v_sales_line AS
+SELECT
+  id, shop_id AS store,
+  jan AS item_code, jan AS upc,
+  ''::TEXT AS display_name, ''::TEXT AS handling_status, ''::TEXT AS maker,
+  rank, qty_sold, unit_price AS unit_purchase_price,
+  revenue, cost AS defined_cost,
+  gross_profit, gross_margin,
+  period_start, period_end, source,
+  ''::TEXT AS source_file, imported_at
+FROM shop_sales;
+
+CREATE OR REPLACE VIEW v_nst_store_sales AS
+SELECT
+  id, shop_id AS fb_store,
+  jan AS item_code, jan AS upc,
+  ''::TEXT AS handling_status, ''::TEXT AS display_name,
+  qty_sold, unit_price, revenue,
+  cost AS defined_cost, gross_profit, gross_margin,
+  rank, imported_at AS ingested_at
+FROM shop_sales;
+
+CREATE OR REPLACE VIEW v_nst_item_summary AS
+SELECT
+  jan AS upc, item_code, display_name, handling_status,
+  std_cost,
+  NULL::DOUBLE PRECISION AS available, NULL::DOUBLE PRECISION AS available_on_hand,
+  avg_cost,
+  ''::TEXT AS source_file, imported_at
+FROM item_v2;
+
+CREATE OR REPLACE VIEW v_item_master_netsuite AS
+SELECT
+  internal_id, jan AS upc, display_name,
+  avg_cost, std_cost,
+  NULL::DOUBLE PRECISION AS last_purchase,
+  on_hand_total AS on_hand,
+  NULL::DOUBLE PRECISION AS available,
+  on_order_total AS on_order,
+  department, rank,
+  NULL::TEXT AS sku_id, NULL::TEXT AS created_at,
+  maker,
+  ''::TEXT AS source_file, imported_at
+FROM item_v2;
+
+CREATE OR REPLACE VIEW v_item_master AS
+SELECT
+  jan, item_code, rank, maker, display_name, handling_status,
+  on_hand_total AS on_hand,
+  on_order_total AS on_order,
+  actual_cost, min_cost,
+  case_qty, order_lot, weight,
+  ''::TEXT AS source_file, imported_at
+FROM item_v2;

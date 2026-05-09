@@ -32,14 +32,13 @@ conn = get_connection()
 st.title(t("⚙️ 数据导入与设置"))
 st.caption(t("把 NetSuite 标准导出 .xls 拖到这里，工具自动识别类型并入库"))
 
-tab_import, tab_status, tab_logs, tab_legacy, tab_lark, tab_v2 = st.tabs(
+tab_import, tab_status, tab_logs, tab_legacy, tab_lark = st.tabs(
     [
         t("📤 一键导入（NetSuite .xls）"),
         t("📊 数据现状"),
         t("📜 导入历史"),
         t("🛠 旧 CSV（item_master）"),
         t("🔔 飞书集成"),
-        t("🧬 v2 数据迁移"),
     ]
 )
 
@@ -164,27 +163,9 @@ with tab_import:
                     st.success(msg)
 
             # ────────────────────────────────────────────────────────
-            # Phase 3.2 · ingest 双写：导入完成后自动跑 v2 ETL
-            # 让 v2 数据模型持续保鲜，无需 Boss 手工去 Tab 6 触发
+            # Phase 4 · ingester 已直写 v2 → 无需中间 ETL 层
+            # 旧表名通过 VIEW 透传 v2 数据，page SQL 不用改
             # ────────────────────────────────────────────────────────
-            try:
-                with st.spinner(t("⚡ 自动同步到 v2 数据模型...")):
-                    from tools.migrate_to_v2 import run_all as _v2_run_all
-                    v2_results = _v2_run_all(conn)
-                v2_written = sum(r["written"] for r in v2_results)
-                v2_errors  = sum(r["errors"] for r in v2_results)
-                if v2_errors:
-                    st.warning(
-                        f"🧬 v2 模型同步：写入 {v2_written:,} 行，{v2_errors} 错误"
-                        f" · 详情见 Tab 6「v2 数据迁移」"
-                    )
-                else:
-                    st.info(
-                        f"🧬 v2 模型自动同步完成：写入 {v2_written:,} 行"
-                        f" · 详情见 Tab 6「v2 数据迁移」"
-                    )
-            except Exception as _e:
-                st.warning(f"🧬 v2 自动同步异常（不影响主导入）：{_e}")
 
 
 # ============================================================
@@ -461,82 +442,3 @@ LARK_WEBHOOK_ROUTES={"shopee_mass_upload": "https://..."}""",
             language="bash",
         )
 
-
-# ============================================================
-# Tab 6: v2 数据迁移（Phase 3.1）· 把旧表 12 张 → v2 新表 10 张
-# ============================================================
-with tab_v2:
-    from tools.migrate_to_v2 import RUN_STEPS, run_all, overview
-
-    st.subheader(t("🧬 v2 数据模型迁移"))
-    st.caption(t(
-        "把现有 4 张商品主表 + 进货 3 张 + 销售/库存表 → 整合到 v2 模型："
-        "item_v2 (PK=jan) + shop / shop_sales / shop_monthly + item_* 子表"
-    ))
-
-    # ─── 当前 row count 对照 ───
-    st.markdown("#### 📊 当前 row count（旧表 vs v2 新表）")
-    if st.button(t("🔄 刷新对照"), key="v2_refresh_overview"):
-        st.session_state["v2_overview"] = overview(conn)
-    if "v2_overview" not in st.session_state:
-        st.session_state["v2_overview"] = overview(conn)
-
-    ov = st.session_state["v2_overview"]
-    rows = []
-    for p in ov["pairs"]:
-        diff = p["new_count"] - p["old_count"]
-        rows.append({
-            "源表 → 目标表": f"{p['pair']} → {p['new_table']}",
-            "旧表 row 数": p["old_count"],
-            "v2 新表 row 数": p["new_count"],
-            "差异": diff,
-        })
-    st.dataframe(rows, use_container_width=True, hide_index=True)
-
-    st.divider()
-
-    # ─── 一键全跑 ───
-    st.markdown("#### 🚀 一键迁移（按顺序跑 9 步）")
-    st.caption(t("ETL 幂等：可重复跑（INSERT OR REPLACE）；每步独立记录到 _v2_migration_runs 表"))
-
-    if st.button(t("🚀 开始全套 ETL"), type="primary", key="v2_run_all"):
-        with st.spinner(t("ETL 跑中...")):
-            results = run_all(conn)
-        st.success(t("✅ 全套完成"))
-        st.dataframe(
-            [{"step": r["step"], "read": r["read"],
-              "written": r["written"], "errors": r["errors"],
-              "notes": r.get("notes", "")} for r in results],
-            use_container_width=True, hide_index=True,
-        )
-        # 自动刷新对照
-        st.session_state["v2_overview"] = overview(conn)
-
-    # ─── 单步跑 ───
-    st.divider()
-    st.markdown("#### 🔧 单步跑（调试用）")
-    step_name = st.selectbox(
-        t("选 step"),
-        [s[0] for s in RUN_STEPS],
-        key="v2_single_step",
-    )
-    if st.button(t("跑这一步"), key="v2_run_step"):
-        with st.spinner(f"跑 {step_name}..."):
-            results = run_all(conn, only=[step_name])
-        if results:
-            st.json(results[0])
-
-    # ─── 历史运行 ───
-    st.divider()
-    st.markdown("#### 📜 ETL 历史")
-    try:
-        runs = conn.execute(
-            "SELECT step, source_table, rows_read, rows_written, errors, ran_at, notes "
-            "FROM _v2_migration_runs ORDER BY id DESC LIMIT 30"
-        ).fetchall()
-        if runs:
-            st.dataframe([dict(r) for r in runs], use_container_width=True, hide_index=True)
-        else:
-            st.info(t("还没跑过 ETL"))
-    except Exception as e:
-        st.warning(t("_v2_migration_runs 表还没建（先 docker compose restart streamlit 让 schema 生效）"))

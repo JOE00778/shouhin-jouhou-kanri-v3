@@ -53,6 +53,19 @@ PHASE4_REBUILD_TABLES: list[str] = [
     "shop_sales",   # UNIQUE 加了 granularity 列
 ]
 
+# Phase 4 桥接 VIEW · 旧表名 → 透传 v2 真表
+# 让现有 page / module SQL 不用改也能继续读到数据
+# (legacy_table_name, target_view) - target_view 在 schema.sql 末尾定义
+PHASE4_LEGACY_VIEWS: list[tuple[str, str]] = [
+    ("inventory_snapshot",     "v_inventory_snapshot"),
+    ("nst_inventory_snapshot", "v_nst_inventory_snapshot"),
+    ("sales_line",             "v_sales_line"),
+    ("nst_store_sales",        "v_nst_store_sales"),
+    ("nst_item_summary",       "v_nst_item_summary"),
+    ("item_master_netsuite",   "v_item_master_netsuite"),
+    ("item_master",            "v_item_master"),
+]
+
 # 启动时收集 schema 错误（不阻塞 init,但供调试）
 SCHEMA_ERRORS: list[tuple[str, str]] = []
 
@@ -151,6 +164,17 @@ def init_db(db_path: Path) -> sqlite3.Connection:
             conn.execute(f"DROP TABLE IF EXISTS {tbl}")
         except sqlite3.Error:
             pass
+
+    # Phase 4 · 旧表名 → VIEW 桥接（让 page SQL 不用改）
+    # 1. DROP 旧表（之前是真表，现在不要了）
+    # 2. CREATE VIEW 同名 → 指向 v_xxx 提供的 v2 数据
+    for legacy, target_view in PHASE4_LEGACY_VIEWS:
+        try:
+            conn.execute(f"DROP VIEW IF EXISTS {legacy}")
+            conn.execute(f"DROP TABLE IF EXISTS {legacy}")
+            conn.execute(f"CREATE VIEW {legacy} AS SELECT * FROM {target_view}")
+        except sqlite3.Error as e:
+            SCHEMA_ERRORS.append((f"legacy_view {legacy}", str(e)))
 
     # 写入版本号（幂等）
     try:

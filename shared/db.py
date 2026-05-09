@@ -105,6 +105,19 @@ def _get_postgres_connection():
                     raw.commit()
                 except Exception:
                     raw.rollback()
+
+            # Phase 4 · 旧表名 → VIEW 桥接（让 page SQL 不用改）
+            from data_warehouse.db.migrations import PHASE4_LEGACY_VIEWS
+            for legacy, target_view in PHASE4_LEGACY_VIEWS:
+                try:
+                    cur = raw.cursor()
+                    cur.execute(f"DROP VIEW IF EXISTS {legacy} CASCADE")
+                    cur.execute(f"DROP TABLE IF EXISTS {legacy} CASCADE")
+                    cur.execute(f"CREATE VIEW {legacy} AS SELECT * FROM {target_view}")
+                    raw.commit()
+                except Exception as e:
+                    print(f"[postgres legacy view warn] {legacy}: {e}")
+                    raw.rollback()
         except Exception as e:
             print(f"[postgres init warn] {e}")
             try:

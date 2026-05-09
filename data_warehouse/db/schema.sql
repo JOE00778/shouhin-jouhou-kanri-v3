@@ -1089,3 +1089,89 @@ CREATE TABLE IF NOT EXISTS item_supplier_link (
 CREATE INDEX IF NOT EXISTS idx_isl_jan      ON item_supplier_link(jan);
 CREATE INDEX IF NOT EXISTS idx_isl_supplier ON item_supplier_link(supplier_name);
 CREATE INDEX IF NOT EXISTS idx_isl_class    ON item_supplier_link(cost_class);
+
+-- ============================================================
+-- Phase 4 · 旧表名 → VIEW（桥接 v2，让现有 page SQL 不用改）
+-- 设计：
+--   · v2 表是唯一真表（item_v2 / shop_sales / item_inventory_snapshot_v2 等）
+--   · 旧表名（inventory_snapshot / sales_line / nst_* / item_master*）改成 VIEW
+--   · page / module 的 SELECT 不动，自动透传到 v2
+--   · ingester 已经直写 v2，旧表名 VIEW 只读
+--
+-- 执行顺序由 migrations.py PHASE4_VIEWS 控制：先 DROP 旧表 → CREATE VIEW
+-- ============================================================
+
+-- inventory_snapshot：原 NetSuite 库存快照（19 列）→ 桥到 item_inventory_snapshot_v2
+CREATE VIEW IF NOT EXISTS v_inventory_snapshot AS
+SELECT
+  internal_id, item_code, jan AS upc, display_name,
+  status, bin_number, location, handling_status,
+  qty_on_hand, qty_committed, qty_backorder,
+  std_cost, total_amount, avg_cost,
+  owner, department, snapshot_at,
+  '' AS source_file, imported_at
+FROM item_inventory_snapshot_v2;
+
+-- nst_inventory_snapshot：内容同 inventory_snapshot
+CREATE VIEW IF NOT EXISTS v_nst_inventory_snapshot AS
+SELECT * FROM v_inventory_snapshot;
+
+-- sales_line：原 4 类销售统一表 → 桥到 shop_sales
+CREATE VIEW IF NOT EXISTS v_sales_line AS
+SELECT
+  id, shop_id AS store,
+  jan AS item_code, jan AS upc,
+  '' AS display_name, '' AS handling_status, '' AS maker,
+  rank, qty_sold, unit_price AS unit_purchase_price,
+  revenue, cost AS defined_cost,
+  gross_profit, gross_margin,
+  period_start, period_end, source,
+  '' AS source_file, imported_at
+FROM shop_sales;
+
+-- nst_store_sales：店舗 × SKU 销售（FB_店舗 维度）→ shop_sales
+CREATE VIEW IF NOT EXISTS v_nst_store_sales AS
+SELECT
+  id, shop_id AS fb_store,
+  jan AS item_code, jan AS upc,
+  '' AS handling_status, '' AS display_name,
+  qty_sold, unit_price, revenue,
+  cost AS defined_cost, gross_profit, gross_margin,
+  rank, imported_at AS ingested_at
+FROM shop_sales;
+
+-- nst_item_summary：8 列商品概要 → item_v2
+CREATE VIEW IF NOT EXISTS v_nst_item_summary AS
+SELECT
+  jan AS upc, item_code, display_name, handling_status,
+  std_cost,
+  NULL AS available, NULL AS available_on_hand,
+  avg_cost,
+  '' AS source_file, imported_at
+FROM item_v2;
+
+-- item_master_netsuite：NetSuite 全量商品 → item_v2
+CREATE VIEW IF NOT EXISTS v_item_master_netsuite AS
+SELECT
+  internal_id, jan AS upc, display_name,
+  avg_cost, std_cost,
+  NULL AS last_purchase,
+  on_hand_total AS on_hand,
+  NULL AS available,
+  on_order_total AS on_order,
+  department, rank,
+  NULL AS sku_id, NULL AS created_at,
+  maker,
+  '' AS source_file, imported_at
+FROM item_v2;
+
+-- item_master：供应商口径商品主档 → item_v2
+CREATE VIEW IF NOT EXISTS v_item_master AS
+SELECT
+  jan, item_code, rank, maker, display_name, handling_status,
+  on_hand_total AS on_hand,
+  on_order_total AS on_order,
+  actual_cost, min_cost,
+  case_qty, order_lot, weight,
+  '' AS source_file, imported_at
+FROM item_v2;
