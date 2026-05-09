@@ -68,6 +68,8 @@ COLUMN_LABELS: dict[str, dict[str, str]] = {
 
     # ── 销售（shop_sales / item_sales_history）──
     "shop_id":          {"ja": "店舗ID",        "zh": "店铺 ID",   "en": "Shop ID"},
+    "store":            {"ja": "店舗",          "zh": "店铺",       "en": "Store"},
+    "fb_store":         {"ja": "FB店舗",        "zh": "FB 店铺",    "en": "FB Store"},
     "market_id":        {"ja": "市場",          "zh": "市场",       "en": "Market"},
     "platform":         {"ja": "プラットフォーム", "zh": "平台",     "en": "Platform"},
     "channel":          {"ja": "チャネル",      "zh": "渠道",       "en": "Channel"},

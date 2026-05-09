@@ -24,6 +24,7 @@ import pandas as pd
 import streamlit as st
 
 from shared.db import get_connection
+from shared.i18n_columns import localize_df
 from shared.i18n import lang_selector, t
 from shared.v2_browser import render_v2_quickview
 
@@ -420,7 +421,7 @@ with tab_simple:
 with tab_raw:
     raw_show = df_raw.copy()
     raw_show["gross_margin"] = (raw_show["gross_margin"] * 100).round(2).astype(str) + "%"
-    st.dataframe(raw_show, use_container_width=True, hide_index=True)
+    st.dataframe(localize_df(raw_show), use_container_width=True, hide_index=True)
     st.caption(t(f"共 {len(raw_show):,} 行 · 店舗 × SKU 拆分 (含 12 列源字段)"))
     csv = df_raw.to_csv(index=False).encode("utf-8-sig")
     st.download_button(

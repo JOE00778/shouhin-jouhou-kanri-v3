@@ -14,6 +14,7 @@ import pandas as pd
 import streamlit as st
 
 from shared.db import get_connection
+from shared.i18n_columns import localize_df
 from shared.i18n import lang_selector, t
 
 st.set_page_config(page_title=t("价格改善"), page_icon="💰", layout="wide")
@@ -127,7 +128,7 @@ if not rows:
 df_result = pd.DataFrame(rows).sort_values("差分")
 
 st.success(t(f"✅ 改善对象: {len(df_result)} 件"))
-st.dataframe(df_result, use_container_width=True)
+st.dataframe(localize_df(df_result), use_container_width=True)
 
 csv = df_result.to_csv(index=False).encode("utf-8-sig")
 st.download_button(

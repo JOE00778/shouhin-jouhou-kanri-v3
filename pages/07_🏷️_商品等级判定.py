@@ -1,5 +1,6 @@
 import streamlit as st
 from shared.i18n import t, lang_selector
+from shared.i18n_columns import localize_df
 import pandas as pd
 import sqlite3
 from pathlib import Path
@@ -229,7 +230,7 @@ with tab1:
         view_display = view.head(int(sample)).copy()
         display_cols = ['sku', 'name', 'old_rank', 'new_rank', 'trend', 'advice', 'sales', 'margin', 'rank_pct']
         display_cols = [c for c in display_cols if c in view_display.columns]
-        st.dataframe(view_display[display_cols], use_container_width=True, height=400)
+        st.dataframe(localize_df(view_display[display_cols]), use_container_width=True, height=400)
 
         # 确认操作区块
         st.markdown(t("### ✅ 确认变更"))
@@ -295,4 +296,4 @@ with tab2:
         quarters = sorted(history['quarter'].unique().tolist(), reverse=True)
         sel_q = st.multiselect(t("季度筛选"), options=quarters, default=quarters)
         view2 = history[history['quarter'].isin(sel_q)] if sel_q else history
-        st.dataframe(view2, use_container_width=True, height=500)
+        st.dataframe(localize_df(view2), use_container_width=True, height=500)

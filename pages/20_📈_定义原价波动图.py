@@ -15,6 +15,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from shared.db import get_connection
+from shared.i18n_columns import localize_df
 from shared.i18n import lang_selector, t
 
 st.set_page_config(page_title=t("定义原价波动图"), page_icon="📈", layout="wide")
@@ -113,7 +114,7 @@ with right:
         "cost_current": t("当前价"),
         "amp_pct_fmt": t("波动率"),
     })
-    st.dataframe(top_show, use_container_width=True, hide_index=True, height=420)
+    st.dataframe(localize_df(top_show), use_container_width=True, hide_index=True, height=420)
 
 st.divider()
 
@@ -153,7 +154,7 @@ view_show = view[[
     "amp_pct": t("波动率(%)"),
 })
 view_show[t("波动率(%)")] = view_show[t("波动率(%)")].map(lambda x: f"{x:.1f}")
-st.dataframe(view_show, use_container_width=True, hide_index=True, height=400)
+st.dataframe(localize_df(view_show), use_container_width=True, hide_index=True, height=400)
 st.caption(t(f"显示 {len(view)} / 共 {len(agg)} 个 SKU"))
 
 st.divider()
@@ -208,6 +209,6 @@ if options:
         t("变更时间"), t("旧价"), t("新价"), t("差额"),
         t("差额率"), t("来源"), t("变更人"), t("备注"),
     ]
-    st.dataframe(sub_show, use_container_width=True, hide_index=True)
+    st.dataframe(localize_df(sub_show), use_container_width=True, hide_index=True)
 else:
     st.info(t("当前过滤条件下无 SKU。"))

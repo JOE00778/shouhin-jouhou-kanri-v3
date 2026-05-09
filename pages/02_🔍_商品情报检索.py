@@ -307,7 +307,8 @@ if len(df_view) > 0:
         (pick_row["internal_id"],),
     ).fetchall()])
     if not inv_detail.empty:
-        st.dataframe(inv_detail, use_container_width=True, hide_index=True)
+        from shared.i18n_columns import localize_df
+        st.dataframe(localize_df(inv_detail), use_container_width=True, hide_index=True)
 
     # 销售明细
     st.markdown(t("**销售明细**"))
@@ -323,4 +324,5 @@ if len(df_view) > 0:
     if sales_detail.empty:
         st.caption(t("（无销售记录）"))
     else:
-        st.dataframe(sales_detail, use_container_width=True, hide_index=True)
+        from shared.i18n_columns import localize_df
+        st.dataframe(localize_df(sales_detail), use_container_width=True, hide_index=True)

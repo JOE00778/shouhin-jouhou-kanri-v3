@@ -14,6 +14,7 @@ import requests
 import streamlit as st
 
 from shared.db import get_connection
+from shared.i18n_columns import localize_df
 from shared.i18n import get_lang, lang_selector, t
 
 st.set_page_config(page_title=t("保质期管理"), page_icon="🧊", layout="wide")
@@ -209,7 +210,7 @@ if LARK_OK:
                         df_err["raw"] = df_err["raw"].apply(
                             lambda x: " | ".join(map(str, x)) if isinstance(x, (list, tuple)) else str(x)
                         )
-                    st.dataframe(df_err, use_container_width=True)
+                    st.dataframe(localize_df(df_err), use_container_width=True)
             except Exception as e:
                 st.error(t(f"❌ 同步失败: {e}"))
 else:

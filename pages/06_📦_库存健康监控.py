@@ -16,6 +16,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 from shared.i18n import t, lang_selector
+from shared.i18n_columns import localize_df
 import plotly.express as px
 
 from modules.inventory_health.metrics import THRESHOLD, batch_calc
@@ -133,7 +134,7 @@ for g in ["🟢 优秀", "🟡 健康", "🟠 注意", "🔴 死钱"]:
 
 # 按顺序重排
 matrix = matrix.loc[["A", "B", "C", "停売"], ["🟢 优秀", "🟡 健康", "🟠 注意", "🔴 死钱"]]
-st.dataframe(matrix, use_container_width=True)
+st.dataframe(localize_df(matrix), use_container_width=True)
 
 # ============================================================
 # 进货周期桶分布饼图
@@ -185,5 +186,5 @@ else:
     dead_full_display = dead_full[display_cols].copy()
     dead_full_display.columns = [t("SKU"), t("商品名"), t("等级"), t("进货周期"), t("跨比"), t("库存数"), t("定价原価"), t("死钱(¥)")]
 
-    st.dataframe(dead_full_display.head(100), use_container_width=True, height=400)
+    st.dataframe(localize_df(dead_full_display.head(100)), use_container_width=True, height=400)
     st.caption(t(f"显示前 100 行 / 共 {len(dead)} 条 🔴 死钱"))

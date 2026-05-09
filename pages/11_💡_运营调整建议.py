@@ -5,6 +5,7 @@
 from __future__ import annotations
 import streamlit as st
 from shared.i18n import t, lang_selector
+from shared.i18n_columns import localize_df
 import pandas as pd
 import sqlite3
 from pathlib import Path
@@ -66,7 +67,7 @@ st.divider()
 # 等级 × 建议矩阵
 st.markdown(t("### 等级 × 建议 矩阵"))
 matrix = pd.crosstab(df["rank"], df["advice"], margins=True, margins_name=t("合计"))
-st.dataframe(matrix, use_container_width=True)
+st.dataframe(localize_df(matrix), use_container_width=True)
 
 st.divider()
 
@@ -109,7 +110,7 @@ def _show(filtered_df: pd.DataFrame, top_n: int = 100):
     show = merged[[c for c in display_cols if c in merged.columns]].rename(
         columns=display_names
     )
-    st.dataframe(show, use_container_width=True, height=500)
+    st.dataframe(localize_df(show), use_container_width=True, height=500)
     st.caption(t(f"显示前 {min(len(show), top_n)} 行 / 共 {len(filtered_df)} 条"))
 
 
