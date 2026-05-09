@@ -64,6 +64,9 @@ def load_sku_view() -> pd.DataFrame:
                 SUM(total_amount) AS total_amount
             FROM inventory_snapshot
             WHERE department LIKE :dept_pattern
+              -- 弁天倉庫 = 退品暂存仓, 仅 HENPIN-EX bin 算入库存合计
+              -- (其他 bin 是历史/外部数据, 不参与销售决策)
+              AND (location != '弁天倉庫' OR bin_number = 'HENPIN-EX')
             GROUP BY internal_id
         ),
         sales_agg AS (
@@ -295,13 +298,17 @@ if len(df_view) > 0:
         if pick_row['turnover_rate'] is not None:
             st.metric("回転率", f"{pick_row['turnover_rate']:.2f}")
 
-    # 各仓库库存细分
+    # 各仓库库存细分 (弁天倉庫 仅显示 HENPIN-EX, 其他 bin 隐藏)
+    # total_amount 公式: ROUND(avg_cost * qty_on_hand) — 与 item_v2 汇总口径一致
     st.markdown(t("**各仓库库存细分**"))
     inv_detail = pd.DataFrame([dict(r) for r in conn.execute(
         """
-        SELECT location, bin_number, qty_on_hand, qty_committed, qty_backorder, std_cost, avg_cost
+        SELECT location, bin_number, qty_on_hand, qty_committed, qty_backorder,
+               std_cost, avg_cost,
+               ROUND(COALESCE(avg_cost, std_cost, 0) * COALESCE(qty_on_hand, 0), 2) AS total_amount
         FROM inventory_snapshot
         WHERE internal_id = ?
+          AND (location != '弁天倉庫' OR bin_number = 'HENPIN-EX')
         ORDER BY location, bin_number
         """,
         (pick_row["internal_id"],),
