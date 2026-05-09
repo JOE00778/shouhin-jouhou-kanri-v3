@@ -1375,8 +1375,14 @@ INGESTOR_REGISTRY: dict[str, callable] = {
 
 
 def detect_ingestor(filename: str) -> str | None:
-    """根据文件名启发式判断使用哪个 ingestor。"""
-    n = filename
+    """根据文件名启发式判断使用哪个 ingestor.
+
+    注意: macOS 文件名是 NFD (組合分解), Windows 是 NFC (組合).
+    例: プ 在 macOS 上是 フ + ゚ (U+30D5 + U+309A), 在 Windows 上是 U+30D7.
+    必须 normalize 到 NFC 才能匹配代码里的字符串字面量。
+    """
+    import unicodedata
+    n = unicodedata.normalize("NFC", filename)
     # 新格式（多仓多级表头）：在庫のスナップショット-980 / -xxx → inventory_multi
     if "在庫のスナップショット" in n:
         return "inventory_multi"
