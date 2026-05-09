@@ -64,12 +64,8 @@ def generate_proposal(
     Returns:
         list of dicts (含 sku/old_rank/new_rank/sales/margin/rank_pct 等)
     """
-    db_path = Path(db_path)
-    if not db_path.exists():
-        raise FileNotFoundError(f"Database not found: {db_path}")
-
-    conn = sqlite3.connect(str(db_path))
-    conn.row_factory = sqlite3.Row
+    from shared.db import get_connection
+    conn = get_connection()
 
     try:
         # ========================================================

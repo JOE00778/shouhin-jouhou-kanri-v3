@@ -131,14 +131,17 @@ else:
 st.divider()
 st.subheader(t("📜 操作历史（最近 7 天）"))
 
+from datetime import datetime as _dt, timedelta as _td
+_seven_days_ago = (_dt.now() - _td(days=7)).isoformat()
 hist = conn.execute(
     """
     SELECT id, item_id, item_key, reason, note, action, action_at
     FROM difficult_items_history
-    WHERE action_at >= datetime('now', '-7 days')
+    WHERE action_at >= ?
     ORDER BY id DESC
     LIMIT 200
-    """
+    """,
+    (_seven_days_ago,),
 ).fetchall()
 
 if not hist:

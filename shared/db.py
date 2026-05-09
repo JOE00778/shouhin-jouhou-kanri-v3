@@ -242,6 +242,16 @@ class _PostgresAdapter:
         cur.execute(script)  # Postgres 接受多语句
         return cur
 
+    # pandas / 其他库直接调 conn.cursor() 时透传到底层 psycopg2
+    def cursor(self, *args, **kwargs):
+        """暴露 cursor 接口供 pandas read_sql_query 等使用。"""
+        return self._raw.cursor(*args, **kwargs)
+
+    @property
+    def con(self):
+        """部分 pandas 内部会摸 .con；返回自身保证 cursor() 仍能调到。"""
+        return self
+
     def commit(self):
         self._raw.commit()
 

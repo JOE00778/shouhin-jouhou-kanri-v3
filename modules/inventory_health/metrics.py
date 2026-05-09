@@ -84,10 +84,10 @@ class HealthRecord(HealthGrade):
     pass
 
 
-def get_db_connection(db_path: str = "data_warehouse/warehouse.db") -> sqlite3.Connection:
-    conn = sqlite3.connect(db_path, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    return conn
+def get_db_connection(db_path: str = "data_warehouse/warehouse.db"):
+    """统一走 shared.db.get_connection，自动支持 Postgres / SQLite。"""
+    from shared.db import get_connection
+    return get_connection()
 
 
 def get_bucket(sku: str, conn: sqlite3.Connection) -> str:

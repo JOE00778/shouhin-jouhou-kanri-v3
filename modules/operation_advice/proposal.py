@@ -11,9 +11,8 @@ def generate_advice(year_month: str = "2026-04",
                     db_path: str = "data_warehouse/warehouse.db",
                     persist: bool = True) -> List[dict]:
     """跑全 SKU（B/C 档）出运营建议清单"""
-    db_path = Path(db_path)
-    conn = sqlite3.connect(str(db_path))
-    conn.row_factory = sqlite3.Row
+    from shared.db import get_connection
+    conn = get_connection()
 
     try:
         # 1. 拉等级（仅 B/C 档需要建议，A/停售跳过）

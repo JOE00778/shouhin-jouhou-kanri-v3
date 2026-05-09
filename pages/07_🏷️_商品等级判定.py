@@ -62,7 +62,7 @@ MONTH_OPTIONS = _gen_months(12)
 
 # 数据诊断 expander
 with st.expander(t("🩺 数据诊断 (点击展开看各表行数)"), expanded=False):
-    _conn = sqlite3.connect(str(DB))
+    _conn = get_connection()
     _diag = {}
     for label, sql in [
         ("inventory_snapshot 总行 (xls 系列)", "SELECT COUNT(*) FROM inventory_snapshot"),
@@ -170,7 +170,7 @@ with tab1:
         if 'sku' in df.columns:
             year_month = QUARTER_TO_MONTH.get(q, '2026-04')
             try:
-                conn = sqlite3.connect(str(DB))
+                conn = get_connection()
                 adv = pd.read_sql_query(
                     "SELECT sku, advice FROM operation_advice_monthly WHERE year_month=?",
                     conn, params=[year_month])
@@ -254,7 +254,7 @@ with tab1:
                         ))
 
                 # 写入 rank_history
-                conn = sqlite3.connect(str(DB))
+                conn = get_connection()
                 if rows_to_insert:
                     conn.executemany(
                         """INSERT OR REPLACE INTO rank_history
@@ -281,7 +281,7 @@ with tab1:
                         )
 
 with tab2:
-    conn = sqlite3.connect(str(DB))
+    conn = get_connection()
     history = pd.read_sql_query(
         "SELECT * FROM rank_history ORDER BY changed_at DESC",
         conn
