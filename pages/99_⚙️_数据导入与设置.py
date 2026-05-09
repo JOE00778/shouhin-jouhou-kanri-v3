@@ -128,8 +128,18 @@ with tab_import:
                 try:
                     ingestor_fn = INGESTOR_REGISTRY[key]
                     result = ingestor_fn(save_path, conn, source_name=name)
+                    # Postgres: 单个 ingest 完成后显式 commit，避免事务跨 ingest 累积
+                    try:
+                        conn.commit()
+                    except Exception:
+                        pass
                     results.append((name, key, result, None))
                 except Exception as e:
+                    # Postgres: 出错后必须 rollback，否则下个 ingest 在 aborted 事务里全失败
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
                     results.append((name, key, None, str(e)))
 
                 progress.progress((i + 1) / len(plan))

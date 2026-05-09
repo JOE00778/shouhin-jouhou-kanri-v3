@@ -110,9 +110,21 @@ class Ingestor:
             try:
                 conn.execute(sql, payload)
                 inserted_or_updated += 1
-            except sqlite3.Error as e:
+            except Exception as e:  # SQLite + Postgres 通用
+                # Postgres: 出错后事务进入 aborted 状态，必须 rollback 才能继续
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
                 errors += 1
-                self._record_error(conn, run_id, row_number, f"DB 错误: {e}", raw)
+                try:
+                    self._record_error(conn, run_id, row_number, f"DB 错误: {e}", raw)
+                    conn.commit()  # record_error 落库，下一行能继续
+                except Exception:
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
 
         # 简化：inserted+updated 不区分（INSERT OR REPLACE 不便区分）
         # 如要区分，未来改用 ON CONFLICT 显式判断
