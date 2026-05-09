@@ -93,6 +93,32 @@ def test_plain_insert_unchanged():
     assert "%s" in out
 
 
+def test_named_param_basic():
+    """SQLite :name → Postgres %(name)s（psycopg2 pyformat）"""
+    sql = "INSERT OR REPLACE INTO nst_item_summary (item_code, avg_cost) VALUES (:item_code, :avg_cost)"
+    out = _PostgresAdapter._adapt_sql(sql)
+    assert "%(item_code)s" in out
+    assert "%(avg_cost)s" in out
+    assert ":item_code" not in out
+
+
+def test_named_param_with_update():
+    sql = "UPDATE item_v2 SET maker = :maker, updated_at = :ts WHERE jan = :jan"
+    out = _PostgresAdapter._adapt_sql(sql)
+    assert "%(maker)s" in out
+    assert "%(ts)s" in out
+    assert "%(jan)s" in out
+
+
+def test_named_param_does_not_break_type_cast():
+    """::text Postgres 类型转换不能被误改"""
+    sql = "SELECT id::text, name::varchar FROM foo WHERE id = :id"
+    out = _PostgresAdapter._adapt_sql(sql)
+    assert "::text" in out
+    assert "::varchar" in out
+    assert "%(id)s" in out
+
+
 def test_all_known_ingest_tables_register():
     """确保所有 ingest 链路上会写入的表都登记了 conflict 列。"""
     expected_tables = {

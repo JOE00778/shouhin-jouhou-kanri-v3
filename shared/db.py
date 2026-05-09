@@ -155,6 +155,9 @@ class _PostgresAdapter:
         r"\bINSERT\s+OR\s+IGNORE\s+INTO\s+(\w+)\s*\(([^)]+)\)\s*VALUES\b",
         re.IGNORECASE | re.DOTALL,
     )
+    # 命名占位符 :name → %(name)s （psycopg2 pyformat 风格）
+    # (?<!:) 跳过 ::text 类型转换；(?<!\w) 跳过单词中间的冒号（如 'http://'）
+    _RE_NAMED_PARAM = re.compile(r"(?<!:)(?<!\w):([a-zA-Z_]\w*)\b")
 
     def __init__(self, raw):
         self._raw = raw
@@ -195,8 +198,13 @@ class _PostgresAdapter:
 
     @classmethod
     def _adapt_sql(cls, sql: str) -> str:
-        """SQLite-→-Postgres 语法适配。占位符 `?` → `%s`，UPSERT 自动改写。"""
+        """SQLite-→-Postgres 语法适配。
+        · INSERT OR REPLACE / IGNORE → ON CONFLICT
+        · `?`     → `%s`              （positional 占位符）
+        · `:name` → `%(name)s`        （named 占位符 → psycopg2 pyformat）
+        """
         sql = cls._rewrite_upsert(sql)
+        sql = cls._RE_NAMED_PARAM.sub(r"%(\1)s", sql)
         return sql.replace("?", "%s")
 
     def execute(self, sql, params=None):
