@@ -1165,12 +1165,13 @@ def ingest_item_summary(path, conn, *, source_name: str | None = None) -> dict:
 def ingest_monthly_turnover(
     path, conn, *, source_name: str | None = None
 ) -> dict:
-    """アイテム月完売率300.xls → item_monthly_turnover (按 item_code × location × month UPSERT).
+    """アイテム月完売率.xls → item_monthly_turnover (按 item_code × location × month UPSERT).
 
-    19 列, header_row=7, period 在 row 4.
+    19 列固定, header_row 动态检测 (旧版=7 / 新版=6, NetSuite 会调整 preamble 行数).
     sell_through_rate = qty_sold / (open_qty + qty_total_in)
     risk_label: ≥0.9 断货风险 / 0.5-0.9 正常 / <0.5 压库存
     """
+    from shared.xml_xls import detect_header_row
     path = Path(path)
     source_name = source_name or path.name
     period_start, period_end = _extract_period(path)
@@ -1186,7 +1187,9 @@ def ingest_monthly_turnover(
             (year_month,),
         )
 
-    rows = parse_to_dicts(path, header_row=7)
+    # 动态检测 header (新版 row 6 / 旧版 row 7)
+    header_row = detect_header_row(path)
+    rows = parse_to_dicts(path, header_row=header_row)
 
     # 预读 item_code → jan 映射 (从 item_v2)
     item_to_jan: dict[str, str] = {}
@@ -1252,9 +1255,13 @@ def ingest_monthly_turnover(
             else:
                 risk_label = "正常"
 
+            # jan 优先用 item_v2 lookup; fallback 用 item_code 自身 (新版文件 アイテム 列就是 JAN)
+            jan_val = item_to_jan.get(item_code)
+            if not jan_val and _is_valid_jan(item_code):
+                jan_val = item_code
             payload = {
                 "item_code": item_code,
-                "jan": item_to_jan.get(item_code),
+                "jan": jan_val,
                 "location": location,
                 "department": department,
                 "year_month": year_month,
