@@ -595,6 +595,7 @@ _NAV_GROUPS: list[tuple[str | None, list[tuple[str, str]]]] = [
         ("pages/21_🚀_Shopee上架.py", "🚀 Shopee 上架"),
     ]),
     ("📦 订货决策", [
+        ("pages/18_📦_订货依据.py", "📦 订货依据 (完売率)"),
         ("pages/08_📦_発注AI.py", "📦 発注AI"),
         ("pages/10_📦_発注書作成.py", "📦 発注書作成"),
         ("pages/09_📜_発注履歴.py", "📜 発注履歴"),
@@ -605,7 +606,6 @@ _NAV_GROUPS: list[tuple[str | None, list[tuple[str, str]]]] = [
         ("pages/07_🏷️_商品等级判定.py", "🏷️ 商品等级判定"),
         ("pages/16_📈_等级历史趋势.py", "📈 等级历史趋势"),
         ("pages/13_⚠️_改廃確認.py", "⚠️ 改废确认"),
-        ("pages/18_📦_订货依据.py", "📦 订货依据 (完売率)"),
         ("pages/12_🚫_入荷困難商品.py", "🚫 入荷困难商品"),
         ("pages/03_💰_定義原価編集.py", "💰 定义原价编辑"),
         ("pages/20_📈_定义原价波动图.py", "📈 定义原价波动图"),
