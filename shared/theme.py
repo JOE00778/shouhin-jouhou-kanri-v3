@@ -22,9 +22,12 @@ _THEME_CSS = """
    优先 SF Pro（macOS/iOS 自带），降级 Inter / Noto Sans JP */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap');
 
-html, body, [class*="css"], [data-testid] {
+/* 字体：只设 html/body，让继承传递；不覆盖 Streamlit 内部
+   为图标 span 设置的 Material Symbols Outlined 字体（否则 ligature 失效，
+   会露出 keyboard_arrow_down / keyboard_arrow_right 等原始文本） */
+html, body {
     font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text',
-                 'Inter', 'Noto Sans JP', 'Helvetica Neue', Arial, sans-serif !important;
+                 'Inter', 'Noto Sans JP', 'Helvetica Neue', Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
 }
@@ -33,11 +36,11 @@ html, body, [class*="css"], [data-testid] {
 [data-testid="stAppViewContainer"] {
     background: #f5f5f7;
 }
+/* 顶部 header 完全透明，不再遮住 h1 标题 */
 [data-testid="stHeader"] {
-    background: rgba(245, 245, 247, 0.72);
-    backdrop-filter: saturate(180%) blur(20px);
-    -webkit-backdrop-filter: saturate(180%) blur(20px);
-    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    background: transparent;
+    border-bottom: none;
+    height: auto;
 }
 
 /* ===== 标题：Apple 大字号 + 负字距 ===== */
