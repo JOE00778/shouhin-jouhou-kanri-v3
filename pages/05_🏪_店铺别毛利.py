@@ -124,7 +124,7 @@ if is_daily:
     # 构造 selectbox 选项：「最近 7 天」「最近 30 天」+ 每个具体日期
     today_pseudo = "__last7__"
     month_pseudo = "__last30__"
-    daily_options = [today_pseudo, month_pseudo] + daily_dates
+    daily_options = [today_pseudo, month_pseudo]
 
     def _fmt_daily(opt: str) -> str:
         if opt == today_pseudo:
