@@ -58,38 +58,46 @@ tab1, tab2, tab3 = st.tabs([
     t("❌ 失败行明细 (_ingest_errors)"),
 ])
 
+def _safe_query(sql: str):
+    """每个 SELECT 独立 try/except, 失败 rollback 恢复 PG 事务,
+    避免 'current transaction is aborted' 影响后续 query。"""
+    try:
+        return conn.execute(sql).fetchall(), None
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return None, str(e)
+
+
 with tab1:
     st.subheader(t("各业务表当前行数"))
     rows = []
     for tbl, meaning in TABLES_TO_CHECK:
-        try:
-            r = conn.execute(f"SELECT COUNT(*) AS c FROM {tbl}").fetchone()
-            cnt = r["c"] if r else 0
-            # imported_at 列可能不存在,用 try
-            latest = "-"
-            try:
-                rmax = conn.execute(
-                    f"SELECT MAX(imported_at) AS m FROM {tbl}"
-                ).fetchone()
-                if rmax and rmax["m"]:
-                    latest = str(rmax["m"])[:19]
-            except Exception:
-                pass
-            rows.append({
-                t("表名"): tbl,
-                t("业务含义"): meaning,
-                t("行数"): cnt,
-                t("最新写入"): latest,
-                t("状态"): "✅" if cnt > 0 else "⚠️ 空",
-            })
-        except Exception as e:
+        cnt_rows, err = _safe_query(f"SELECT COUNT(*) AS c FROM {tbl}")
+        if err:
             rows.append({
                 t("表名"): tbl,
                 t("业务含义"): meaning,
                 t("行数"): 0,
                 t("最新写入"): "-",
-                t("状态"): f"❌ {str(e)[:50]}",
+                t("状态"): f"❌ {err[:60]}",
             })
+            continue
+        cnt = cnt_rows[0]["c"] if cnt_rows else 0
+        latest_rows, _ = _safe_query(f"SELECT MAX(imported_at) AS m FROM {tbl}")
+        latest = (
+            str(latest_rows[0]["m"])[:19]
+            if latest_rows and latest_rows[0]["m"] else "-"
+        )
+        rows.append({
+            t("表名"): tbl,
+            t("业务含义"): meaning,
+            t("行数"): cnt,
+            t("最新写入"): latest,
+            t("状态"): "✅" if cnt > 0 else "⚠️ 空",
+        })
 
     df_tables = pd.DataFrame(rows)
     st.dataframe(df_tables, use_container_width=True, hide_index=True, height=560)
@@ -97,52 +105,48 @@ with tab1:
 
 with tab2:
     st.subheader(t("最近 50 次上传记录"))
-    try:
-        runs = conn.execute(
-            "SELECT run_id, ingestor, source_file, total_rows, "
-            "inserted, errors, run_at, notes "
-            "FROM _ingest_runs ORDER BY run_id DESC LIMIT 50"
-        ).fetchall()
-        if not runs:
-            st.info(t("暂无上传记录。到「⚙️ 数据导入与设置」上传文件后会自动生成。"))
-        else:
-            df_runs = pd.DataFrame([dict(r) for r in runs])
-            # 状态标记
-            df_runs[t("状态")] = df_runs.apply(
-                lambda r: "❌ 全失败" if r["inserted"] == 0 and r["total_rows"] > 0
-                else ("⚠️ 部分失败" if r["errors"] > 0 else "✅"),
-                axis=1,
-            )
-            st.dataframe(
-                df_runs, use_container_width=True, hide_index=True, height=560,
-            )
-            # 异常 run 提醒
-            failed = df_runs[df_runs["inserted"] == 0]
-            if not failed.empty:
-                st.error(t(
-                    f"⚠️ {len(failed)} 次上传 inserted=0,文件读取了但没有任何行入库。"
-                    "切到「❌ 失败行明细」Tab 看具体错误信息。"
-                ))
-    except Exception as e:
-        st.error(f"_ingest_runs 表读取失败: {e}")
+    runs, err = _safe_query(
+        "SELECT run_id, ingestor, source_file, total_rows, "
+        "inserted, errors, run_at, notes "
+        "FROM _ingest_runs ORDER BY run_id DESC LIMIT 50"
+    )
+    if err:
+        st.error(f"_ingest_runs 表读取失败: {err}")
+    elif not runs:
+        st.info(t("暂无上传记录。到「⚙️ 数据导入与设置」上传文件后会自动生成。"))
+    else:
+        df_runs = pd.DataFrame([dict(r) for r in runs])
+        df_runs[t("状态")] = df_runs.apply(
+            lambda r: "❌ 全失败" if r["inserted"] == 0 and r["total_rows"] > 0
+            else ("⚠️ 部分失败" if r["errors"] > 0 else "✅"),
+            axis=1,
+        )
+        st.dataframe(
+            df_runs, use_container_width=True, hide_index=True, height=560,
+        )
+        failed = df_runs[df_runs["inserted"] == 0]
+        if not failed.empty:
+            st.error(t(
+                f"⚠️ {len(failed)} 次上传 inserted=0,文件读取了但没有任何行入库。"
+                "切到「❌ 失败行明细」Tab 看具体错误信息。"
+            ))
 
 
 with tab3:
     st.subheader(t("最近 100 条失败行"))
-    try:
-        errs = conn.execute(
-            "SELECT e.id, e.run_id, r.ingestor, r.source_file, "
-            "e.row_number, e.error_message "
-            "FROM _ingest_errors e "
-            "LEFT JOIN _ingest_runs r ON r.run_id = e.run_id "
-            "ORDER BY e.id DESC LIMIT 100"
-        ).fetchall()
-        if not errs:
-            st.success(t("✅ 没有失败行记录。"))
-        else:
-            df_errs = pd.DataFrame([dict(r) for r in errs])
-            st.dataframe(
-                df_errs, use_container_width=True, hide_index=True, height=560,
-            )
-    except Exception as e:
-        st.error(f"_ingest_errors 表读取失败: {e}")
+    errs, err = _safe_query(
+        "SELECT e.id, e.run_id, r.ingestor, r.source_file, "
+        "e.row_number, e.error_message "
+        "FROM _ingest_errors e "
+        "LEFT JOIN _ingest_runs r ON r.run_id = e.run_id "
+        "ORDER BY e.id DESC LIMIT 100"
+    )
+    if err:
+        st.error(f"_ingest_errors 表读取失败: {err}")
+    elif not errs:
+        st.success(t("✅ 没有失败行记录。"))
+    else:
+        df_errs = pd.DataFrame([dict(r) for r in errs])
+        st.dataframe(
+            df_errs, use_container_width=True, hide_index=True, height=560,
+        )
