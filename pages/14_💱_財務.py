@@ -60,58 +60,28 @@ st.divider()
 # ============================================================
 if section == SECTION_SHOPIFY:
     st.subheader(t("🛍 Shopify 自建站财务"))
-    st.warning(t("🚧 数据接入计划中 · 详见下方接入清单"))
+    st.warning(t("🚧 数据接入计划中 (SmikieJapan · PH/KR/US)"))
 
-    st.markdown(t("""
-##### 🏪 自建站结构
-
-- **站点名: SmikieJapan** (smikiejapan.com, 单一 Shopify store)
-- 站下挂 **3 个市场** (Shopify Markets):
+    with st.expander(t("📋 详细接入计划与下一步"), expanded=False):
+        st.markdown(t("""
+**站点结构**: SmikieJapan (smikiejapan.com, 单 store) → 3 markets
 
 | 市场 | 货币 | 状态 |
 |---|---|---|
-| PH (菲律宾) | PHP | 已部署 (Empire 主题) |
-| KR (韩国) | KRW | **新增市场** (财务规划首次确认) |
-| US (美国) | USD | 已部署 |
+| PH | PHP | 已部署 |
+| KR | KRW | 新增 |
+| US | USD | 已部署 |
 
-##### 🔌 待接入数据源
+**待接入数据源**:
+1. Shopify Payouts → `shopify_payouts (payout_id, market, payout_date, gross, fees, net)`
+2. Shopify Orders → `shopify_orders (order_no, market, order_created_at, total_price, refunds)`
+3. Adjustments / Refunds (随 orders)
 
-1. **Shopify Payouts** — 通过 Shopify Payments → Reports 导出 CSV 或 GraphQL `payouts` query
-   → 落表 `shopify_payouts (payout_id, market, payout_date, gross, fees, net, currency)`
-2. **Shopify Orders** — Admin → Orders → Export 或 GraphQL `orders` query
-   → 落表 `shopify_orders (order_no, market, order_created_at, total_price, refunds)`
-3. **Adjustments / Refunds** — 跟随 orders 一起导出
+**颗粒度** (与 Shopee 板块一致): 按【订单成立时间】月份切分 / NST 6 列 / 周月切换 / 3 市场可独立可汇总
 
-##### 🎯 颗粒度对齐 (与 Shopee 板块一致)
-
-- 按【订单成立时间】月份切分 (NST 上传规则)
-- 6 列输出: 编号 / 订单编号 / 拨款完成日期 / 付款金额 / 退款金额 / 账单金额
-- 支持按周 / 按月 切换
-- 3 市场 (PH/KR/US) 可独立查看, 也可汇总为「SmikieJapan 整体」
-
-##### ⏭️ 下一步
-
-1. 与 Boss 确认 Shopify Payments 接入方式 (CSV 导出 vs API)
-2. 设计 `shopify_payouts` / `shopify_orders` 表结构 (`market` 字段值: PH / KR / US)
-3. 实现 ingester (`xls_ingest.ingest_shopify_payouts`)
-4. 在本页添加 Shopify 视角的 NST Tab + 市场维度
+**下一步**: 1) 接入方式 (CSV vs API) 2) schema 设计 3) ingester 4) 本页加 Shopify Tab
 """))
-
-    st.info(t(
-        "💡 SmikieJapan store 主题已部署 (Empire 主题, 当前 US/PH 上线; KR 市场为新增), "
-        "但 Shopify Payments 财务流尚未对接 NST 上传 pipeline。"
-    ))
-
     st.stop()
-
-
-# ============================================================
-# 以下为板块 1: Shopee / Lazada (东南亚)
-# ============================================================
-st.caption(t(
-    "颗粒度对齐 NST 上传: 订单成立时间月份 × 6 列 · "
-    "数据源: 订单导出.xlsx + *.income.已拨款.*.xlsx"
-))
 
 
 # ============================================================
@@ -349,40 +319,39 @@ GRAN_LABEL_TO_COL = {
     t("按月"): "order_create_month",
 }
 
-c_gran, c_period, c_market, c_country, c_seller = st.columns([1, 1.5, 1, 1, 1.2])
-with c_gran:
-    gran_label = st.radio(
-        t("粒度"), list(GRAN_LABEL_TO_COL.keys()), horizontal=False,
-    )
-    gran_col = GRAN_LABEL_TO_COL[gran_label]
+# 筛选条件折叠在 expander 内（默认展开，但布局更紧凑：单行 5 column）
+with st.expander(t("🔍 筛选条件"), expanded=True):
+    c_gran, c_period, c_market, c_country, c_seller = st.columns([1, 1.5, 1, 1, 1.2])
+    with c_gran:
+        gran_label = st.radio(
+            t("粒度"), list(GRAN_LABEL_TO_COL.keys()), horizontal=False,
+        )
+        gran_col = GRAN_LABEL_TO_COL[gran_label]
 
-periods = []
-if not df_income.empty:
-    periods = sorted(
-        df_income[gran_col].dropna().unique().tolist(), reverse=True,
-    )
-
-period_label = (
-    t("订单成立周 (ISO YYYY-Www)") if gran_col == "order_create_week"
-    else t("订单成立月份 (NST 文件切分依据)")
-)
-with c_period:
-    sel_period = st.selectbox(period_label, [t("全部")] + periods)
-with c_market:
-    markets = []
-    if not df_income.empty and "market" in df_income.columns:
-        markets = sorted(df_income["market"].dropna().unique().tolist())
-    sel_market = st.selectbox(t("市场"), [t("全部")] + markets)
-with c_country:
-    countries = []
+    periods = []
     if not df_income.empty:
-        countries = sorted(df_income["country"].dropna().unique().tolist())
-    sel_country = st.selectbox(t("国家"), [t("全部")] + countries)
-with c_seller:
-    sellers = []
-    if not df_income.empty and "seller_account" in df_income.columns:
-        sellers = sorted(df_income["seller_account"].dropna().unique().tolist())
-    sel_seller = st.selectbox(t("店铺账号 (seller_account)"), [t("全部")] + sellers)
+        periods = sorted(
+            df_income[gran_col].dropna().unique().tolist(), reverse=True,
+        )
+
+    period_label = t("订单成立周") if gran_col == "order_create_week" else t("订单成立月份")
+    with c_period:
+        sel_period = st.selectbox(period_label, [t("全部")] + periods)
+    with c_market:
+        markets = []
+        if not df_income.empty and "market" in df_income.columns:
+            markets = sorted(df_income["market"].dropna().unique().tolist())
+        sel_market = st.selectbox(t("市场"), [t("全部")] + markets)
+    with c_country:
+        countries = []
+        if not df_income.empty:
+            countries = sorted(df_income["country"].dropna().unique().tolist())
+        sel_country = st.selectbox(t("国家"), [t("全部")] + countries)
+    with c_seller:
+        sellers = []
+        if not df_income.empty and "seller_account" in df_income.columns:
+            sellers = sorted(df_income["seller_account"].dropna().unique().tolist())
+        sel_seller = st.selectbox(t("店铺账号"), [t("全部")] + sellers)
 
 # 应用筛选 (income 表)
 if not df_income.empty:
@@ -445,11 +414,12 @@ c5.metric(t("拨款金额合计 (¥)"), f"¥{sum_payout:,.0f}")
 
 period_axis_label = t("订单成立周") if gran_col == "order_create_week" else t("订单成立月份")
 
-st.info(t(
-    f"📍 颗粒度: {period_axis_label} × 店铺账号 (NST 上传切分仍以月份为基准) · "
-    "💴 跨国汇总按 country × 公司固定汇率换算为日元 · "
-    "PHP=2.4 / TWD=4.57 / MYR=36.48 / SGD=113.44 / USD=145"
-))
+with st.expander(t("💴 颗粒度 / 汇率 说明"), expanded=False):
+    st.markdown(t(
+        f"- 颗粒度: **{period_axis_label} × 店铺账号** (NST 上传切分仍以月份为基准)\n"
+        f"- 跨国汇总按 country × 公司固定汇率换算为日元:\n"
+        f"  PHP=2.4 · TWD=4.57 · MYR=36.48 · SGD=113.44 · USD=145"
+    ))
 st.divider()
 
 
