@@ -10,6 +10,8 @@ from datetime import datetime
 st.set_page_config(page_title=t("改廃確認"), page_icon="⚠️", layout="wide")
 from shared.auth import require_password
 require_password()
+from shared.theme import inject_theme
+inject_theme()
 lang_selector()
 
 # ============================================================================
@@ -65,10 +67,10 @@ tab1, tab2 = st.tabs([t('🆕 待確認'), t('📜 历史回看')])
 with tab1:
     # v2 决策：只看 取扱区分 != 取扱中止 的 SKU（已停售的不需要再扫改廃）
     # 数据源用 nst_inventory_snapshot.handling_status（更权威，跟 NetSuite 同步）
-    pending = pd.read_sql_query("""
+    _rows_pending = conn.execute("""
         SELECT
             a.*,
-            COALESCE(i.display_name, '?') AS name,
+            COALESCE(i.display_name, '-') AS name,
             i.qty_on_hand AS qty,
             i.handling_status AS netsuite_status
         FROM discontinue_alerts a
@@ -82,7 +84,8 @@ with tab1:
         WHERE a.acknowledged_by IS NULL
           AND (i.handling_status IS NULL OR i.handling_status NOT IN ('取扱中止', 'メーカー取扱中止'))
         ORDER BY a.detected_at DESC
-    """, conn)
+    """).fetchall()
+    pending = pd.DataFrame([dict(r) for r in _rows_pending])
 
     if pending.empty:
         st.success(t("✅ 暂无待確認改廃信号"))
@@ -126,12 +129,13 @@ with tab1:
 # ============================================================================
 
 with tab2:
-    history = pd.read_sql_query("""
+    _rows_hist = conn.execute("""
         SELECT * FROM discontinue_alerts
         WHERE acknowledged_by IS NOT NULL
         ORDER BY acknowledged_at DESC
         LIMIT 500
-    """, conn)
+    """).fetchall()
+    history = pd.DataFrame([dict(r) for r in _rows_hist])
 
     if history.empty:
         st.info(t("暂无历史确认记录"))

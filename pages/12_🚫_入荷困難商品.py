@@ -16,6 +16,8 @@ from shared.db import get_connection
 st.set_page_config(page_title=t("入荷困難商品"), page_icon="🚫", layout="wide")
 from shared.auth import require_password
 require_password()
+from shared.theme import inject_theme
+inject_theme()
 lang_selector()
 conn = get_connection()
 

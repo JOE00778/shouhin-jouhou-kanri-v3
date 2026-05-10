@@ -22,6 +22,8 @@ from shared.i18n_columns import localize_df
 st.set_page_config(page_title=t("発注書作成"), page_icon="📦", layout="wide")
 from shared.auth import require_password
 require_password()
+from shared.theme import inject_theme
+inject_theme()
 lang_selector()
 conn = get_connection()
 
