@@ -238,12 +238,34 @@ def _fmt_money(x):
 
 
 # ============================================================
-# 数据加载
+# 懒加载：先只查筛选选项的 distinct，不读全表数据
+# 用户在筛选 expander 内点【🔍 查询】后，才 SELECT 全表 + 渲染
 # ============================================================
-df_orders = _df("SELECT * FROM shopee_orders_raw")
-df_income = _df("SELECT * FROM shopee_income_lines")
+@st.cache_data(ttl=120, show_spinner=False)
+def _load_filter_options() -> dict:
+    """轻量 distinct 查询，给筛选下拉填充选项。"""
+    def _list(sql: str) -> list:
+        return [r[0] for r in conn.execute(sql).fetchall() if r[0] is not None]
+    # income 表派生列在 ingest 时不一定存在，用 strftime/原始字段抽取
+    months = _list(
+        "SELECT DISTINCT substr(order_created_at, 1, 7) AS m "
+        "FROM shopee_income_lines "
+        "WHERE order_created_at IS NOT NULL ORDER BY m DESC"
+    )
+    countries = _list(
+        "SELECT DISTINCT seller_account FROM shopee_income_lines "
+        "WHERE seller_account IS NOT NULL"
+    )
+    sellers = list(countries)
+    return {
+        "months": months, "countries": countries, "sellers": sellers,
+    }
 
-if df_orders.empty and df_income.empty:
+# 检查是否有数据（轻量 COUNT，不读全表）
+_has_income = conn.execute("SELECT COUNT(*) AS c FROM shopee_income_lines").fetchone()["c"] > 0
+_has_orders = conn.execute("SELECT COUNT(*) AS c FROM shopee_orders_raw").fetchone()["c"] > 0
+
+if not _has_income and not _has_orders:
     st.warning(t(
         "⚠️ 数据为空。请到「⚙️ 数据导入与设置」上传:\n"
         "1) 订单导出-*.xlsx\n"
@@ -251,13 +273,19 @@ if df_orders.empty and df_income.empty:
     ))
     st.stop()
 
-# 数值化 + 派生列
+filter_opts = _load_filter_options()
+
+# 数值化用列名（数据加载后才使用）
 fee_cols_all = [
     "gross_price", "product_discount", "refund_amount",
     *BILL_FEE_COLS, "payout_amount",
 ]
 
-if not df_income.empty:
+
+def _process_income(df_income):
+    """数值化 + 派生列（NST 切分 / country / market / nst 三金额 / JPY 系数）。"""
+    if df_income.empty:
+        return df_income
     for c in fee_cols_all:
         if c in df_income.columns:
             df_income[c] = pd.to_numeric(df_income[c], errors="coerce").fillna(0.0)
@@ -288,8 +316,13 @@ if not df_income.empty:
 
     # JPY 换算系数
     df_income["_jpy_rate"] = df_income["country"].map(FX_TO_JPY).fillna(1.0)
+    return df_income
 
-if not df_orders.empty:
+
+def _process_orders(df_orders, df_income):
+    """加 country/market/platform，必要时与 income 合并 month/week。"""
+    if df_orders.empty:
+        return df_orders
     df_orders["country"] = df_orders["shop_name"].apply(_country_from_shop)
     df_orders["market"] = df_orders["country"].apply(_market_from_country)
     if "platform" not in df_orders.columns:
@@ -305,10 +338,10 @@ if not df_orders.empty:
             on="order_no", how="left",
             suffixes=("", "_income"),
         )
-        # 优先使用 income 表的 market (国家更准确), fallback 到 orders 自身的 market
         if "market_income" in df_orders.columns:
             df_orders["market"] = df_orders["market_income"].fillna(df_orders["market"])
             df_orders.drop(columns=["market_income"], inplace=True)
+    return df_orders
 
 
 # ============================================================
@@ -319,44 +352,75 @@ GRAN_LABEL_TO_COL = {
     t("按月"): "order_create_month",
 }
 
-# 筛选条件折叠在 expander 内（默认展开，但布局更紧凑：单行 5 column）
+# 筛选 expander：选项来自轻量 distinct（filter_opts），不读全表
+# 用户调整后必须点【🔍 查询】才会真正 SELECT 全表 + 渲染
 with st.expander(t("🔍 筛选条件"), expanded=True):
     c_gran, c_period, c_market, c_country, c_seller = st.columns([1, 1.5, 1, 1, 1.2])
     with c_gran:
         gran_label = st.radio(
             t("粒度"), list(GRAN_LABEL_TO_COL.keys()), horizontal=False,
+            key="fin_gran",
         )
         gran_col = GRAN_LABEL_TO_COL[gran_label]
-
-    periods = []
-    if not df_income.empty:
-        periods = sorted(
-            df_income[gran_col].dropna().unique().tolist(), reverse=True,
+    with c_period:
+        sel_period = st.selectbox(
+            t("订单成立月份"), [t("全部")] + filter_opts["months"],
+            key="fin_period",
+        )
+    with c_market:
+        sel_market = st.selectbox(
+            t("市场"),
+            [t("全部"), t("东南亚"), t("韩国"), t("其他")],
+            key="fin_market",
+        )
+    with c_country:
+        _countries = sorted({_country_from_seller(s) for s in filter_opts["sellers"]})
+        sel_country = st.selectbox(
+            t("国家"), [t("全部")] + _countries, key="fin_country",
+        )
+    with c_seller:
+        sel_seller = st.selectbox(
+            t("店铺账号"), [t("全部")] + filter_opts["sellers"],
+            key="fin_seller",
         )
 
-    period_label = t("订单成立周") if gran_col == "order_create_week" else t("订单成立月份")
-    with c_period:
-        sel_period = st.selectbox(period_label, [t("全部")] + periods)
-    with c_market:
-        markets = []
-        if not df_income.empty and "market" in df_income.columns:
-            markets = sorted(df_income["market"].dropna().unique().tolist())
-        sel_market = st.selectbox(t("市场"), [t("全部")] + markets)
-    with c_country:
-        countries = []
-        if not df_income.empty:
-            countries = sorted(df_income["country"].dropna().unique().tolist())
-        sel_country = st.selectbox(t("国家"), [t("全部")] + countries)
-    with c_seller:
-        sellers = []
-        if not df_income.empty and "seller_account" in df_income.columns:
-            sellers = sorted(df_income["seller_account"].dropna().unique().tolist())
-        sel_seller = st.selectbox(t("店铺账号"), [t("全部")] + sellers)
+    bcol1, bcol2, _ = st.columns([1, 1, 4])
+    with bcol1:
+        if st.button(t("🔍 查询"), type="primary", use_container_width=True):
+            st.session_state["fin_run"] = True
+            st.session_state["fin_filter_snapshot"] = (
+                gran_label, sel_period, sel_market, sel_country, sel_seller,
+            )
+    with bcol2:
+        if st.button(t("🔄 重置"), use_container_width=True):
+            for k in ["fin_run", "fin_filter_snapshot"]:
+                st.session_state.pop(k, None)
+            st.rerun()
+
+# 未点查询 → 不读全表，直接 stop
+if not st.session_state.get("fin_run"):
+    st.info(t("👆 选好筛选条件后点【🔍 查询】加载数据"))
+    st.stop()
+
+# 筛选条件已变更但没重新查询 → 提醒
+_curr_snap = (gran_label, sel_period, sel_market, sel_country, sel_seller)
+if st.session_state.get("fin_filter_snapshot") != _curr_snap:
+    st.warning(t("⚠️ 筛选条件已变更，请重新点【🔍 查询】"))
+    st.stop()
+
+# ============================================================
+# 数据加载（此处才 SELECT 全表 + 内存处理 + 应用筛选）
+# ============================================================
+with st.spinner(t("📊 正在加载数据...")):
+    df_income = _df("SELECT * FROM shopee_income_lines")
+    df_orders = _df("SELECT * FROM shopee_orders_raw")
+    df_income = _process_income(df_income)
+    df_orders = _process_orders(df_orders, df_income)
 
 # 应用筛选 (income 表)
 if not df_income.empty:
     if sel_period != t("全部"):
-        df_income = df_income[df_income[gran_col] == sel_period]
+        df_income = df_income[df_income["order_create_month"] == sel_period]
     if sel_market != t("全部") and "market" in df_income.columns:
         df_income = df_income[df_income["market"] == sel_market]
     if sel_country != t("全部"):
@@ -366,10 +430,10 @@ if not df_income.empty:
 
 # 应用筛选 (orders 表)
 if not df_orders.empty:
-    if sel_period != t("全部") and gran_col in df_orders.columns:
+    if sel_period != t("全部") and "order_create_month" in df_orders.columns:
         df_orders = df_orders[
-            (df_orders[gran_col] == sel_period)
-            | df_orders[gran_col].isna()
+            (df_orders["order_create_month"] == sel_period)
+            | df_orders["order_create_month"].isna()
         ]
     if sel_market != t("全部") and "market" in df_orders.columns:
         df_orders = df_orders[df_orders["market"] == sel_market]
