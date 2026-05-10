@@ -31,7 +31,9 @@ from shared.i18n import lang_selector, t
 
 st.set_page_config(page_title=t("財務"), page_icon="💱", layout="wide")
 from shared.auth import require_password
+from shared.theme import inject_theme
 require_password()
+inject_theme()
 lang_selector()
 conn = get_connection()
 
@@ -588,7 +590,35 @@ with tab_nst:
             [t("店铺账号"), t("订单成立月份"), "编号"],
             ascending=[True, False, True],
         )
-        st.dataframe(nst_6cols, use_container_width=True, hide_index=True, height=420)
+
+        # 密度 + 列显示控件 (Phase 2A)
+        _dctl1, _dctl2 = st.columns([1, 3])
+        with _dctl1:
+            _density = st.radio(
+                t("密度"),
+                [t("紧凑"), t("标准"), t("宽松")],
+                horizontal=True,
+                index=1,
+                key=f"density_{__file__}",
+                label_visibility="collapsed",
+            )
+        _density_class = {
+            t("紧凑"): "density-compact",
+            t("标准"): "",
+            t("宽松"): "density-comfy",
+        }.get(_density, "")
+
+        with st.expander(t("⚙️ 显示列设置")):
+            _all_cols = nst_6cols.columns.tolist()
+            _picked_cols = st.multiselect(
+                t("选择展示列"), _all_cols, default=_all_cols,
+                key=f"colpick_{__file__}",
+            )
+        nst_6cols_render = nst_6cols[_picked_cols] if _picked_cols else nst_6cols
+
+        st.markdown(f'<div class="{_density_class}">', unsafe_allow_html=True)
+        st.dataframe(nst_6cols_render, use_container_width=True, hide_index=True, height=420)
+        st.markdown('</div>', unsafe_allow_html=True)
         st.caption(t(f"共 {len(nst_6cols):,} 行"))
 
         # 单文件 CSV 下载

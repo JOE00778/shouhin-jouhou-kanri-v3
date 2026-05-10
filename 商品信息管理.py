@@ -17,6 +17,7 @@ import streamlit as st
 
 from shared.db import get_connection
 from shared.i18n import lang_selector, t
+from shared.kpi_history import get_delta, get_history, take_snapshot
 from shared.supabase_client import is_configured
 
 # 页面配置
@@ -38,6 +39,18 @@ show_role_badge()
 lang_selector()
 
 conn = get_connection()
+
+# 当月 KPI snapshot · 每次访问 home 自动 UPSERT
+try:
+    take_snapshot(conn)
+except Exception:
+    pass
+
+# 当月 vs 上月 delta（不足两月时返回 {}）
+try:
+    _kpi_delta = get_delta(conn) or {}
+except Exception:
+    _kpi_delta = {}
 
 
 # ============================================================
@@ -156,27 +169,73 @@ def _fmt_jpy_short(amt) -> str:
     return f"¥{v:,.0f}"
 
 
+# delta 字符串构造（无历史→None；有历史→真实数值）
+def _fmt_delta_int(v, suffix=""):
+    if v is None:
+        return None
+    sign = "+" if v >= 0 else ""
+    return f"{sign}{int(v):,}{suffix}"
+
+
+def _fmt_delta_pct(v, suffix="%"):
+    if v is None:
+        return None
+    return f"{v:+.1f}{suffix}"
+
+
+_sku_delta_str = (
+    f"{_fmt_delta_int(_kpi_delta['sku_delta'])} {t('vs 上月')}"
+    if _kpi_delta.get("sku_delta") is not None else None
+)
+_stock_delta_str = (
+    _fmt_delta_pct(_kpi_delta["stock_delta_pct"])
+    if _kpi_delta.get("stock_delta_pct") is not None else None
+)
+_revenue_delta_str = (
+    _fmt_delta_pct(_kpi_delta["revenue_delta_pct"])
+    if _kpi_delta.get("revenue_delta_pct") is not None else None
+)
+_margin_delta_str = (
+    _fmt_delta_pct(_kpi_delta["margin_delta_pp"], suffix="pp")
+    if _kpi_delta.get("margin_delta_pp") is not None else None
+)
+
+
+def _spark(field: str, n: int = 6):
+    """读取近 n 月历史并画 mini area chart. 数据不足→展示 fallback mock."""
+    try:
+        hist = get_history(field, n=n, conn=conn)
+    except Exception:
+        hist = pd.DataFrame()
+    if hist.empty or len(hist) < 2:
+        # fallback mock: 6 个点确保不挂, 区分平稳/微涨
+        hist = pd.DataFrame({
+            "ym": [f"M-{i}" for i in range(n, 0, -1)],
+            "v": [1.0] * n,
+        })
+    try:
+        st.area_chart(
+            hist.set_index("ym")[["v"]],
+            height=60,
+            use_container_width=True,
+        )
+    except Exception:
+        pass
+
+
 k1, k2, k3, k4 = st.columns(4)
-k1.metric(
-    t("商品 SKU"),
-    f"{int(sku_total):,}",
-    delta="+12 vs 上月",
-)
-k2.metric(
-    t("在库金额"),
-    _fmt_jpy_short(inv_amount),
-    delta=None,
-)
-k3.metric(
-    t("本月销售"),
-    _fmt_jpy_short(sales_amount),
-    delta=None,
-)
-k4.metric(
-    t("毛利率"),
-    f"{gp_rate * 100:.1f}%",
-    delta=None,
-)
+with k1:
+    st.metric(t("商品 SKU"), f"{int(sku_total):,}", delta=_sku_delta_str)
+    _spark("sku_total")
+with k2:
+    st.metric(t("在库金额"), _fmt_jpy_short(inv_amount), delta=_stock_delta_str)
+    _spark("stock_value_jpy")
+with k3:
+    st.metric(t("本月销售"), _fmt_jpy_short(sales_amount), delta=_revenue_delta_str)
+    _spark("month_revenue_jpy")
+with k4:
+    st.metric(t("毛利率"), f"{gp_rate * 100:.1f}%", delta=_margin_delta_str)
+    _spark("gross_margin")
 
 
 # ============================================================

@@ -24,7 +24,9 @@ from shared.db import get_connection
 
 st.set_page_config(page_title=t("商品情报检索"), page_icon="🔍", layout="wide")
 from shared.auth import require_password
+from shared.theme import inject_theme
 require_password()
+inject_theme()
 lang_selector()
 conn = get_connection()
 
@@ -252,7 +254,37 @@ df_show = df_show.rename(columns={
     "avg_days_on_hand": "平均手持日数",
 })
 
-st.dataframe(df_show, use_container_width=True, hide_index=True)
+# 密度 + 列显示控件 (Phase 2A)
+_dctl1, _dctl2 = st.columns([1, 3])
+with _dctl1:
+    _density = st.radio(
+        t("密度"),
+        [t("紧凑"), t("标准"), t("宽松")],
+        horizontal=True,
+        index=1,
+        key=f"density_{__file__}",
+        label_visibility="collapsed",
+    )
+_density_class = {
+    t("紧凑"): "density-compact",
+    t("标准"): "",
+    t("宽松"): "density-comfy",
+}.get(_density, "")
+
+with st.expander(t("⚙️ 显示列设置")):
+    _all_cols = df_show.columns.tolist()
+    _picked_cols = st.multiselect(
+        t("选择展示列"), _all_cols, default=_all_cols,
+        key=f"colpick_{__file__}",
+    )
+if _picked_cols:
+    df_show_render = df_show[_picked_cols]
+else:
+    df_show_render = df_show
+
+st.markdown(f'<div class="{_density_class}">', unsafe_allow_html=True)
+st.dataframe(df_show_render, use_container_width=True, hide_index=True)
+st.markdown('</div>', unsafe_allow_html=True)
 
 # CSV 下载
 csv = df_show.to_csv(index=False).encode("utf-8-sig")

@@ -11,7 +11,9 @@ from shared.v2_browser import render_v2_quickview
 
 st.set_page_config(page_title=t("商品等级判定"), page_icon="🏷️", layout="wide")
 from shared.auth import require_password
+from shared.theme import inject_theme
 require_password()
+inject_theme()
 lang_selector()
 render_v2_quickview(get_connection(), key_prefix="page07_")
 st.title(t("🏷️ 商品等级判定（季度·Boss-only）"))
@@ -230,7 +232,34 @@ with tab1:
         view_display = view.head(int(sample)).copy()
         display_cols = ['sku', 'name', 'old_rank', 'new_rank', 'trend', 'advice', 'sales', 'margin', 'rank_pct']
         display_cols = [c for c in display_cols if c in view_display.columns]
-        st.dataframe(localize_df(view_display[display_cols]), use_container_width=True, height=400)
+
+        # 密度 + 列显示控件 (Phase 2A)
+        _dctl1, _dctl2 = st.columns([1, 3])
+        with _dctl1:
+            _density = st.radio(
+                t("密度"),
+                [t("紧凑"), t("标准"), t("宽松")],
+                horizontal=True,
+                index=1,
+                key=f"density_{__file__}",
+                label_visibility="collapsed",
+            )
+        _density_class = {
+            t("紧凑"): "density-compact",
+            t("标准"): "",
+            t("宽松"): "density-comfy",
+        }.get(_density, "")
+
+        with st.expander(t("⚙️ 显示列设置")):
+            _picked_cols = st.multiselect(
+                t("选择展示列"), display_cols, default=display_cols,
+                key=f"colpick_{__file__}",
+            )
+        _final_cols = _picked_cols if _picked_cols else display_cols
+
+        st.markdown(f'<div class="{_density_class}">', unsafe_allow_html=True)
+        st.dataframe(localize_df(view_display[_final_cols]), use_container_width=True, height=400)
+        st.markdown('</div>', unsafe_allow_html=True)
 
         # 确认操作区块
         st.markdown(t("### ✅ 确认变更"))
