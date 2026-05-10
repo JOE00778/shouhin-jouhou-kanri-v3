@@ -1087,45 +1087,37 @@ def lang_selector():
         """
 <style>
 [data-testid='stSidebarNav']{display:none!important;}
-/* 语言 / 日期 紧凑横排容器 */
-.cms-topbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 4px 0 10px 0;
+/* 让 lang 顶到 sidebar 真正顶部:把 header(含折叠按钮)浮动脱离文档流 */
+[data-testid="stSidebarHeader"] {
+    position: absolute !important;
+    top: 0; right: 0;
+    height: 40px !important;
+    padding: 0 8px !important;
+    z-index: 100;
+    background: transparent !important;
+    pointer-events: none;
 }
-.cms-lang-pill {
-    display: inline-flex;
-    background: rgba(120, 120, 128, 0.12);
-    border-radius: 980px;
-    padding: 2px;
+[data-testid="stSidebarHeader"] > * { pointer-events: auto; }
+[data-testid="stSidebarUserContent"] {
+    padding-top: 6px !important;
 }
-.cms-lang-pill button {
-    border: none;
-    background: transparent;
-    color: #1d1d1f;
-    font-size: 12px;
-    font-weight: 500;
-    padding: 4px 12px;
-    border-radius: 980px;
-    cursor: pointer;
-    font-family: inherit;
+/* 日期：左对齐 + 大字 */
+.cms-date-big {
+    margin-top: 6px;
+    margin-bottom: 6px;
+    text-align: left;
+    line-height: 1.1;
 }
-.cms-lang-pill button.active {
-    background: #ffffff;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+.cms-date-big .num {
+    font-size: 28px;
     font-weight: 600;
+    color: #1d1d1f;
+    letter-spacing: -0.022em;
 }
-.cms-date-mini {
-    font-size: 12px;
+.cms-date-big .meta {
+    font-size: 13px;
     color: #6e6e73;
-    letter-spacing: -0.005em;
-    white-space: nowrap;
-}
-.cms-date-mini b {
-    color: #1d1d1f;
-    font-weight: 600;
+    margin-left: 4px;
 }
 /* sidebar 内 lang segmented_control 横排占满 sidebar 宽度
    (lock by st-key-lang_seg → key='lang_seg') */
@@ -1184,10 +1176,20 @@ def lang_selector():
     now = datetime.now()
     if cur_lang_code == "ja":
         wd = ["月", "火", "水", "木", "金", "土", "日"][now.weekday()]
-        date_str = f"<b>{now.month}/{now.day}</b> {wd}"
+        date_html = (
+            f'<div class="cms-date-big">'
+            f'<span class="num">{now.month}/{now.day}</span>'
+            f'<span class="meta">{now.year}年 · {wd}曜日</span>'
+            f'</div>'
+        )
     else:
         wd = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][now.weekday()]
-        date_str = f"<b>{now.month}/{now.day}</b> {wd}"
+        date_html = (
+            f'<div class="cms-date-big">'
+            f'<span class="num">{now.month}/{now.day}</span>'
+            f'<span class="meta">{now.year}年 · {wd}</span>'
+            f'</div>'
+        )
 
     def _on_lang_change():
         picked = st.session_state.get("lang_seg") or cur_label
@@ -1210,11 +1212,7 @@ def lang_selector():
                 label_visibility="collapsed",
                 on_change=_on_lang_change,
             )
-        st.markdown(
-            f'<div class="cms-date-mini" style="text-align:right; '
-            f'margin-top:-4px; margin-bottom:6px;">{date_str}</div>',
-            unsafe_allow_html=True,
-        )
+        st.markdown(date_html, unsafe_allow_html=True)
 
     # 同步本次 render 的 session_state.lang + query_params（即使没触发 on_change，保证一致）
     st.session_state["lang"] = cur_lang_code
