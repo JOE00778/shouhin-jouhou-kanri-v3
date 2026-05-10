@@ -40,12 +40,14 @@ with col_recalc:
         st.success(t("✅ 已更新"))
         st.rerun()
 
-# 数据加载
+# 数据加载（用 conn.execute 而非 pd.read_sql_query，
+# 这样会走 _PostgresAdapter 把 ? 转成 %s，兼容 PG）
 conn = get_connection()
-df = pd.read_sql_query(
+rows = conn.execute(
     "SELECT * FROM operation_advice_monthly WHERE year_month = ?",
-    conn, params=[ym],
-)
+    [ym],
+).fetchall()
+df = pd.DataFrame([dict(r) for r in rows])
 
 if df.empty:
     st.warning(t("⚠️ 暂无数据。请先点【🔄 重新计算】。"))

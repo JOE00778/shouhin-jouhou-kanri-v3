@@ -1155,7 +1155,7 @@ def lang_selector():
     min-width: 0 !important;
 }
 [data-testid="stSidebar"] .st-key-lang_seg [data-baseweb="button-group"] button {
-    padding: 4px 6px !important;
+    padding: 6px 10px !important;
     font-size: 12.5px !important;
     border-radius: 980px !important;
     background: transparent !important;
@@ -1164,6 +1164,8 @@ def lang_selector():
     font-weight: 500 !important;
     white-space: nowrap !important;
     width: 100% !important;
+    margin: 0 1px !important;
+    box-sizing: border-box !important;
 }
 [data-testid="stSidebar"] .st-key-lang_seg [data-baseweb="button-group"] button[aria-pressed="true"],
 [data-testid="stSidebar"] .st-key-lang_seg [data-baseweb="button-group"] button[kind="primary"],
@@ -1173,6 +1175,12 @@ def lang_selector():
     color: #ffffff !important;
     box-shadow: 0 1px 3px rgba(0,0,0,0.18) !important;
     font-weight: 600 !important;
+    border-radius: 980px !important;
+}
+/* hover 也保持深色一致 */
+[data-testid="stSidebar"] .st-key-lang_seg [data-baseweb="button-group"] button[kind*="Active"]:hover {
+    background: #2d2d2f !important;
+    color: #ffffff !important;
 }
 </style>
 """,

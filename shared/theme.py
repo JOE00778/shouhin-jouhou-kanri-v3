@@ -179,13 +179,13 @@ p, span, label, div { color: #1d1d1f; }
     border-color: #0077ed !important;
 }
 
-/* ===== page_link · 统一尺寸/间距,active 仅靠背景色区分 ===== */
+/* ===== page_link · 统一尺寸/间距,active 用统一深色 pill ===== */
 [data-testid="stSidebar"] [data-testid="stPageLink"] {
     margin: 0 !important;
 }
 [data-testid="stSidebar"] [data-testid="stPageLink"] a {
     border-radius: 10px !important;
-    transition: background 0.15s;
+    transition: background 0.15s, color 0.15s;
     padding: 8px 12px !important;
     margin: 2px 0 !important;
     height: 36px !important;
@@ -195,9 +195,21 @@ p, span, label, div { color: #1d1d1f; }
     box-sizing: border-box !important;
     font-size: 14px !important;
     line-height: 1.2 !important;
+    background: transparent !important;
+    color: #1d1d1f !important;
 }
 [data-testid="stSidebar"] [data-testid="stPageLink"] a:hover {
     background: rgba(0, 0, 0, 0.04) !important;
+}
+/* active page_link: Streamlit 把当前页的 href 设为空字符串作为标记 */
+[data-testid="stSidebar"] [data-testid="stPageLink-NavLink"][href=""],
+[data-testid="stSidebar"] [data-testid="stPageLink-NavLink"][href$="/"]:not([href*="?"]) {
+    background: #1d1d1f !important;
+    color: #ffffff !important;
+}
+[data-testid="stSidebar"] [data-testid="stPageLink-NavLink"][href=""] *,
+[data-testid="stSidebar"] [data-testid="stPageLink-NavLink"][href$="/"]:not([href*="?"]) * {
+    color: #ffffff !important;
 }
 
 /* ===== 输入框 / 选择框：圆角 + hairline ===== */
