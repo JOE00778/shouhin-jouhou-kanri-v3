@@ -79,7 +79,15 @@ FY_QUARTER_RANGES = {
     "FY2025-Q4": ("2025-12-01", "2026-02-28"),
 }
 
-c0, c1, c2, c3 = st.columns([1, 1.5, 1.5, 1])
+# 品牌下拉选项 — 从 sales_line 抽 distinct maker，按销售件数降序
+brand_rows = conn.execute(
+    "SELECT maker, SUM(qty_sold) AS qty FROM sales_line "
+    "WHERE maker IS NOT NULL AND TRIM(maker) != '' "
+    "GROUP BY maker ORDER BY qty DESC"
+).fetchall()
+brand_options = [t("全部品牌")] + [r["maker"] for r in brand_rows]
+
+c0, c1, c2, c3, c4 = st.columns([0.9, 1.4, 1.5, 1.3, 0.9])
 with c0:
     gran_label = st.radio(
         t("粒度"), list(GRAN_LABELS.keys()), horizontal=False, key="sales_gran",
@@ -109,8 +117,10 @@ else:  # quarterly
         sel_period = FY_QUARTER_RANGES[sel_q]
 
 with c2:
-    keyword = st.text_input(t("搜索: 商品代码 / 商品名 / JAN / 品牌"), "")
+    keyword = st.text_input(t("搜索商品名"), "", placeholder=t("输入关键词…"))
 with c3:
+    sel_brand = st.selectbox(t("品牌"), brand_options, index=0)
+with c4:
     show_zero_sales = st.checkbox(t("含销量为 0 的 SKU"), value=False)
 
 # 根据粒度构 SQL
@@ -243,16 +253,14 @@ if "avg_days_on_hand" not in agg.columns:
 agg["turnover_rate"] = pd.to_numeric(agg["turnover_rate"], errors="coerce").fillna(0)
 agg["avg_days_on_hand"] = pd.to_numeric(agg["avg_days_on_hand"], errors="coerce").fillna(0)
 
-# 关键词过滤
+# 商品名关键词过滤（仅 display_name；item_code/jan/品牌另有专用入口）
 if keyword.strip():
     kw = keyword.strip()
-    cond = (
-        agg["item_code"].astype(str).str.contains(kw, na=False)
-        | agg["upc"].astype(str).str.contains(kw, na=False)
-        | agg["display_name"].astype(str).str.contains(kw, na=False)
-        | agg["maker"].astype(str).str.contains(kw, na=False, case=False)
-    )
-    agg = agg[cond]
+    agg = agg[agg["display_name"].astype(str).str.contains(kw, na=False, case=False)]
+
+# 品牌精确过滤
+if sel_brand and sel_brand != t("全部品牌"):
+    agg = agg[agg["maker"].astype(str) == sel_brand]
 
 if not show_zero_sales:
     agg = agg[agg["qty_sold"] > 0]
