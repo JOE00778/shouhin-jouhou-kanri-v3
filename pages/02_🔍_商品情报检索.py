@@ -74,7 +74,8 @@ def load_sku_view() -> pd.DataFrame:
                 SUM(qty_sold) AS qty_sold,
                 SUM(revenue) AS revenue,
                 SUM(gross_profit) AS gross_profit,
-                MAX(rank) AS rank
+                MAX(rank) AS rank,
+                MAX(maker) AS maker
             FROM sales_line
             GROUP BY item_code
         ),
@@ -94,6 +95,7 @@ def load_sku_view() -> pd.DataFrame:
             inv.handling_status,
             inv.department,
             inv.owner,
+            sales_agg.maker,
             sales_agg.rank,
             inv.qty_on_hand,
             inv.qty_committed,
@@ -148,8 +150,16 @@ with c4:
     rank_pick = st.selectbox(t("商品ランク"), [ALL] + rank_opts)
 
 with c5:
-    dept_opts = sorted([d for d in df["department"].dropna().unique().tolist()])
-    dept_pick = st.selectbox(t("部門"), [ALL] + dept_opts)
+    # 品牌下拉（按商品数量降序）
+    if "maker" in df.columns:
+        maker_counts = (
+            df["maker"].dropna().astype(str).str.strip()
+            .replace("", pd.NA).dropna().value_counts()
+        )
+        maker_opts = maker_counts.index.tolist()
+    else:
+        maker_opts = []
+    maker_pick = st.selectbox(t("品牌"), [ALL] + maker_opts)
 
 with c6:
     show_only_in_stock = st.checkbox(t("仅有库存（qty > 0）"), value=False)
@@ -188,8 +198,8 @@ elif handle_pick != ALL:
 if rank_pick != ALL:
     df_view = df_view[df_view["rank"] == rank_pick]
 
-if dept_pick != ALL:
-    df_view = df_view[df_view["department"] == dept_pick]
+if maker_pick != ALL:
+    df_view = df_view[df_view["maker"].astype(str) == maker_pick]
 
 if show_only_in_stock:
     df_view = df_view[df_view["qty_on_hand"].fillna(0) > 0]
