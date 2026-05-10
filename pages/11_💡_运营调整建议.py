@@ -40,14 +40,19 @@ with col_recalc:
         st.success(t("✅ 已更新"))
         st.rerun()
 
-# 数据加载（用 conn.execute 而非 pd.read_sql_query，
-# 这样会走 _PostgresAdapter 把 ? 转成 %s，兼容 PG）
+# 数据加载 — 显式 PG/SQLite 双路径，避免 pandas read_sql_query 绕过 adapter
 conn = get_connection()
-rows = conn.execute(
-    "SELECT * FROM operation_advice_monthly WHERE year_month = ?",
-    [ym],
-).fetchall()
-df = pd.DataFrame([dict(r) for r in rows])
+try:
+    cur = conn.execute(
+        "SELECT * FROM operation_advice_monthly WHERE year_month = ?",
+        [ym],
+    )
+    cols = [d[0] for d in cur.description] if cur.description else []
+    df = pd.DataFrame([dict(zip(cols, r)) if not hasattr(r, "keys") else dict(r)
+                       for r in cur.fetchall()])
+except Exception as _err:
+    st.error(f"❌ 加载 operation_advice_monthly 失败: {_err}")
+    st.stop()
 
 if df.empty:
     st.warning(t("⚠️ 暂无数据。请先点【🔄 重新计算】。"))

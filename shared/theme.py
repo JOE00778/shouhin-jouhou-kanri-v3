@@ -201,15 +201,17 @@ p, span, label, div { color: #1d1d1f; }
 [data-testid="stSidebar"] [data-testid="stPageLink"] a:hover {
     background: rgba(0, 0, 0, 0.04) !important;
 }
-/* active page_link: Streamlit 把当前页的 href 设为空字符串作为标记 */
+/* active page_link: Streamlit 把当前页的 href 设为空字符串作为标记
+   全站选中态统一: 浅蓝背景 #dbeafe + 深蓝字 #0058b0 + 加粗 */
 [data-testid="stSidebar"] [data-testid="stPageLink-NavLink"][href=""],
 [data-testid="stSidebar"] [data-testid="stPageLink-NavLink"][href$="/"]:not([href*="?"]) {
-    background: #1d1d1f !important;
-    color: #ffffff !important;
+    background: #dbeafe !important;
+    color: #0058b0 !important;
+    font-weight: 600 !important;
 }
 [data-testid="stSidebar"] [data-testid="stPageLink-NavLink"][href=""] *,
 [data-testid="stSidebar"] [data-testid="stPageLink-NavLink"][href$="/"]:not([href*="?"]) * {
-    color: #ffffff !important;
+    color: #0058b0 !important;
 }
 
 /* ===== 输入框 / 选择框：圆角 + hairline ===== */

@@ -1171,16 +1171,16 @@ def lang_selector():
 [data-testid="stSidebar"] .st-key-lang_seg [data-baseweb="button-group"] button[kind="primary"],
 [data-testid="stSidebar"] .st-key-lang_seg [data-baseweb="button-group"] button[kind*="Active"],
 [data-testid="stSidebar"] .st-key-lang_seg [data-baseweb="button-group"] button[data-testid*="Active"] {
-    background: #1d1d1f !important;
-    color: #ffffff !important;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.18) !important;
+    background: #dbeafe !important;
+    color: #0058b0 !important;
+    box-shadow: 0 1px 2px rgba(0, 88, 176, 0.12) !important;
     font-weight: 600 !important;
     border-radius: 980px !important;
 }
-/* hover 也保持深色一致 */
+/* hover 浅蓝深一点 */
 [data-testid="stSidebar"] .st-key-lang_seg [data-baseweb="button-group"] button[kind*="Active"]:hover {
-    background: #2d2d2f !important;
-    color: #ffffff !important;
+    background: #c7defd !important;
+    color: #0058b0 !important;
 }
 </style>
 """,
