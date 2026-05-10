@@ -20,6 +20,8 @@ from shared.i18n import get_lang, lang_selector, t
 st.set_page_config(page_title=t("保质期管理"), page_icon="🧊", layout="wide")
 from shared.auth import require_password
 require_password()
+from shared.theme import inject_theme
+inject_theme()
 lang_selector()
 conn = get_connection()
 

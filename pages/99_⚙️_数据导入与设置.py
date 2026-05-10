@@ -26,6 +26,8 @@ st.set_page_config(page_title=t("数据导入与设置"), page_icon="⚙️", la
 from shared.auth import require_admin, require_extra_password
 require_admin()
 require_extra_password("page99", "PAGE99_PASSWORD")
+from shared.theme import inject_theme
+inject_theme()
 lang_selector()
 conn = get_connection()
 

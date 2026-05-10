@@ -72,6 +72,8 @@ REFERENCE_DIR.mkdir(parents=True, exist_ok=True)
 # --------------------------------------------------------------------------- #
 st.set_page_config(page_title="Shopee 上架", page_icon="🚀", layout="wide")
 require_admin()
+from shared.theme import inject_theme
+inject_theme()
 lang_selector()
 
 with st.sidebar:

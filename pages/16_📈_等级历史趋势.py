@@ -9,6 +9,8 @@ import plotly.graph_objects as go
 st.set_page_config(page_title=t("等级历史趋势"), page_icon="📈", layout="wide")
 from shared.auth import require_password
 require_password()
+from shared.theme import inject_theme
+inject_theme()
 lang_selector()
 
 from shared.db import get_connection, DB_PATH
@@ -18,10 +20,12 @@ conn = get_connection()
 st.title(t("📈 等级历史趋势"))
 st.caption(t("跨季度等级变化跟踪 · 升级/降级/稳定 SKU 分析"))
 
-# 季度选择
-quarters = pd.read_sql_query(
-    "SELECT DISTINCT quarter FROM rank_history ORDER BY quarter DESC", conn
-)['quarter'].tolist()
+# 季度选择 (走 PG adapter)
+quarters = [
+    r["quarter"] for r in conn.execute(
+        "SELECT DISTINCT quarter FROM rank_history ORDER BY quarter DESC"
+    ).fetchall()
+]
 
 if not quarters:
     st.info(t("暂无历史数据。请先在「🏷️ 商品等级判定」page 确认变更。"))
@@ -33,11 +37,15 @@ if not sel_q:
     st.warning(t("请至少选择一个季度。"))
     st.stop()
 
-placeholders = ','.join(['?' for _ in sel_q])
-df = pd.read_sql_query(f"""
-    SELECT * FROM rank_history WHERE quarter IN ({placeholders})
-    ORDER BY changed_at DESC
-""", conn, params=sel_q)
+# 季度白名单防御后 f-string 拼接 (sel_q 来自上面的 quarters，可信)
+import re as _re
+_safe_q = [_re.sub(r"[^A-Za-z0-9_-]", "", str(q))[:20] for q in sel_q]
+_in_clause = ",".join(f"'{q}'" for q in _safe_q if q)
+_rows_df = conn.execute(
+    f"SELECT * FROM rank_history WHERE quarter IN ({_in_clause}) "
+    f"ORDER BY changed_at DESC"
+).fetchall()
+df = pd.DataFrame([dict(r) for r in _rows_df])
 
 if df.empty:
     st.info(t("选定季度内无变更记录。"))

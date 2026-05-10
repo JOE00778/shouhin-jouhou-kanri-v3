@@ -174,11 +174,19 @@ with tab1:
             year_month = QUARTER_TO_MONTH.get(q, '2026-04')
             try:
                 conn = get_connection()
-                adv = pd.read_sql_query(
-                    "SELECT sku, advice FROM operation_advice_monthly WHERE year_month=?",
-                    conn, params=[year_month])
+                # 白名单防御 + f-string 拼接,绕开 PG/SQLite 占位符差异
+                import re as _re
+                _safe_ym = _re.sub(r"[^0-9-]", "", str(year_month))[:10]
+                _adv_rows = conn.execute(
+                    f"SELECT sku, advice FROM operation_advice_monthly "
+                    f"WHERE year_month='{_safe_ym}'"
+                ).fetchall()
+                adv = pd.DataFrame([dict(r) for r in _adv_rows])
                 conn.close()
-                df = df.merge(adv, on='sku', how='left').fillna({'advice': '—'})
+                if not adv.empty:
+                    df = df.merge(adv, on='sku', how='left').fillna({'advice': '—'})
+                else:
+                    df['advice'] = '—'
             except Exception:
                 df['advice'] = '—'
 
@@ -312,10 +320,10 @@ with tab1:
 
 with tab2:
     conn = get_connection()
-    history = pd.read_sql_query(
-        "SELECT * FROM rank_history ORDER BY changed_at DESC",
-        conn
-    )
+    _hist_rows = conn.execute(
+        "SELECT * FROM rank_history ORDER BY changed_at DESC"
+    ).fetchall()
+    history = pd.DataFrame([dict(r) for r in _hist_rows])
     conn.close()
 
     if history.empty:

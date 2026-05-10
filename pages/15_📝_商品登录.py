@@ -6,6 +6,8 @@ from pathlib import Path
 st.set_page_config(page_title=t("商品登录"), page_icon="📝", layout="wide")
 from shared.auth import require_password
 require_password()
+from shared.theme import inject_theme
+inject_theme()
 lang_selector()
 
 st.title(t("📝 商品登录"))

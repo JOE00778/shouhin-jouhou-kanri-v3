@@ -18,6 +18,8 @@ from modules.operation_advice.rules import (
 st.set_page_config(page_title=t("运营调整建议"), page_icon="💡", layout="wide")
 from shared.auth import require_password
 require_password()
+from shared.theme import inject_theme
+inject_theme()
 lang_selector()
 
 from shared.db import DB_PATH, get_connection
@@ -108,12 +110,13 @@ def _show(filtered_df: pd.DataFrame, top_n: int = 100):
     if filtered_df.empty:
         st.info(t("无数据"))
         return
-    # join name from inventory
-    inv = pd.read_sql_query(
+    # join name from inventory (用 conn.execute 走 PG adapter, 不依赖 pandas)
+    _inv_rows = conn.execute(
         "SELECT item_code AS sku, MIN(display_name) AS name "
         "FROM nst_inventory_snapshot WHERE location='JD-物流-千葉' "
-        "GROUP BY item_code", conn,
-    )
+        "GROUP BY item_code"
+    ).fetchall()
+    inv = pd.DataFrame([dict(r) for r in _inv_rows])
     merged = filtered_df.merge(inv, on="sku", how="left")
     merged = merged.sort_values("inventory_value", ascending=False).head(top_n)
     show = merged[[c for c in display_cols if c in merged.columns]].rename(
