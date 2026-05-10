@@ -22,8 +22,12 @@ TRANSLATIONS_JA: dict[str, str] = {
     "💰 定義原価編集": "💰 定義原価編集",
     "销售数据查询": "売上データ照会",
     "📊 销售数据查询": "📊 売上データ照会",
-    "店铺别毛利": "店舗別粗利",
-    "🏪 店铺别毛利": "🏪 店舗別粗利",
+    "店铺毛利": "店舗別粗利",
+    "🏪 店铺毛利": "🏪 店舗別粗利",
+    # 维度（按月 / 按日）
+    "📅 月度": "📅 月別",
+    "📊 按日": "📊 日別",
+    "📊 前日": "📊 日別",
     "库存健康监控": "在庫健全性モニター",
     "📦 库存健康监控": "📦 在庫健全性モニター",
     "📦 库存健康监控(JD-千叶仓库)": "📦 在庫健全性モニター(JD-千葉倉庫)",
@@ -272,7 +276,7 @@ TRANSLATIONS_JA: dict[str, str] = {
     "🔍 商品情报检索": "🔍 商品情報検索",
     "💰 定義原価編集": "💰 定義原価編集",
     "📊 销售数据查询": "📊 売上データ照会",
-    "🏪 店铺别毛利": "🏪 店舗別粗利",
+    "🏪 店铺毛利": "🏪 店舗別粗利",
     "📦 库存健康监控": "📦 在庫健全性モニター",
     "🏷️ 商品等级判定": "🏷️ 商品ランク判定",
     "💡 运营调整建议": "💡 運営調整提案",
@@ -480,7 +484,7 @@ TRANSLATIONS_JA: dict[str, str] = {
     "采购记录": "購買記録",
     "销售数据查询": "売上データ照会",
     "销售记录": "売上記録",
-    "店铺别毛利": "店舗別粗利",
+    "店铺毛利": "店舗別粗利",
     "店铺": "店舗",
     "供应商": "サプライヤー",
     "商品": "商品",
@@ -558,7 +562,7 @@ TRANSLATIONS_JA: dict[str, str] = {
     "🔍 商品情报检索": "🔍 商品情報検索",
     "💰 定義原価編集": "💰 定義原価編集",
     "📊 销售数据查询": "📊 売上データ照会",
-    "🏪 店铺别毛利": "🏪 店舗別粗利",
+    "🏪 店铺毛利": "🏪 店舗別粗利",
     "📦 库存健康监控（JD-千叶仓库）": "📦 在庫健全性モニター（JD-千葉倉庫）",
     "🏷️ 商品等级判定（季度·Boss-only）": "🏷️ 商品ランク判定（四半期·Boss-only）",
     "💡 运营调整建议（B/C 档）": "💡 運営調整提案（B/C ランク）",
@@ -578,7 +582,7 @@ _NAV_GROUPS: list[tuple[str | None, list[tuple[str, str]]]] = [
     ]),
     ("📊 销售数据", [
         ("pages/04_📊_销售数据查询.py", "📊 销售数据查询"),
-        ("pages/05_🏪_店铺别毛利.py", "🏪 店铺别毛利"),
+        ("pages/05_🏪_店铺毛利.py", "🏪 店铺毛利"),
         ("pages/14_💱_Shopee財務.py", "💱 Shopee 财务"),
         ("pages/11_💡_运营调整建议.py", "💡 运营调整建议"),
     ]),
@@ -1162,9 +1166,12 @@ def lang_selector():
     width: 100% !important;
 }
 [data-testid="stSidebar"] .st-key-lang_seg [data-baseweb="button-group"] button[aria-pressed="true"],
-[data-testid="stSidebar"] .st-key-lang_seg [data-baseweb="button-group"] button[kind="primary"] {
-    background: #ffffff !important;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.08) !important;
+[data-testid="stSidebar"] .st-key-lang_seg [data-baseweb="button-group"] button[kind="primary"],
+[data-testid="stSidebar"] .st-key-lang_seg [data-baseweb="button-group"] button[kind*="Active"],
+[data-testid="stSidebar"] .st-key-lang_seg [data-baseweb="button-group"] button[data-testid*="Active"] {
+    background: #1d1d1f !important;
+    color: #ffffff !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.18) !important;
     font-weight: 600 !important;
 }
 </style>

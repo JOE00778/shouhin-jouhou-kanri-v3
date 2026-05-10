@@ -1,4 +1,4 @@
-"""模块 #6 店铺别毛利。
+"""模块 #6 店铺毛利。
 
 数据来源：sales_line 表（4 类销售导出共用）。
 - ASEAN 月度（asean_monthly）含店铺
@@ -23,7 +23,7 @@ from shared.i18n_columns import localize_df
 from shared.db import get_connection
 from shared.markets import ALL_MARKETS, add_market_column
 
-st.set_page_config(page_title=t("店铺别毛利"), page_icon="🏪", layout="wide")
+st.set_page_config(page_title=t("店铺毛利"), page_icon="🏪", layout="wide")
 from shared.auth import require_password
 require_password()
 from shared.theme import inject_theme
@@ -31,7 +31,7 @@ inject_theme()
 lang_selector()
 conn = get_connection()
 
-st.title(t("🏪 店铺别毛利"))
+st.title(t("🏪 店铺毛利"))
 st.caption(t("基于 NetSuite 销售报表 · 自带毛利+毛利率，零计算直接展示"))
 
 
@@ -53,17 +53,10 @@ DIM_TO_SOURCES = {
     t("📅 月度"): ["asean_monthly", "export_store"],
     t("📊 按日"): ["asean_daily"],
 }
-# 维度独占一行（segmented_control / radio fallback），避免 col 挤压
-try:
-    sel_dim = st.segmented_control(
-        t("维度"), list(DIM_TO_SOURCES.keys()),
-        default=list(DIM_TO_SOURCES.keys())[0],
-        key="dim_seg",
-    )
-    if sel_dim is None:
-        sel_dim = list(DIM_TO_SOURCES.keys())[0]
-except Exception:
-    sel_dim = st.radio(t("维度"), list(DIM_TO_SOURCES.keys()), horizontal=True)
+# 三控件 UI 统一为 selectbox（维度 / 期间 / 市场），等宽列
+col_dim, col_period, col_market = st.columns(3)
+with col_dim:
+    sel_dim = st.selectbox(t("维度"), list(DIM_TO_SOURCES.keys()), key="dim_sel")
 allowed_srcs = DIM_TO_SOURCES[sel_dim]
 
 # 期间选项：当前维度下可用的所有期间（先不过滤 store）
@@ -119,47 +112,55 @@ if not period_choices:
             st.error(f"❌ 导入失败：{e}")
     st.stop()
 
-# ----- 期间 + 市场（第 2 行，2:1 宽度） -----
-# 月度：单选 selectbox。按日：日期区间 date_input（默认最近 7 天，单天数据降级为单选）
+# ----- 期间 + 市场（与维度同一行，全部 selectbox 风格统一） -----
+# 月度：单选 selectbox（每个期间一项）
+# 按日：单日 selectbox（每天一项），多天可选「最近 7 天」「最近 30 天」聚合项
 is_daily = sel_dim == t("📊 按日")
-col_period, col_market = st.columns([2, 1])
 
 if is_daily:
-    daily_dates = sorted({r["period_start"] for r in period_opts})
-    min_d = datetime.strptime(daily_dates[0], "%Y-%m-%d").date()
-    max_d = datetime.strptime(daily_dates[-1], "%Y-%m-%d").date()
+    daily_dates = sorted(
+        {r["period_start"] for r in period_opts}, reverse=True,
+    )
+    # 构造 selectbox 选项：「最近 7 天」「最近 30 天」+ 每个具体日期
+    today_pseudo = "__last7__"
+    month_pseudo = "__last30__"
+    daily_options = [today_pseudo, month_pseudo] + daily_dates
+
+    def _fmt_daily(opt: str) -> str:
+        if opt == today_pseudo:
+            return t("📈 最近 7 天")
+        if opt == month_pseudo:
+            return t("📈 最近 30 天")
+        return opt
+
     with col_period:
-        if min_d == max_d:
-            # 数据库里只有 1 天前日数据 → 不用 date_input（min=max 会卡死）
-            st.info(t("当前只有 1 天前日数据：") + f" **{max_d.isoformat()}**")
-            sel_start_s = sel_end_s = max_d.isoformat()
-        else:
-            default_start = max(min_d, max_d - timedelta(days=6))
-            date_range = st.date_input(
-                t("期间（日期范围）"),
-                value=(default_start, max_d),
-                min_value=min_d, max_value=max_d,
-                format="YYYY-MM-DD",
-            )
-            if isinstance(date_range, tuple) and len(date_range) == 2:
-                sel_start, sel_end = date_range
-            else:
-                sel_start = sel_end = (
-                    date_range if isinstance(date_range, date) else max_d
-                )
-            sel_start_s, sel_end_s = sel_start.isoformat(), sel_end.isoformat()
+        sel_opt = st.selectbox(
+            t("期间"), daily_options,
+            format_func=_fmt_daily, key="period_daily",
+        )
+    if sel_opt == today_pseudo:
+        max_d = datetime.strptime(daily_dates[0], "%Y-%m-%d").date()
+        sel_start_s = (max_d - timedelta(days=6)).isoformat()
+        sel_end_s = max_d.isoformat()
+    elif sel_opt == month_pseudo:
+        max_d = datetime.strptime(daily_dates[0], "%Y-%m-%d").date()
+        sel_start_s = (max_d - timedelta(days=29)).isoformat()
+        sel_end_s = max_d.isoformat()
+    else:
+        sel_start_s = sel_end_s = sel_opt
 else:
     with col_period:
         sel_period = st.selectbox(
             t("期间"),
             period_choices,
             format_func=lambda p: f"{p[0]} ~ {p[1]}",
+            key="period_monthly",
         )
     sel_start_s, sel_end_s = sel_period[0], sel_period[1]
 
 with col_market:
     mk_choices = [t("全部市场")] + ALL_MARKETS
-    mk_pick = st.selectbox(t("市场"), mk_choices, index=0)
+    mk_pick = st.selectbox(t("市场"), mk_choices, index=0, key="market_sel")
 
 # 加载明细（不再硬过滤 store IS NOT NULL；店铺识别失败的行用占位符兜底）
 # daily 模式按区间，monthly 模式按精确期间
