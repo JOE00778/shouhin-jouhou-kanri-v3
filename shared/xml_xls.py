@@ -1,14 +1,15 @@
-"""NetSuite SpreadsheetML XML 解析器。
+"""NetSuite SpreadsheetML XML 解析器 + OOXML (.xlsx) fallback。
 
-NetSuite Item Search / Report 导出的 .xls 文件实际是 Microsoft Office
-SpreadsheetML 2003 XML 格式（不是 binary .xls，也不是 zip-based .xlsx）。
-pandas、xlrd、openpyxl 都不直接支持，需要自己解析。
+NetSuite Item Search / Report 默认导出 SpreadsheetML 2003 XML（扩展名 .xls 但
+内部是 XML，pandas/xlrd/openpyxl 都不认）。如果 Boss 在 NetSuite 选了 'Excel
+(.xlsx)' 而不是 'XML'，文件就是真 OOXML zip — 走 openpyxl fallback。
 
 使用：
-    from shared.xml_xls import iter_rows, parse_to_dicts
+    from shared.xml_xls import parse_smart   # 推荐: 自动按文件头 fallback
+    rows = parse_smart(path, header_row=6)
 
-    rows = parse_to_dicts(path, header_row=0)         # Saved Search 导出
-    rows = parse_to_dicts(path, header_row=6)         # Report 导出（前 6 行是 preamble）
+    # 旧 API 仍保留, 仅认 SpreadsheetML XML:
+    from shared.xml_xls import iter_rows, parse_to_dicts
 """
 from __future__ import annotations
 
@@ -92,6 +93,85 @@ def parse_to_dicts(
     return out
 
 
+def _sniff_format(path: str | Path) -> str:
+    """按前几个字节判断文件实际格式。返回 'xml' / 'ooxml' / 'ole2' / 'unknown'."""
+    with open(path, "rb") as f:
+        head = f.read(80)
+    if head[:2] == b"PK":
+        return "ooxml"
+    if head[:8] == b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1":
+        return "ole2"
+    if b"<?xml" in head:
+        return "xml"
+    return "unknown"
+
+
+def _iter_rows_ooxml(path: str | Path, sheet_index: int = 0) -> Iterator[list]:
+    """用 openpyxl 读真 .xlsx (OOXML zip)。"""
+    import openpyxl
+    wb = openpyxl.load_workbook(str(path), data_only=True, read_only=True)
+    try:
+        sheet_names = wb.sheetnames
+        if sheet_index >= len(sheet_names):
+            raise IndexError(
+                f"Sheet index {sheet_index} out of range (have {len(sheet_names)})"
+            )
+        ws = wb[sheet_names[sheet_index]]
+        for row in ws.iter_rows(values_only=True):
+            yield [
+                (str(v).strip() if isinstance(v, str) else v) for v in row
+            ]
+    finally:
+        wb.close()
+
+
+def iter_rows_smart(path: str | Path, sheet_index: int = 0) -> Iterator[list]:
+    """统一入口: 按文件头自动选 SpreadsheetML XML / OOXML 解析。
+
+    OLE2 (真二进制 .xls) 暂不支持 — NetSuite 不会导出这种格式。
+    """
+    fmt = _sniff_format(path)
+    if fmt == "ooxml":
+        yield from _iter_rows_ooxml(path, sheet_index=sheet_index)
+    elif fmt in ("xml", "unknown"):
+        # 'unknown' 时也试 XML — 保持向后兼容（旧测试 fixture 可能没 BOM/preamble）
+        yield from iter_rows(path, sheet_index=sheet_index)
+    else:  # ole2
+        raise RuntimeError(
+            f"文件是 .xls (OLE2 binary) 真二进制格式, 当前不支持。"
+            f"请在 NetSuite 导出时选 'XML' 或 'Excel (.xlsx)' 格式。文件: {path}"
+        )
+
+
+def parse_smart(
+    path: str | Path,
+    *,
+    header_row: int = 0,
+    sheet_index: int = 0,
+    skip_empty_rows: bool = True,
+) -> list[dict]:
+    """parse_to_dicts 的多格式版本: SpreadsheetML XML + OOXML 自动 fallback。"""
+    rows_iter = list(iter_rows_smart(path, sheet_index=sheet_index))
+    if header_row >= len(rows_iter):
+        return []
+
+    headers = rows_iter[header_row]
+    headers = [
+        ((h.strip() if isinstance(h, str) else str(h)) if h not in (None, "") else f"_col{i}")
+        for i, h in enumerate(headers)
+    ]
+
+    out: list[dict] = []
+    for row in rows_iter[header_row + 1:]:
+        if skip_empty_rows and all(v is None or v == "" for v in row):
+            continue
+        d = dict(zip(headers, row))
+        for h in headers:
+            d.setdefault(h, None)
+        out.append(d)
+    return out
+
+
 def detect_header_row(path: str | Path, *, max_check: int = 15) -> int:
     """启发式检测 NetSuite 导出的表头行。
 
@@ -102,7 +182,7 @@ def detect_header_row(path: str | Path, *, max_check: int = 15) -> int:
     返回检测到的 header 行号；如果检测不到合理候选，返回 0。
     """
     rows_iter = []
-    for i, row in enumerate(iter_rows(path)):
+    for i, row in enumerate(iter_rows_smart(path)):
         rows_iter.append(row)
         if i >= max_check:
             break

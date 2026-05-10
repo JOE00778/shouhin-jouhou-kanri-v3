@@ -1,11 +1,18 @@
-"""测试 SpreadsheetML XML 解析器。"""
+"""测试 SpreadsheetML XML 解析器 + OOXML smart fallback。"""
 from __future__ import annotations
 
 from pathlib import Path
 
 import pytest
 
-from shared.xml_xls import detect_header_row, iter_rows, parse_to_dicts
+from shared.xml_xls import (
+    _sniff_format,
+    detect_header_row,
+    iter_rows,
+    iter_rows_smart,
+    parse_smart,
+    parse_to_dicts,
+)
 
 DATA_DIR = Path("/Users/joe/CC/data")
 INVENTORY_FILE = DATA_DIR / "FB全倉庫通常在庫数残数検索結果362.xls"
@@ -108,3 +115,36 @@ class TestDetectHeader:
     def test_export_item_detected_as_row_6(self):
         _skip_if_missing(EXPORT_ITEM_FILE)
         assert detect_header_row(EXPORT_ITEM_FILE) == 6
+
+
+# ============================================================
+# Smart fallback (SpreadsheetML XML + OOXML 自动派发)
+# ============================================================
+class TestSmartFallback:
+    def test_sniff_xml_for_netsuite_export(self):
+        _skip_if_missing(SALES_MONTHLY_FILE)
+        assert _sniff_format(SALES_MONTHLY_FILE) == "xml"
+
+    def test_smart_xml_path_matches_legacy(self):
+        _skip_if_missing(SALES_MONTHLY_FILE)
+        legacy = parse_to_dicts(SALES_MONTHLY_FILE, header_row=6)
+        smart = parse_smart(SALES_MONTHLY_FILE, header_row=6)
+        assert len(smart) == len(legacy)
+
+    def test_smart_ooxml_xlsx_fallback(self, tmp_path):
+        """构造一个真 OOXML .xlsx, 验证 smart 走 openpyxl 路径成功。"""
+        import openpyxl
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.append(["jan", "qty", "name"])
+        ws.append(["4901234567890", 5, "测试商品 A"])
+        ws.append(["4901234567891", 12, "测试商品 B"])
+        xlsx = tmp_path / "fake_export.xlsx"
+        wb.save(str(xlsx))
+
+        assert _sniff_format(xlsx) == "ooxml"
+        rows = parse_smart(xlsx, header_row=0)
+        assert len(rows) == 2
+        assert rows[0]["jan"] == "4901234567890"
+        assert rows[0]["qty"] == 5
+        assert rows[1]["name"] == "测试商品 B"

@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Iterable
 
 from shared.filters import ALLOWED_INVENTORY_LOCATIONS
-from shared.xml_xls import iter_rows, parse_to_dicts
+from shared.xml_xls import iter_rows, iter_rows_smart, parse_smart, parse_to_dicts
 
 
 # ============================================================
@@ -143,7 +143,7 @@ _PERIOD_PATTERN = re.compile(r"(\d{4})年(\d{1,2})月(\d{1,2})日\s*-\s*(\d{4})�
 
 def _extract_period(path: Path) -> tuple[str, str]:
     """从 NetSuite 报表 preamble 第 3 行提取期间。失败返回 ('', '')."""
-    rows = list(iter_rows(path))
+    rows = list(iter_rows_smart(path))
     for row in rows[:8]:
         for cell in row:
             if cell:
@@ -177,7 +177,7 @@ def ingest_inventory_snapshot(
     # 整表覆盖（最新快照）
     conn.execute("DELETE FROM item_inventory_snapshot_v2")
 
-    rows = parse_to_dicts(path, header_row=0)
+    rows = parse_smart(path, header_row=0)
     sql = """
         INSERT OR REPLACE INTO item_inventory_snapshot_v2 (
             jan, item_code, internal_id, display_name,
@@ -351,7 +351,7 @@ def ingest_inventory_snapshot_multi(
     # 整表覆盖（最新快照）
     conn.execute("DELETE FROM item_inventory_snapshot_v2")
 
-    rows = list(iter_rows(path))
+    rows = list(iter_rows_smart(path))
     if len(rows) < 9:
         _finalize_run(conn, run_id, total=0, inserted=0, errors=1)
         return {
@@ -608,7 +608,7 @@ def _ingest_sales(
         (source, period_start, period_end, granularity),
     )
 
-    rows = parse_to_dicts(path, header_row=6)
+    rows = parse_smart(path, header_row=6)
     sql = """
         INSERT OR REPLACE INTO shop_sales (
             shop_id, jan, granularity, period_start, period_end,
@@ -730,15 +730,14 @@ def _diagnose_empty_parse(path: Path, ingester_name: str) -> str:
     is_ole = head_bytes[:8] == b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"  # .xls (OLE2)
 
     if is_zip:
-        fmt = "❌ 文件是 .xlsx (OOXML zip) 真二进制格式"
-        hint = "当前 ingester 仅支持 SpreadsheetML XML 导出。需要在 NetSuite 导出时选 'XML' 而不是 'Excel (.xlsx)'."
+        fmt = "✅ 文件是 .xlsx (OOXML) — 已通过 openpyxl fallback 解析"
+        hint = "解析成功但 0 行: 可能 sheet 空 / header_row 不对 / 表头列名变了。"
     elif is_ole:
         fmt = "❌ 文件是 .xls (OLE2 binary) 真二进制格式"
-        hint = "同上,需要 NetSuite 导出 'XML' 格式 (SpreadsheetML)."
+        hint = "暂不支持 OLE2。请在 NetSuite 导出时选 'XML' 或 'Excel (.xlsx)'."
     elif is_xml:
-        # 可能是 SpreadsheetML 但 header_row 不对或 sheet 空
-        fmt = "✅ 文件是 XML 格式 (可能 SpreadsheetML)"
-        hint = "但 parse_to_dicts 仍返回 0 行,可能 header_row 不对或 worksheet 是空的。"
+        fmt = "✅ 文件是 XML (SpreadsheetML)"
+        hint = "解析成功但 0 行: 可能 header_row 不对、worksheet 是空的, 或 NetSuite 当天报表无数据。"
     else:
         fmt = "❓ 文件格式未识别"
         hint = "前 8 字节: " + repr(head_bytes[:8])
@@ -818,7 +817,7 @@ def ingest_inventory_turnover(
 
     # 动态检测 header (旧版 row 6, 新版可能不同)
     header_row = detect_header_row(path)
-    rows = parse_to_dicts(path, header_row=header_row)
+    rows = parse_smart(path, header_row=header_row)
     sql = """
         INSERT OR REPLACE INTO inventory_turnover (
             item_code, description, cost, avg_value, turnover_rate, avg_days_on_hand,
@@ -1231,7 +1230,7 @@ def ingest_monthly_turnover(
 
     # 动态检测 header (新版 row 6 / 旧版 row 7)
     header_row = detect_header_row(path)
-    rows = parse_to_dicts(path, header_row=header_row)
+    rows = parse_smart(path, header_row=header_row)
 
     # 预读 item_code → (jan, rank) 映射 (从 item_v2)
     item_to_jan: dict[str, str] = {}
@@ -1390,7 +1389,7 @@ def ingest_item_master_v2(
     run_id = _start_run(conn, "item_master_v2", source_name)
     inserted = errors = skipped_no_jan = 0
 
-    rows = parse_to_dicts(path, header_row=0)
+    rows = parse_smart(path, header_row=0)
 
     sql = """
         INSERT INTO item_v2 (
