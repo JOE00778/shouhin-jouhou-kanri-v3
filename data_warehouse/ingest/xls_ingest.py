@@ -534,6 +534,8 @@ def ingest_inventory_snapshot_multi(
             pass  # item_v2 不存在则跳过
 
     _finalize_run(conn, run_id, total=total_data_rows, inserted=inserted, errors=errors)
+    if total_data_rows == 0:
+        raise RuntimeError(_diagnose_empty_parse(path, "item_inventory_snapshot_v2.multi"))
     return {
         "run_id": run_id, "total": total_data_rows,
         "inserted": inserted, "errors": errors,
@@ -699,7 +701,10 @@ def _ingest_sales(
                     pass
 
     _finalize_run(conn, run_id, total=len(rows), inserted=inserted, errors=errors)
-    if len(rows) > 0 and inserted == 0:
+    if len(rows) == 0:
+        # parse 返回 0 行: 文件格式可能不对。给详细诊断
+        raise RuntimeError(_diagnose_empty_parse(path, f"shop_sales.{source}"))
+    if inserted == 0:
         first_keys = list(rows[0].keys()) if rows else []
         raise RuntimeError(
             f"读取到 {len(rows)} 行但 0 行入库 (skipped_no_jan={skipped_no_jan})。"
@@ -710,6 +715,41 @@ def _ingest_sales(
         "inserted": inserted, "errors": errors,
         "period_start": period_start, "period_end": period_end,
     }
+
+
+def _diagnose_empty_parse(path: Path, ingester_name: str) -> str:
+    """parse 返回 0 行时的详细诊断信息。检测文件实际格式 + header 内容。"""
+    try:
+        size = path.stat().st_size
+        head_bytes = path.read_bytes()[:300]
+    except Exception as e:
+        return f"❌ {ingester_name}: parse 返回 0 行,且无法读取文件 ({e})"
+
+    is_xml = b"<?xml" in head_bytes[:80]
+    is_zip = head_bytes[:2] == b"PK"          # .xlsx (OOXML) 是 zip
+    is_ole = head_bytes[:8] == b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"  # .xls (OLE2)
+
+    if is_zip:
+        fmt = "❌ 文件是 .xlsx (OOXML zip) 真二进制格式"
+        hint = "当前 ingester 仅支持 SpreadsheetML XML 导出。需要在 NetSuite 导出时选 'XML' 而不是 'Excel (.xlsx)'."
+    elif is_ole:
+        fmt = "❌ 文件是 .xls (OLE2 binary) 真二进制格式"
+        hint = "同上,需要 NetSuite 导出 'XML' 格式 (SpreadsheetML)."
+    elif is_xml:
+        # 可能是 SpreadsheetML 但 header_row 不对或 sheet 空
+        fmt = "✅ 文件是 XML 格式 (可能 SpreadsheetML)"
+        hint = "但 parse_to_dicts 仍返回 0 行,可能 header_row 不对或 worksheet 是空的。"
+    else:
+        fmt = "❓ 文件格式未识别"
+        hint = "前 8 字节: " + repr(head_bytes[:8])
+
+    return (
+        f"❌ {ingester_name}: parse 返回 0 行\n"
+        f"size = {size:,} bytes\n"
+        f"format = {fmt}\n"
+        f"提示: {hint}\n"
+        f"head = {head_bytes[:120]!r}"
+    )
 
 
 def ingest_sales_asean_monthly(path, conn, **kw):
@@ -825,6 +865,8 @@ def ingest_inventory_turnover(
             _record_error(conn, run_id, n, str(e), raw)
 
     _finalize_run(conn, run_id, total=len(rows), inserted=inserted, errors=errors)
+    if len(rows) == 0:
+        raise RuntimeError(_diagnose_empty_parse(path, "inventory_turnover"))
     return {
         "run_id": run_id,
         "total": len(rows),
