@@ -40,12 +40,14 @@ with col_recalc:
         st.success(t("✅ 已更新"))
         st.rerun()
 
-# 数据加载 — 显式 PG/SQLite 双路径，避免 pandas read_sql_query 绕过 adapter
+# 数据加载 — 直接字符串拼接, 不用占位符 (ym 是 selectbox 固定值, 安全)
+# 仅保留只允许 [0-9-] 的白名单防御
+import re as _re
+_safe_ym = _re.sub(r"[^0-9-]", "", str(ym))[:10]
 conn = get_connection()
 try:
     cur = conn.execute(
-        "SELECT * FROM operation_advice_monthly WHERE year_month = ?",
-        [ym],
+        f"SELECT * FROM operation_advice_monthly WHERE year_month = '{_safe_ym}'"
     )
     cols = [d[0] for d in cur.description] if cur.description else []
     df = pd.DataFrame([dict(zip(cols, r)) if not hasattr(r, "keys") else dict(r)
