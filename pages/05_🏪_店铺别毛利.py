@@ -51,10 +51,18 @@ if sales_count == 0:
 # ============================================================
 DIM_TO_SOURCES = {
     t("📅 月度"): ["asean_monthly", "export_store"],
-    t("📊 前日"): ["asean_daily"],
+    t("📊 按日"): ["asean_daily"],
 }
-col_dim, col_period, col_market = st.columns([1.2, 2, 1.2])
-with col_dim:
+# 维度独占一行（segmented_control / radio fallback），避免 col 挤压
+try:
+    sel_dim = st.segmented_control(
+        t("维度"), list(DIM_TO_SOURCES.keys()),
+        default=list(DIM_TO_SOURCES.keys())[0],
+        key="dim_seg",
+    )
+    if sel_dim is None:
+        sel_dim = list(DIM_TO_SOURCES.keys())[0]
+except Exception:
     sel_dim = st.radio(t("维度"), list(DIM_TO_SOURCES.keys()), horizontal=True)
 allowed_srcs = DIM_TO_SOURCES[sel_dim]
 
@@ -111,26 +119,35 @@ if not period_choices:
             st.error(f"❌ 导入失败：{e}")
     st.stop()
 
-# ----- 期间选择 -----
-# 月度：单选 selectbox。前日：日期区间 date_input（默认最近 7 天）
-is_daily = sel_dim == t("📊 前日")
+# ----- 期间 + 市场（第 2 行，2:1 宽度） -----
+# 月度：单选 selectbox。按日：日期区间 date_input（默认最近 7 天，单天数据降级为单选）
+is_daily = sel_dim == t("📊 按日")
+col_period, col_market = st.columns([2, 1])
+
 if is_daily:
     daily_dates = sorted({r["period_start"] for r in period_opts})
     min_d = datetime.strptime(daily_dates[0], "%Y-%m-%d").date()
     max_d = datetime.strptime(daily_dates[-1], "%Y-%m-%d").date()
-    default_start = max(min_d, max_d - timedelta(days=6))
     with col_period:
-        date_range = st.date_input(
-            t("期间"),
-            value=(default_start, max_d),
-            min_value=min_d, max_value=max_d,
-            format="YYYY-MM-DD",
-        )
-    if isinstance(date_range, tuple) and len(date_range) == 2:
-        sel_start, sel_end = date_range
-    else:
-        sel_start = sel_end = date_range if isinstance(date_range, date) else max_d
-    sel_start_s, sel_end_s = sel_start.isoformat(), sel_end.isoformat()
+        if min_d == max_d:
+            # 数据库里只有 1 天前日数据 → 不用 date_input（min=max 会卡死）
+            st.info(t("当前只有 1 天前日数据：") + f" **{max_d.isoformat()}**")
+            sel_start_s = sel_end_s = max_d.isoformat()
+        else:
+            default_start = max(min_d, max_d - timedelta(days=6))
+            date_range = st.date_input(
+                t("期间（日期范围）"),
+                value=(default_start, max_d),
+                min_value=min_d, max_value=max_d,
+                format="YYYY-MM-DD",
+            )
+            if isinstance(date_range, tuple) and len(date_range) == 2:
+                sel_start, sel_end = date_range
+            else:
+                sel_start = sel_end = (
+                    date_range if isinstance(date_range, date) else max_d
+                )
+            sel_start_s, sel_end_s = sel_start.isoformat(), sel_end.isoformat()
 else:
     with col_period:
         sel_period = st.selectbox(
