@@ -1167,17 +1167,20 @@ def lang_selector():
         unsafe_allow_html=True,
     )
 
-    # 2) 紧凑顶栏 — 用 query_params 实现 pill 状语言切换（无 selectbox 大占位）
-    options = list(LANGS.keys())  # 只剩 中文 / 日本語
+    # 2) 紧凑顶栏 — 跨页持久化：query_params(?lang=ja) > session_state > 默认 zh
+    options = list(LANGS.keys())  # 中文 / 日本語
+    code_to_label = {v: k for k, v in LANGS.items()}  # zh→中文, ja→日本語
 
-    # 默认 zh；从 query 读
     qp = st.query_params
-    cur_lang_code = qp.get("lang", st.session_state.get("lang", "zh"))
+    cur_lang_code = qp.get("lang") or st.session_state.get("lang") or "zh"
     if cur_lang_code not in LANGS.values():
         cur_lang_code = "zh"
-    st.session_state["lang"] = cur_lang_code
+    cur_label = code_to_label[cur_lang_code]
 
-    # 用 columns 在 sidebar 里做横排（左 segmented control 右日期）
+    # widget key 与 session_state 同步（首次访问 / 跨页恢复）
+    if st.session_state.get("lang_seg") != cur_label:
+        st.session_state["lang_seg"] = cur_label
+
     now = datetime.now()
     if cur_lang_code == "ja":
         wd = ["月", "火", "水", "木", "金", "土", "日"][now.weekday()]
@@ -1186,19 +1189,26 @@ def lang_selector():
         wd = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][now.weekday()]
         date_str = f"<b>{now.month}/{now.day}</b> {wd}"
 
+    def _on_lang_change():
+        picked = st.session_state.get("lang_seg") or cur_label
+        new_code = LANGS.get(picked, "zh")
+        st.session_state["lang"] = new_code
+        # 同步到 URL query params（页面切换后能恢复）
+        st.query_params["lang"] = new_code
+
     with st.sidebar:
         try:
-            picked = st.segmented_control(
+            st.segmented_control(
                 "lang", options,
-                default="日本語" if cur_lang_code == "ja" else "中文",
                 key="lang_seg", label_visibility="collapsed",
+                on_change=_on_lang_change,
             )
         except Exception:
-            picked = st.radio(
+            st.radio(
                 "lang", options,
                 horizontal=True, key="lang_seg",
                 label_visibility="collapsed",
-                index=0 if cur_lang_code == "zh" else 1,
+                on_change=_on_lang_change,
             )
         st.markdown(
             f'<div class="cms-date-mini" style="text-align:right; '
@@ -1206,10 +1216,49 @@ def lang_selector():
             unsafe_allow_html=True,
         )
 
-    selected = picked or ("日本語" if cur_lang_code == "ja" else "中文")
-    new_code = LANGS[selected]
-    if new_code != cur_lang_code:
-        st.session_state["lang"] = new_code
+    # 同步本次 render 的 session_state.lang + query_params（即使没触发 on_change，保证一致）
+    st.session_state["lang"] = cur_lang_code
+    if qp.get("lang") != cur_lang_code:
+        st.query_params["lang"] = cur_lang_code
+
+    # JS 注入：让所有 sidebar page_link 的 href 自动带上 ?lang=xx，
+    # 这样跨页跳转 URL 不会丢失语言（Streamlit page_link 默认不传 query params）
+    # 用 components.v1.html → 生成 iframe，通过 window.parent.document 反向操作主文档
+    import streamlit.components.v1 as _components
+    _components.html(
+        """
+<script>
+(function() {
+    const top = window.parent;
+    function patchLangLinks() {
+        try {
+            const cur = new URLSearchParams(top.location.search).get('lang') || 'zh';
+            top.document.querySelectorAll('[data-testid="stSidebar"] a[href]').forEach(a => {
+                try {
+                    const u = new URL(a.href, top.location.origin);
+                    if (u.origin === top.location.origin) {
+                        u.searchParams.set('lang', cur);
+                        if (a.href !== u.toString()) a.href = u.toString();
+                    }
+                } catch (e) {}
+            });
+        } catch (e) {}
+    }
+    patchLangLinks();
+    setTimeout(patchLangLinks, 300);
+    setTimeout(patchLangLinks, 1000);
+    if (!top.__cmsLangLinkObs) {
+        top.__cmsLangLinkObs = new MutationObserver(() => {
+            clearTimeout(top.__cmsLangLinkTimer);
+            top.__cmsLangLinkTimer = setTimeout(patchLangLinks, 100);
+        });
+        top.__cmsLangLinkObs.observe(top.document.body, {childList: true, subtree: true});
+    }
+})();
+</script>
+""",
+        height=0, width=0,
+    )
 
     # 3) 分组导航
     st.sidebar.divider()
