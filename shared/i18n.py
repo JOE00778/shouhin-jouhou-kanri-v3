@@ -613,6 +613,7 @@ _NAV_GROUPS: list[tuple[str | None, list[tuple[str, str]]]] = [
     ]),
     ("⚙️ 系统设置", [
         ("pages/99_⚙️_数据导入与设置.py", "⚙️ 数据导入与设置"),
+        ("pages/22_🗄️_数据库管理.py", "🗄️ 数据库管理"),
     ]),
 ]
 
