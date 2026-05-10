@@ -235,18 +235,34 @@ else:
 
 # ============================================================
 # Tab 0：按市场（东南亚 / 韩国 / 日本）
+# 按日模式: 日期 × 市场, 按日期降序展开 (最近一天在最上)
+# 月度模式: 单期间 × 市场聚合
 # ============================================================
 with tab_market:
-    g = df.groupby("market", as_index=False).agg(
-        销量=("qty_sold", lambda s: int(s.fillna(0).sum())),
-        总售价=("revenue", lambda s: s.fillna(0).sum()),
-        总成本=("defined_cost", lambda s: s.fillna(0).sum()),
-        毛利=("gross_profit", lambda s: s.fillna(0).sum()),
-        店铺数=("store", "nunique"),
-        SKU数=("item_code", "nunique"),
-    )
-    g["毛利率"] = (g["毛利"] / g["总售价"]).where(g["总售价"] > 0).fillna(0) * 100
-    g = g.sort_values("毛利", ascending=False)
+    if is_daily:
+        g = df.groupby(["day", "market"], as_index=False).agg(
+            销量=("qty_sold", lambda s: int(s.fillna(0).sum())),
+            总售价=("revenue", lambda s: s.fillna(0).sum()),
+            总成本=("defined_cost", lambda s: s.fillna(0).sum()),
+            毛利=("gross_profit", lambda s: s.fillna(0).sum()),
+            店铺数=("store", "nunique"),
+            SKU数=("item_code", "nunique"),
+        )
+        g["毛利率"] = (g["毛利"] / g["总售价"]).where(g["总售价"] > 0).fillna(0) * 100
+        g = g.sort_values(
+            ["day", "毛利"], ascending=[False, False]
+        ).rename(columns={"day": "日期"})
+    else:
+        g = df.groupby("market", as_index=False).agg(
+            销量=("qty_sold", lambda s: int(s.fillna(0).sum())),
+            总售价=("revenue", lambda s: s.fillna(0).sum()),
+            总成本=("defined_cost", lambda s: s.fillna(0).sum()),
+            毛利=("gross_profit", lambda s: s.fillna(0).sum()),
+            店铺数=("store", "nunique"),
+            SKU数=("item_code", "nunique"),
+        )
+        g["毛利率"] = (g["毛利"] / g["总售价"]).where(g["总售价"] > 0).fillna(0) * 100
+        g = g.sort_values("毛利", ascending=False)
 
     g_disp = g.copy()
     g_disp["总售价"] = g_disp["总售价"].apply(lambda x: f"{x:,.0f}")
@@ -256,7 +272,12 @@ with tab_market:
 
     st.dataframe(localize_df(g_disp), use_container_width=True, hide_index=True)
     if len(g) > 0:
-        st.bar_chart(g.set_index("market")[["毛利"]], horizontal=True)
+        # daily 模式: 按市场汇总区间总毛利做条形图
+        if is_daily:
+            mkt_sum = g.groupby("market", as_index=True)["毛利"].sum().to_frame()
+            st.bar_chart(mkt_sum, horizontal=True)
+        else:
+            st.bar_chart(g.set_index("market")[["毛利"]], horizontal=True)
 
 
 # ============================================================

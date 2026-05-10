@@ -194,10 +194,12 @@ agg["gross_margin"] = (
 # 库存健康监控 (page 06) 才需要分 JD 和 弁天分开判断
 # ============================================================
 # location 用 LIKE 兼容半角全角 / 多种命名变体 (JD-物流-千葉 / JD千叶 等)
+# % 字面量必须用 named param 传, 否则 psycopg2 pyformat 会把 % 当占位符
 df_inv = _df(
     "SELECT item_code, upc, qty_on_hand, total_amount, location, department "
     "FROM nst_inventory_snapshot "
-    "WHERE location LIKE 'JD%'"
+    "WHERE location LIKE :loc_pattern",
+    {"loc_pattern": "JD%"},
 )
 # 诊断: 提示数据源缺失
 _inv_total = conn.execute("SELECT COUNT(*) AS c FROM nst_inventory_snapshot").fetchone()["c"]
