@@ -364,9 +364,8 @@ agg[t("等级评价")] = agg.apply(_grade, axis=1)
 # ============================================================
 # Tab 视图
 # ============================================================
-tab_unified, tab_simple, tab_raw = st.tabs([
+tab_unified, tab_raw = st.tabs([
     t("📋 SKU 一元一览（22 列）"),
-    t("📋 简明视图"),
     t("📋 按店铺 × SKU 原始明细"),
 ])
 
@@ -430,29 +429,6 @@ with tab_unified:
         t("📥 SKU 一元 CSV 下载"),
         data=csv,
         file_name=f"sku_unified_{sel_period[0]}_{sel_period[1]}.csv",
-        mime="text/csv",
-    )
-
-with tab_simple:
-    simple = pd.DataFrame({
-        t("SKU"): agg["item_code"],
-        t("JAN"): agg["upc"],
-        t("品牌"): agg["maker"].fillna(""),
-        t("产品名"): agg["display_name"].fillna(""),
-        t("取扱区分"): agg["handling_status"].fillna(""),
-        t("RANK"): agg["rank"].fillna(""),
-        t("总销售数量"): agg["qty_sold"].astype(int),
-        t("总营业额"): agg["revenue"].round(0).astype(int),
-        t("毛利"): agg["gross_profit"].round(0).astype(int),
-        t("毛利率"): agg["gross_margin"].apply(lambda x: f"{x*100:.1f}%"),
-        t("库存数量"): agg["qty_on_hand"].astype(int),
-    }).sort_values(t("总营业额"), ascending=False)
-    st.dataframe(simple, use_container_width=True, hide_index=True, height=560)
-    csv = simple.to_csv(index=False).encode("utf-8-sig")
-    st.download_button(
-        t("📥 简明 CSV 下载"),
-        data=csv,
-        file_name=f"sales_simple_{sel_period[0]}.csv",
         mime="text/csv",
     )
 
