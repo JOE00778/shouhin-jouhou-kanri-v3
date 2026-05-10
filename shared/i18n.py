@@ -1099,25 +1099,38 @@ def lang_selector():
 }
 [data-testid="stSidebarHeader"] > * { pointer-events: auto; }
 [data-testid="stSidebarUserContent"] {
-    padding-top: 6px !important;
+    padding-top: 22px !important;
 }
-/* 日期：左对齐 + 大字 */
+/* 日期：居中 + 更大字 */
 .cms-date-big {
-    margin-top: 6px;
-    margin-bottom: 6px;
-    text-align: left;
-    line-height: 1.1;
+    margin-top: 10px;
+    margin-bottom: 4px;
+    text-align: center;
+    line-height: 1.05;
 }
 .cms-date-big .num {
-    font-size: 28px;
+    font-size: 40px;
     font-weight: 600;
     color: #1d1d1f;
-    letter-spacing: -0.022em;
+    letter-spacing: -0.024em;
+    display: block;
 }
 .cms-date-big .meta {
     font-size: 13px;
     color: #6e6e73;
-    margin-left: 4px;
+    margin-top: 2px;
+    display: block;
+}
+/* 拉近 divider 和首页 page_link 的间距 */
+[data-testid="stSidebar"] hr {
+    margin: 8px 0 4px 0 !important;
+}
+[data-testid="stSidebar"] [data-testid="stPageLink"] {
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+}
+[data-testid="stSidebar"] hr + [data-testid="stElementContainer"] {
+    margin-top: 0 !important;
 }
 /* sidebar 内 lang segmented_control 横排占满 sidebar 宽度
    (lock by st-key-lang_seg → key='lang_seg') */
