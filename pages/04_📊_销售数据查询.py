@@ -193,11 +193,30 @@ agg["gross_margin"] = (
 # Boss 决定: 销售数据库存数仅看 JD-物流-千葉 仓库 (弁天 / 本社 / Amazon 不计入)
 # 库存健康监控 (page 06) 才需要分 JD 和 弁天分开判断
 # ============================================================
+# location 用 LIKE 兼容半角全角 / 多种命名变体 (JD-物流-千葉 / JD千叶 等)
 df_inv = _df(
     "SELECT item_code, upc, qty_on_hand, total_amount, location, department "
     "FROM nst_inventory_snapshot "
-    "WHERE location = 'JD-物流-千葉'"
+    "WHERE location LIKE 'JD%'"
 )
+# 诊断: 提示数据源缺失
+_inv_total = conn.execute("SELECT COUNT(*) AS c FROM nst_inventory_snapshot").fetchone()["c"]
+_turn_total = conn.execute("SELECT COUNT(*) AS c FROM nst_turnover").fetchone()["c"]
+if _inv_total == 0:
+    st.warning(t(
+        "⚠️ `nst_inventory_snapshot` 表为空,库存数量/库存金额列将全部 0。"
+        "请到「⚙️ 数据导入与设置」上传 NetSuite 库存导出 (例:在庫のスナップショット-980.xls)。"
+    ))
+elif df_inv.empty:
+    st.warning(t(
+        f"⚠️ nst_inventory_snapshot 有 {_inv_total} 行,但筛选 location LIKE 'JD%' 后为 0。"
+        "数据库里的 location 命名可能与默认值不一致 (检查全角/半角,或正确仓库名)。"
+    ))
+if _turn_total == 0:
+    st.warning(t(
+        "⚠️ `nst_turnover` 表为空,库存周转率/平均在庫日数/交叉比率列将全部 0。"
+        "请上传 NetSuite 在庫回転率导出。"
+    ))
 if not df_inv.empty:
     df_inv["qty_on_hand"] = pd.to_numeric(df_inv["qty_on_hand"], errors="coerce").fillna(0)
     df_inv["total_amount"] = pd.to_numeric(df_inv["total_amount"], errors="coerce").fillna(0)
@@ -343,24 +362,6 @@ agg["profit_contribution"] = (
 ) if total_gp_active else 0
 
 
-def _grade(row):
-    if str(row.get("handling_status", "")).strip() in ("取扱中止", "メーカー取扱中止"):
-        return t("⚫ 中止")
-    if row["qty_sold"] <= 0:
-        return t("⚪ 不动")
-    # 等级评价用月交叉比率 (无 ×100 后, 阈值缩小 100 倍)
-    cr = row["cross_ratio_m"]
-    if cr >= 1.0:
-        return t("🟢 A")
-    if cr >= 0.5:
-        return t("🟡 B")
-    if cr >= 0.2:
-        return t("🟠 C")
-    return t("🔴 D")
-
-
-agg[t("等级评价")] = agg.apply(_grade, axis=1)
-
 # ============================================================
 # Tab 视图
 # ============================================================
@@ -391,7 +392,6 @@ with tab_unified:
         t("月售罄率"): agg["sellout_rate_str"],   # 留空
         t("在庫販売比率"): agg["inv_sales_ratio"].round(2),
         t("利益貢献度"): agg["profit_contribution"].apply(lambda x: f"{x*100:.2f}%"),
-        t("等级评价"): agg[t("等级评价")],
     })
     out = out.sort_values(t("总营业额"), ascending=False)
 
