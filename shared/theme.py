@@ -179,14 +179,25 @@ p, span, label, div { color: #1d1d1f; }
     border-color: #0077ed !important;
 }
 
-/* ===== page_link ===== */
-[data-testid="stPageLink"] a {
-    border-radius: 12px;
-    transition: background 0.15s;
-    padding: 0.5rem 0.75rem;
+/* ===== page_link · 统一尺寸/间距,active 仅靠背景色区分 ===== */
+[data-testid="stSidebar"] [data-testid="stPageLink"] {
+    margin: 0 !important;
 }
-[data-testid="stPageLink"] a:hover {
-    background: rgba(0, 0, 0, 0.04);
+[data-testid="stSidebar"] [data-testid="stPageLink"] a {
+    border-radius: 10px !important;
+    transition: background 0.15s;
+    padding: 8px 12px !important;
+    margin: 2px 0 !important;
+    height: 36px !important;
+    min-height: 36px !important;
+    display: flex !important;
+    align-items: center !important;
+    box-sizing: border-box !important;
+    font-size: 14px !important;
+    line-height: 1.2 !important;
+}
+[data-testid="stSidebar"] [data-testid="stPageLink"] a:hover {
+    background: rgba(0, 0, 0, 0.04) !important;
 }
 
 /* ===== 输入框 / 选择框：圆角 + hairline ===== */

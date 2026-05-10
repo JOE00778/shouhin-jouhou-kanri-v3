@@ -53,20 +53,8 @@ except Exception:
     _kpi_delta = {}
 
 
-# ============================================================
-# Sidebar 快捷栏（mockup T2）
-# ============================================================
-with st.sidebar:
-    st.markdown("##### ⚡ 常用")
-    try:
-        st.page_link("pages/18_📦_订货依据.py", label="📦 订货依据")
-        st.page_link("pages/02_🔍_商品情报检索.py", label="🔍 商品情报检索")
-        st.page_link("pages/14_💱_財務.py", label="💱 財務")
-        st.page_link("pages/04_📊_销售数据查询.py", label="📊 销售数据查询")
-        st.page_link("pages/99_⚙️_数据导入与设置.py", label="⚙️ 数据导入与设置")
-    except Exception:
-        # st.page_link 在某些 Streamlit 版本不支持时降级为 markdown 链接
-        pass
+# Sidebar 导航统一由 lang_selector() 渲染（_NAV_GROUPS 唯一来源），
+# 不在主入口再追加快捷栏，避免与分组导航重复
 
 
 # ============================================================
