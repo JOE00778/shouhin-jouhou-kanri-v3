@@ -13,6 +13,8 @@
 """
 from __future__ import annotations
 
+from datetime import date, datetime, timedelta
+
 import pandas as pd
 import streamlit as st
 from shared.i18n import t, lang_selector
@@ -108,27 +110,67 @@ if not period_choices:
         except Exception as e:
             st.error(f"❌ 导入失败：{e}")
     st.stop()
-with col_period:
-    sel_period = st.selectbox(
-        t("期间"),
-        period_choices,
-        format_func=lambda p: f"{p[0]} ~ {p[1]}",
-    )
+
+# ----- 期间选择 -----
+# 月度：单选 selectbox。前日：日期区间 date_input（默认最近 7 天）
+is_daily = sel_dim == t("📊 前日")
+if is_daily:
+    daily_dates = sorted({r["period_start"] for r in period_opts})
+    min_d = datetime.strptime(daily_dates[0], "%Y-%m-%d").date()
+    max_d = datetime.strptime(daily_dates[-1], "%Y-%m-%d").date()
+    default_start = max(min_d, max_d - timedelta(days=6))
+    with col_period:
+        date_range = st.date_input(
+            t("期间"),
+            value=(default_start, max_d),
+            min_value=min_d, max_value=max_d,
+            format="YYYY-MM-DD",
+        )
+    if isinstance(date_range, tuple) and len(date_range) == 2:
+        sel_start, sel_end = date_range
+    else:
+        sel_start = sel_end = date_range if isinstance(date_range, date) else max_d
+    sel_start_s, sel_end_s = sel_start.isoformat(), sel_end.isoformat()
+else:
+    with col_period:
+        sel_period = st.selectbox(
+            t("期间"),
+            period_choices,
+            format_func=lambda p: f"{p[0]} ~ {p[1]}",
+        )
+    sel_start_s, sel_end_s = sel_period[0], sel_period[1]
+
 with col_market:
     mk_choices = [t("全部市场")] + ALL_MARKETS
     mk_pick = st.selectbox(t("市场"), mk_choices, index=0)
 
 # 加载明细（不再硬过滤 store IS NOT NULL；店铺识别失败的行用占位符兜底）
-df = pd.DataFrame([dict(r) for r in conn.execute(
-    f"""
-    SELECT COALESCE(NULLIF(TRIM(COALESCE(store, '')), ''), '（未识别店铺）') AS store,
-           item_code, display_name, qty_sold, revenue,
-           defined_cost, gross_profit, gross_margin, rank
-    FROM sales_line
-    WHERE source IN ({src_placeholders}) AND period_start = ? AND period_end = ?
-    """,
-    (*allowed_srcs, sel_period[0], sel_period[1]),
-).fetchall()])
+# daily 模式按区间，monthly 模式按精确期间
+if is_daily:
+    df = pd.DataFrame([dict(r) for r in conn.execute(
+        f"""
+        SELECT COALESCE(NULLIF(TRIM(COALESCE(store, '')), ''), '（未识别店铺）') AS store,
+               item_code, display_name, qty_sold, revenue,
+               defined_cost, gross_profit, gross_margin, rank,
+               period_start AS day
+        FROM sales_line
+        WHERE source IN ({src_placeholders})
+          AND period_start >= ? AND period_end <= ?
+        """,
+        (*allowed_srcs, sel_start_s, sel_end_s),
+    ).fetchall()])
+else:
+    df = pd.DataFrame([dict(r) for r in conn.execute(
+        f"""
+        SELECT COALESCE(NULLIF(TRIM(COALESCE(store, '')), ''), '（未识别店铺）') AS store,
+               item_code, display_name, qty_sold, revenue,
+               defined_cost, gross_profit, gross_margin, rank,
+               period_start AS day
+        FROM sales_line
+        WHERE source IN ({src_placeholders}) AND period_start = ? AND period_end = ?
+        """,
+        (*allowed_srcs, sel_start_s, sel_end_s),
+    ).fetchall()])
 
 if df.empty:
     st.info(t("此条件下无数据。"))
@@ -163,9 +205,15 @@ c5.metric(t("毛利率"), f"{total_margin:.2f}%")
 
 st.divider()
 
-tab_market, tab_store, tab_top_skus = st.tabs(
-    [t("🌐 按市场聚合"), t("📊 按店铺聚合"), t("🏆 TOP SKU 贡献")]
-)
+if is_daily:
+    tab_market, tab_store, tab_top_skus, tab_daily = st.tabs(
+        [t("🌐 按市场聚合"), t("📊 按店铺聚合"), t("🏆 TOP SKU 贡献"), t("📈 按日趋势")]
+    )
+else:
+    tab_market, tab_store, tab_top_skus = st.tabs(
+        [t("🌐 按市场聚合"), t("📊 按店铺聚合"), t("🏆 TOP SKU 贡献")]
+    )
+    tab_daily = None
 
 # ============================================================
 # Tab 0：按市场（东南亚 / 韩国 / 日本）
@@ -233,6 +281,38 @@ with tab_top_skus:
     g_disp["毛利率"] = g_disp["毛利率"].apply(lambda x: f"{x:.2f}%")
     st.dataframe(localize_df(g_disp), use_container_width=True, hide_index=True)
 
+# ============================================================
+# Tab 3：按日趋势（仅 daily 模式）
+# ============================================================
+if tab_daily is not None:
+    with tab_daily:
+        daily_g = df.groupby("day", as_index=False).agg(
+            销量=("qty_sold", lambda s: int(s.fillna(0).sum())),
+            总售价=("revenue", lambda s: s.fillna(0).sum()),
+            总成本=("defined_cost", lambda s: s.fillna(0).sum()),
+            毛利=("gross_profit", lambda s: s.fillna(0).sum()),
+            店铺数=("store", "nunique"),
+            SKU数=("item_code", "nunique"),
+        ).sort_values("day")
+        daily_g["毛利率"] = (
+            (daily_g["毛利"] / daily_g["总售价"]).where(daily_g["总售价"] > 0).fillna(0) * 100
+        )
+
+        # 折线图：每日总售价 / 毛利
+        chart_df = daily_g.set_index("day")[["总售价", "毛利"]]
+        st.line_chart(chart_df, use_container_width=True)
+
+        # 销量条形图
+        st.bar_chart(daily_g.set_index("day")[["销量"]], use_container_width=True)
+
+        # 明细表
+        daily_disp = daily_g.copy()
+        daily_disp["总售价"] = daily_disp["总售价"].apply(lambda x: f"{x:,.0f}")
+        daily_disp["总成本"] = daily_disp["总成本"].apply(lambda x: f"{x:,.0f}")
+        daily_disp["毛利"] = daily_disp["毛利"].apply(lambda x: f"{x:,.0f}")
+        daily_disp["毛利率"] = daily_disp["毛利率"].apply(lambda x: f"{x:.2f}%")
+        st.dataframe(localize_df(daily_disp), use_container_width=True, hide_index=True)
+
 
 st.divider()
-st.caption(f"{t('维度')}：{sel_dim} · {t('期间')}：{sel_period[0]} ~ {sel_period[1]}")
+st.caption(f"{t('维度')}：{sel_dim} · {t('期间')}：{sel_start_s} ~ {sel_end_s}")

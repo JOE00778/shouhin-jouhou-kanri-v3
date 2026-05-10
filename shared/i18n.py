@@ -1074,27 +1074,123 @@ TRANSLATIONS_ZH: dict[str, str] = {
 }
 
 
+_LANG_FLAGS = {"中文": "🇨🇳", "日本語": "🇯🇵", "English": "🇬🇧"}
+
+
 def lang_selector():
     """每个 page 调用一次。
     - 隐藏 Streamlit 默认（基于文件名的）sidebar 导航
-    - 在 sidebar 顶部渲染 🌐 切换器
+    - 在 sidebar 顶部渲染 🌐 segmented_control 语言切换器（时尚 pill 形）
+    - 显示今日日期 + 星期
     - 按三大块分组渲染可翻译导航（销售数据 / 订货决策 / 商品情报）
     """
-    # 1) 隐藏默认导航
+    from datetime import datetime
+
+    # 1) 隐藏默认导航 + segmented_control 占满 sidebar 宽度
     st.markdown(
-        "<style>[data-testid='stSidebarNav']{display:none!important;}</style>",
+        """
+<style>
+[data-testid='stSidebarNav']{display:none!important;}
+/* 语言切换器：苹果风 segmented control */
+[data-testid="stSidebar"] [data-baseweb="button-group"] {
+    background: rgba(120, 120, 128, 0.12);
+    border-radius: 980px;
+    padding: 2px;
+    width: 100% !important;
+}
+[data-testid="stSidebar"] [data-baseweb="button-group"] button {
+    background: transparent !important;
+    border: none !important;
+    border-radius: 980px !important;
+    color: #1d1d1f !important;
+    font-weight: 500 !important;
+    font-size: 13px !important;
+    padding: 0.35rem 0.5rem !important;
+    flex: 1 !important;
+    min-width: 0 !important;
+}
+[data-testid="stSidebar"] [data-baseweb="button-group"] button[aria-pressed="true"],
+[data-testid="stSidebar"] [data-baseweb="button-group"] button[kind="primary"] {
+    background: #ffffff !important;
+    color: #1d1d1f !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 0.5px 0 rgba(0,0,0,0.04) !important;
+    font-weight: 600 !important;
+}
+/* 今日日期卡片 */
+.lang-date-card {
+    margin-top: 12px;
+    padding: 10px 14px;
+    background: rgba(255, 255, 255, 0.6);
+    border: 1px solid rgba(0,0,0,0.06);
+    border-radius: 14px;
+    text-align: center;
+}
+.lang-date-card .day-num {
+    font-size: 22px;
+    font-weight: 600;
+    color: #1d1d1f;
+    letter-spacing: -0.018em;
+    line-height: 1;
+}
+.lang-date-card .day-meta {
+    font-size: 11px;
+    color: #6e6e73;
+    margin-top: 3px;
+    letter-spacing: 0.01em;
+}
+</style>
+""",
         unsafe_allow_html=True,
     )
 
-    # 2) 语言切换器
-    selected = st.sidebar.selectbox(
-        "🌐 Language / 言語",
-        list(LANGS.keys()),
-        key="lang_label",
-    )
+    # 2) 语言切换器：segmented_control（带国旗）→ fallback radio
+    options = list(LANGS.keys())
+    labels_with_flags = [f"{_LANG_FLAGS.get(k, '')} {k}" for k in options]
+    label_to_key = dict(zip(labels_with_flags, options))
+
+    with st.sidebar:
+        st.markdown(
+            "<div style='font-size:11px; color:#6e6e73; font-weight:600; "
+            "letter-spacing:0.04em; margin-bottom:4px;'>LANGUAGE / 言語</div>",
+            unsafe_allow_html=True,
+        )
+        try:
+            picked = st.segmented_control(
+                "lang", labels_with_flags,
+                default=labels_with_flags[0],
+                key="lang_seg", label_visibility="collapsed",
+            )
+        except Exception:
+            picked = st.radio(
+                "lang", labels_with_flags,
+                horizontal=True, key="lang_seg",
+                label_visibility="collapsed",
+            )
+    selected = label_to_key.get(picked or labels_with_flags[0], options[0])
     st.session_state["lang"] = LANGS[selected]
 
-    # 3) 分组导航
+    # 3) 今日日期卡片
+    now = datetime.now()
+    lang = LANGS[selected]
+    if lang == "ja":
+        wd_jp = ["月", "火", "水", "木", "金", "土", "日"][now.weekday()]
+        meta = f"{now.year}年{now.month}月 · {wd_jp}曜日"
+    elif lang == "en":
+        meta = now.strftime("%a, %b %Y")
+    else:
+        wd_zh = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][now.weekday()]
+        meta = f"{now.year}年{now.month}月 · {wd_zh}"
+    st.sidebar.markdown(
+        f"""
+<div class="lang-date-card">
+    <div class="day-num">{now.day}</div>
+    <div class="day-meta">{meta}</div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+    # 4) 分组导航
     st.sidebar.divider()
     for group_label, pages in _NAV_GROUPS:
         if group_label is None:
