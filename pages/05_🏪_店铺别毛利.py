@@ -49,7 +49,9 @@ DIM_TO_SOURCES = {
     t("📅 月度"): ["asean_monthly", "export_store"],
     t("📊 前日"): ["asean_daily"],
 }
-sel_dim = st.radio(t("维度"), list(DIM_TO_SOURCES.keys()), horizontal=True)
+col_dim, col_period, col_market = st.columns([1.2, 2, 1.2])
+with col_dim:
+    sel_dim = st.radio(t("维度"), list(DIM_TO_SOURCES.keys()), horizontal=True)
 allowed_srcs = DIM_TO_SOURCES[sel_dim]
 
 # 期间选项：当前维度下可用的所有期间（先不过滤 store）
@@ -104,11 +106,15 @@ if not period_choices:
         except Exception as e:
             st.error(f"❌ 导入失败：{e}")
     st.stop()
-sel_period = st.selectbox(
-    t("期间"),
-    period_choices,
-    format_func=lambda p: f"{p[0]} ~ {p[1]}",
-)
+with col_period:
+    sel_period = st.selectbox(
+        t("期间"),
+        period_choices,
+        format_func=lambda p: f"{p[0]} ~ {p[1]}",
+    )
+with col_market:
+    mk_choices = [t("全部市场")] + ALL_MARKETS
+    mk_pick = st.selectbox(t("市场"), mk_choices, index=0)
 
 # 加载明细（不再硬过滤 store IS NOT NULL；店铺识别失败的行用占位符兜底）
 df = pd.DataFrame([dict(r) for r in conn.execute(
@@ -130,8 +136,6 @@ if df.empty:
 df = add_market_column(df, store_col="store")
 
 # 市场过滤
-mk_choices = [t("全部市场")] + ALL_MARKETS
-mk_pick = st.selectbox(t("市场"), mk_choices, index=0)
 if mk_pick != t("全部市场"):
     df = df[df["market"] == mk_pick]
 if df.empty:
