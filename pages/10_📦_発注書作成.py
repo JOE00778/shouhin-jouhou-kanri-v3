@@ -17,6 +17,7 @@ import streamlit as st
 
 from shared.db import get_connection
 from shared.i18n import lang_selector, t
+from shared.i18n_columns import localize_df
 
 st.set_page_config(page_title=t("発注書作成"), page_icon="📦", layout="wide")
 from shared.auth import require_password
@@ -162,7 +163,7 @@ if df_order is not None and not df_order.empty:
     missing = df[df[name_col].isna()] if name_col in df.columns else pd.DataFrame()
     if len(missing) > 0:
         st.warning(t(f"⚠ {len(missing)} 件 JAN 在 item_master 找不到"))
-        st.dataframe(missing[["jan"]])
+        st.dataframe(localize_df(missing[["jan"]]))
 
     qty_col = "ロット×数量" if "ロット×数量" in df.columns else "数量"
     df["数量"] = pd.to_numeric(df[qty_col], errors="coerce").fillna(0).astype(int)

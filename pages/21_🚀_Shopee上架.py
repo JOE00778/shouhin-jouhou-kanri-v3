@@ -37,6 +37,7 @@ import streamlit as st
 from shared.auth import is_admin, require_admin
 from shared.db import get_connection, INPUTS_DIR, DATA_DIR
 from shared.i18n import get_lang, lang_selector, t
+from shared.i18n_columns import localize_df
 from shared.n8n_client import (
     get_run_status,
     list_recent_runs,
@@ -715,7 +716,7 @@ with tab_history:
                 "triggered_at": (r.get("triggered_at") or "")[:19],
                 "completed_at": (r.get("completed_at") or "")[:19],
             })
-        st.dataframe(rows, use_container_width=True, hide_index=True)
+        st.dataframe(localize_df(pd.DataFrame(rows)), use_container_width=True, hide_index=True)
 
         ids = [r["run_id"] for r in runs]
         sel = st.selectbox(

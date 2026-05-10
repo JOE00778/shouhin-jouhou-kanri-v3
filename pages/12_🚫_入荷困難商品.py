@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 import pandas as pd
 import streamlit as st
 from shared.i18n import t, lang_selector
+from shared.i18n_columns import localize_records
 
 from shared.db import get_connection
 
@@ -148,7 +149,7 @@ if not hist:
     st.caption(t("（最近 7 天无操作）"))
 else:
     st.dataframe(
-        [dict(r) for r in hist],
+        localize_records([dict(r) for r in hist]),
         use_container_width=True,
         hide_index=True,
     )

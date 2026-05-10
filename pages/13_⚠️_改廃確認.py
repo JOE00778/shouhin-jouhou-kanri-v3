@@ -1,5 +1,6 @@
 import streamlit as st
 from shared.i18n import t, lang_selector
+from shared.i18n_columns import localize_df
 import pandas as pd
 import sqlite3
 import subprocess
@@ -146,6 +147,6 @@ with tab2:
         else:
             view_history = history.drop(columns=['month'])
 
-        st.dataframe(view_history, use_container_width=True, height=500)
+        st.dataframe(localize_df(view_history), use_container_width=True, height=500)
 
 conn.close()

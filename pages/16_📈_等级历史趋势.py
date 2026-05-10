@@ -1,5 +1,6 @@
 import streamlit as st
 from shared.i18n import t, lang_selector
+from shared.i18n_columns import localize_df
 import pandas as pd
 import sqlite3
 from pathlib import Path
@@ -94,7 +95,7 @@ display_df = df[['sku', 'quarter', 'old_rank', 'new_rank', 'changed_by', 'change
 display_df = display_df.sort_values('changed_at', ascending=False)
 
 st.dataframe(
-    display_df.head(500),
+    localize_df(display_df.head(500)),
     use_container_width=True,
     height=400,
     hide_index=True
@@ -112,7 +113,7 @@ if unique_skus:
     sku_history = df[df['sku'] == sel_sku].sort_values('changed_at', ascending=False)
 
     st.dataframe(
-        sku_history[['quarter', 'old_rank', 'new_rank', 'changed_by', 'changed_at']],
+        localize_df(sku_history[['quarter', 'old_rank', 'new_rank', 'changed_by', 'changed_at']]),
         use_container_width=True,
         hide_index=True
     )

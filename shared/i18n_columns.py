@@ -128,6 +128,86 @@ COLUMN_LABELS: dict[str, dict[str, str]] = {
     "acknowledged_by":  {"ja": "確認者",        "zh": "确认人",     "en": "Acked By"},
     "acknowledged_at":  {"ja": "確認日時",      "zh": "确认时间",   "en": "Acked At"},
     "action":           {"ja": "対応",          "zh": "处置",       "en": "Action"},
+
+    # ── 月完売率 / 健康度 ──
+    "qty_total_in":     {"ja": "入荷合計",      "zh": "入库合计",   "en": "Qty In"},
+    "qty_total_out":    {"ja": "出荷合計",      "zh": "出库合计",   "en": "Qty Out"},
+    "qty_received":     {"ja": "入荷数",        "zh": "入库数",     "en": "Qty Received"},
+    "open_qty":         {"ja": "期初在庫",      "zh": "期初库存",   "en": "Open Qty"},
+    "close_qty":        {"ja": "期末在庫",      "zh": "期末库存",   "en": "Close Qty"},
+    "open_amount":      {"ja": "期初金額",      "zh": "期初金额",   "en": "Open Amount"},
+    "close_amount":     {"ja": "期末金額",      "zh": "期末金额",   "en": "Close Amount"},
+    "out_amount":       {"ja": "出荷金額",      "zh": "出库金额",   "en": "Out Amount"},
+    "sell_through_rate":{"ja": "完売率",        "zh": "完売率",     "en": "Sell-Through"},
+    "risk_label":       {"ja": "リスク区分",    "zh": "风险等级",   "en": "Risk Label"},
+
+    # ── 在途库存 ──
+    "qty_on_order":     {"ja": "発注中",        "zh": "订货中",     "en": "On Order"},
+    "qty_waiting":      {"ja": "入荷待ち",      "zh": "等待入库",   "en": "Waiting"},
+    "qty_in_transit":   {"ja": "輸送中",        "zh": "在途中",     "en": "In Transit"},
+
+    # ── 时间戳补全 ──
+    "last_received_at": {"ja": "最終入荷日",    "zh": "最近入库",   "en": "Last Received"},
+    "last_sold_at":     {"ja": "最終販売日",    "zh": "最近销售",   "en": "Last Sold"},
+
+    # ── Shopee 财务 (NST 拨款) ──
+    "nst_payment":      {"ja": "NST 入金",      "zh": "NST 付款",   "en": "NST Payment"},
+    "nst_refund":       {"ja": "NST 返金",      "zh": "NST 退款",   "en": "NST Refund"},
+    "nst_bill":         {"ja": "NST 請求",      "zh": "NST 账单",   "en": "NST Bill"},
+    "payout_amount":    {"ja": "拨款金額",      "zh": "拨款金额",   "en": "Payout Amount"},
+    "payout_date":      {"ja": "拨款日",        "zh": "拨款日",     "en": "Payout Date"},
+    "payout_month":     {"ja": "拨款月",        "zh": "拨款月",     "en": "Payout Month"},
+    "payout_week":      {"ja": "拨款週",        "zh": "拨款周",     "en": "Payout Week"},
+    "seller_account":   {"ja": "店舗アカウント", "zh": "店铺账号",   "en": "Seller Account"},
+    "buyer_account":    {"ja": "購入者",        "zh": "买家账号",   "en": "Buyer Account"},
+    "_jpy_rate":        {"ja": "JPY 換算レート", "zh": "JPY 换算率", "en": "JPY Rate"},
+    "order_create_month":{"ja": "受注月",       "zh": "下单月",     "en": "Order Month"},
+    "order_create_week":{"ja": "受注週",        "zh": "下单周",     "en": "Order Week"},
+    "order_created_at": {"ja": "受注日時",      "zh": "下单时间",   "en": "Order Created"},
+    "gross_price":      {"ja": "商品原価",      "zh": "商品原价",   "en": "Gross Price"},
+    "product_discount": {"ja": "商品割引",      "zh": "商品折扣",   "en": "Discount"},
+    "refund_amount":    {"ja": "返金額",        "zh": "退款金额",   "en": "Refund"},
+    "commission":       {"ja": "手数料",        "zh": "佣金",       "en": "Commission"},
+    "service_fee":      {"ja": "サービス料",    "zh": "服务费",     "en": "Service Fee"},
+    "transaction_fee":  {"ja": "取引手数料",    "zh": "交易费",     "en": "Transaction Fee"},
+    "buyer_shipping":   {"ja": "購入者送料",    "zh": "买家运费",   "en": "Buyer Shipping"},
+    "seller_shipping":  {"ja": "出品者送料",    "zh": "卖家运费",   "en": "Seller Shipping"},
+
+    # ── Shopee 订单 / 订单导出 ──
+    "order_no":         {"ja": "注文番号",      "zh": "订单号",     "en": "Order No"},
+    "shop_name":        {"ja": "店舗名",        "zh": "店铺名",     "en": "Shop Name"},
+    "country":          {"ja": "国",            "zh": "国家",       "en": "Country"},
+    "market":           {"ja": "市場",          "zh": "市场",       "en": "Market"},
+    "local_sku":        {"ja": "現地SKU",       "zh": "本地 SKU",   "en": "Local SKU"},
+    "payment_amount":   {"ja": "決済金額",      "zh": "支付金额",   "en": "Payment Amount"},
+    "ship_qty":         {"ja": "出荷数",        "zh": "发货数量",   "en": "Ship Qty"},
+
+    # ── 等级历史 / 趋势 ──
+    "sku":              {"ja": "SKU",          "zh": "SKU",        "en": "SKU"},
+    "quarter":          {"ja": "四半期",        "zh": "季度",       "en": "Quarter"},
+    "old_rank":         {"ja": "旧ランク",      "zh": "旧等级",     "en": "Old Rank"},
+    "new_rank":         {"ja": "新ランク",      "zh": "新等级",     "en": "New Rank"},
+    "old_score":        {"ja": "旧スコア",      "zh": "旧分数",     "en": "Old Score"},
+    "new_score":        {"ja": "新スコア",      "zh": "新分数",     "en": "New Score"},
+    "changed_by":       {"ja": "変更者",        "zh": "变更人",     "en": "Changed By"},
+    "changed_at":       {"ja": "変更日時",      "zh": "变更时间",   "en": "Changed At"},
+
+    # ── 改廃 / discontinue ──
+    "month":            {"ja": "月",            "zh": "月份",       "en": "Month"},
+    "reason":           {"ja": "理由",          "zh": "理由",       "en": "Reason"},
+    "note":             {"ja": "備考",          "zh": "备注",       "en": "Note"},
+    "item_id":          {"ja": "商品ID",        "zh": "商品 ID",   "en": "Item ID"},
+    "item_key":         {"ja": "商品キー",      "zh": "商品键",     "en": "Item Key"},
+    "action_at":        {"ja": "操作日時",      "zh": "操作时间",   "en": "Action At"},
+
+    # ── 入荷困难/进货历史 ──
+    "supplier":         {"ja": "仕入先",        "zh": "供应商",     "en": "Supplier"},
+    "qty":              {"ja": "数量",          "zh": "数量",       "en": "Qty"},
+    "ordered_at":       {"ja": "発注日",        "zh": "下单日期",   "en": "Ordered At"},
+    "quantity":         {"ja": "数量",          "zh": "数量",       "en": "Quantity"},
+    "order_date":       {"ja": "注文日",        "zh": "订单日期",   "en": "Order Date"},
+    "order_id":         {"ja": "注文ID",        "zh": "订单 ID",    "en": "Order ID"},
+    "memo":             {"ja": "メモ",          "zh": "备注",       "en": "Memo"},
 }
 
 

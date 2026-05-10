@@ -16,6 +16,7 @@ from typing import Any
 import streamlit as st
 
 from shared.auth import is_admin
+from shared.i18n_columns import localize_records
 
 
 def _table_exists(conn, name: str) -> bool:
@@ -77,7 +78,7 @@ def render_v2_quickview(conn: Any, *, key_prefix: str = "v2qv_") -> None:
                         (chosen_maker,),
                     ).fetchall()
                     st.dataframe(
-                        [dict(r) for r in rows],
+                        localize_records([dict(r) for r in rows]),
                         use_container_width=True, hide_index=True,
                     )
                     st.caption(f"{chosen_maker} · 显示前 200 个 SKU")
@@ -114,7 +115,7 @@ def render_v2_quickview(conn: Any, *, key_prefix: str = "v2qv_") -> None:
                             if sales:
                                 st.markdown("**销售（shop_sales 最近 50 行）**")
                                 st.dataframe(
-                                    [dict(r) for r in sales],
+                                    localize_records([dict(r) for r in sales]),
                                     use_container_width=True, hide_index=True,
                                 )
 
@@ -128,7 +129,7 @@ def render_v2_quickview(conn: Any, *, key_prefix: str = "v2qv_") -> None:
                             if inv:
                                 st.markdown("**库存（item_inventory_snapshot_v2）**")
                                 st.dataframe(
-                                    [dict(r) for r in inv],
+                                    localize_records([dict(r) for r in inv]),
                                     use_container_width=True, hide_index=True,
                                 )
 
@@ -143,7 +144,7 @@ def render_v2_quickview(conn: Any, *, key_prefix: str = "v2qv_") -> None:
                             if purchase:
                                 st.markdown("**进货（item_purchase_history 最近 20）**")
                                 st.dataframe(
-                                    [dict(r) for r in purchase],
+                                    localize_records([dict(r) for r in purchase]),
                                     use_container_width=True, hide_index=True,
                                 )
                 except Exception as e:
@@ -182,7 +183,7 @@ def render_v2_quickview(conn: Any, *, key_prefix: str = "v2qv_") -> None:
                             (chosen,),
                         ).fetchall()
                         st.dataframe(
-                            [dict(r) for r in rows],
+                            localize_records([dict(r) for r in rows]),
                             use_container_width=True, hide_index=True,
                         )
                         st.caption(f"{chosen} · 显示前 300 个商品")
@@ -216,7 +217,7 @@ def render_v2_quickview(conn: Any, *, key_prefix: str = "v2qv_") -> None:
                     if by_p:
                         st.markdown("**店铺分布（platform × market）**")
                         st.dataframe(
-                            [dict(r) for r in by_p],
+                            localize_records([dict(r) for r in by_p]),
                             use_container_width=True, hide_index=True,
                         )
 
@@ -229,7 +230,7 @@ def render_v2_quickview(conn: Any, *, key_prefix: str = "v2qv_") -> None:
                     if runs:
                         st.markdown("**最近 ETL 历史**")
                         st.dataframe(
-                            [dict(r) for r in runs],
+                            localize_records([dict(r) for r in runs]),
                             use_container_width=True, hide_index=True,
                         )
             except Exception as e:

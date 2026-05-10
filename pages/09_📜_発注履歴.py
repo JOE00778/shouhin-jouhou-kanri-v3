@@ -12,6 +12,7 @@ import streamlit as st
 
 from shared.db import get_connection
 from shared.i18n import lang_selector, t
+from shared.i18n_columns import localize_df
 
 st.set_page_config(page_title=t("発注履歴"), page_icon="📜", layout="wide")
 from shared.auth import require_password
@@ -55,7 +56,7 @@ cols = [c for c in ["jan", "quantity", "order_date", "order_id", "memo"] if c in
 df_show = df[cols].sort_values("jan")
 
 st.success(t(f"✅ 命中 {len(df_show)} 条记录"))
-st.dataframe(df_show, use_container_width=True, hide_index=True)
+st.dataframe(localize_df(df_show), use_container_width=True, hide_index=True)
 
 csv = df_show.to_csv(index=False).encode("utf-8-sig")
 st.download_button(t("📥 CSV 下载"), data=csv, file_name="purchase_history.csv", mime="text/csv")

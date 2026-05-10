@@ -16,6 +16,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 from shared.i18n import t, lang_selector
+from shared.i18n_columns import localize_df
 
 from shared.db import get_connection
 from shared.markets import ALL_MARKETS, add_market_column
@@ -181,7 +182,7 @@ with tab_market:
     g_disp["毛利"] = g_disp["毛利"].apply(lambda x: f"{x:,.0f}")
     g_disp["毛利率"] = g_disp["毛利率"].apply(lambda x: f"{x:.2f}%")
 
-    st.dataframe(g_disp, use_container_width=True, hide_index=True)
+    st.dataframe(localize_df(g_disp), use_container_width=True, hide_index=True)
     if len(g) > 0:
         st.bar_chart(g.set_index("market")[["毛利"]], horizontal=True)
 
@@ -205,7 +206,7 @@ with tab_store:
     g_disp["毛利"] = g_disp["毛利"].apply(lambda x: f"{x:,.0f}")
     g_disp["毛利率"] = g_disp["毛利率"].apply(lambda x: f"{x:.2f}%")
 
-    st.dataframe(g_disp, use_container_width=True, hide_index=True)
+    st.dataframe(localize_df(g_disp), use_container_width=True, hide_index=True)
     st.bar_chart(g.set_index("store")[["毛利"]], horizontal=True)
 
 # ============================================================
@@ -224,7 +225,7 @@ with tab_top_skus:
     g_disp["总售价"] = g_disp["总售价"].apply(lambda x: f"{x:,.0f}")
     g_disp["毛利"] = g_disp["毛利"].apply(lambda x: f"{x:,.0f}")
     g_disp["毛利率"] = g_disp["毛利率"].apply(lambda x: f"{x:.2f}%")
-    st.dataframe(g_disp, use_container_width=True, hide_index=True)
+    st.dataframe(localize_df(g_disp), use_container_width=True, hide_index=True)
 
 
 st.divider()

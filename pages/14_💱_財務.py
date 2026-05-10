@@ -28,6 +28,7 @@ import streamlit as st
 from shared.db import get_connection
 from shared.forex import FX_TO_JPY
 from shared.i18n import lang_selector, t
+from shared.i18n_columns import localize_df
 
 st.set_page_config(page_title=t("財務"), page_icon="💱", layout="wide")
 from shared.auth import require_password
@@ -841,7 +842,7 @@ with tab_raw_i:
         ]
         cols = [c for c in cols if c in df_income_jpy.columns]
         st.dataframe(
-            df_income_jpy[cols],
+            localize_df(df_income_jpy[cols]),
             use_container_width=True, hide_index=True, height=460,
         )
         st.caption(t(f"共 {len(df_income_jpy):,} 行 (JPY)"))
@@ -866,7 +867,7 @@ with tab_raw_o:
         ]
         cols = [c for c in cols if c in df_orders.columns]
         st.dataframe(
-            df_orders[cols],
+            localize_df(df_orders[cols]),
             use_container_width=True, hide_index=True, height=460,
         )
         st.caption(t(f"共 {len(df_orders):,} 条订单"))
