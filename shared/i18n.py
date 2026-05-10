@@ -1279,7 +1279,7 @@ def lang_selector():
                     except Exception:
                         pass
 
-    return selected
+    return cur_lang_code
 
 
 def get_lang() -> str:
