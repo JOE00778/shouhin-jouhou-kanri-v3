@@ -24,6 +24,8 @@ from shared.markets import ALL_MARKETS, add_market_column
 st.set_page_config(page_title=t("店铺别毛利"), page_icon="🏪", layout="wide")
 from shared.auth import require_password
 require_password()
+from shared.theme import inject_theme
+inject_theme()
 lang_selector()
 conn = get_connection()
 
