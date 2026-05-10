@@ -45,6 +45,23 @@ if sales_count == 0:
     )
     st.stop()
 
+# 诊断 expander: 上传后展开看 sales_line 各 source × period 分布
+with st.expander(t("🔬 数据源状态诊断 (上传后展开看是否真入库)"), expanded=False):
+    _src_rows = conn.execute(
+        "SELECT source, period_start, period_end, COUNT(*) AS rows "
+        "FROM sales_line "
+        "GROUP BY source, period_start, period_end "
+        "ORDER BY period_start DESC LIMIT 30"
+    ).fetchall()
+    st.dataframe(
+        pd.DataFrame([dict(r) for r in _src_rows]),
+        use_container_width=True, hide_index=True,
+    )
+    st.caption(t(
+        "按日维度查 source IN ('asean_daily') 且 period_start = period_end (单日期)。"
+        "如果数据库里没有 source='asean_daily' 行,说明上传的不是「(前日).xls」。"
+    ))
+
 
 # ============================================================
 # 选择 维度（月度 / 前日）+ 期间

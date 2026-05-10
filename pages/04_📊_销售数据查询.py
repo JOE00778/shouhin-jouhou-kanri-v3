@@ -201,9 +201,55 @@ df_inv = _df(
     "WHERE location LIKE :loc_pattern",
     {"loc_pattern": "JD%"},
 )
-# 诊断: 提示数据源缺失
-_inv_total = conn.execute("SELECT COUNT(*) AS c FROM nst_inventory_snapshot").fetchone()["c"]
-_turn_total = conn.execute("SELECT COUNT(*) AS c FROM nst_turnover").fetchone()["c"]
+# 详细诊断 expander: 显示三个上游表的实际状态
+with st.expander(t("🔬 数据源状态诊断 (上传后展开看是否真入库)"), expanded=False):
+    _inv_total = conn.execute("SELECT COUNT(*) AS c FROM nst_inventory_snapshot").fetchone()["c"]
+    _turn_total = conn.execute("SELECT COUNT(*) AS c FROM nst_turnover").fetchone()["c"]
+    _sales_total = conn.execute("SELECT COUNT(*) AS c FROM sales_line").fetchone()["c"]
+
+    cdg1, cdg2, cdg3 = st.columns(3)
+    cdg1.metric("nst_inventory_snapshot", f"{_inv_total:,}")
+    cdg2.metric("nst_turnover", f"{_turn_total:,}")
+    cdg3.metric("sales_line", f"{_sales_total:,}")
+
+    if _inv_total > 0:
+        st.markdown(t("**库存表 location 分布 (前 10):**"))
+        _loc_rows = conn.execute(
+            "SELECT location, COUNT(*) AS rows, "
+            "MAX(imported_at) AS latest_import "
+            "FROM nst_inventory_snapshot GROUP BY location "
+            "ORDER BY rows DESC LIMIT 10"
+        ).fetchall()
+        st.dataframe(
+            pd.DataFrame([dict(r) for r in _loc_rows]),
+            use_container_width=True, hide_index=True,
+        )
+
+    if _turn_total > 0:
+        _turn_meta = conn.execute(
+            "SELECT MAX(imported_at) AS latest_import, "
+            "COUNT(DISTINCT period_start) AS periods "
+            "FROM nst_turnover"
+        ).fetchone()
+        st.caption(
+            f"nst_turnover · 最新导入: {_turn_meta['latest_import']} · "
+            f"覆盖期间数: {_turn_meta['periods']}"
+        )
+
+    if _sales_total > 0:
+        st.markdown(t("**销售数据 source × period 分布 (近 30 天):**"))
+        _src_rows = conn.execute(
+            "SELECT source, period_start, period_end, COUNT(*) AS rows "
+            "FROM sales_line "
+            "GROUP BY source, period_start, period_end "
+            "ORDER BY period_start DESC LIMIT 30"
+        ).fetchall()
+        st.dataframe(
+            pd.DataFrame([dict(r) for r in _src_rows]),
+            use_container_width=True, hide_index=True,
+        )
+
+# 简短 warning (顶部突出, expander 不展开也能看到)
 if _inv_total == 0:
     st.warning(t(
         "⚠️ `nst_inventory_snapshot` 表为空,库存数量/库存金额列将全部 0。"
@@ -212,7 +258,7 @@ if _inv_total == 0:
 elif df_inv.empty:
     st.warning(t(
         f"⚠️ nst_inventory_snapshot 有 {_inv_total} 行,但筛选 location LIKE 'JD%' 后为 0。"
-        "数据库里的 location 命名可能与默认值不一致 (检查全角/半角,或正确仓库名)。"
+        "展开上方「🔬 数据源状态诊断」看实际 location 分布。"
     ))
 if _turn_total == 0:
     st.warning(t(
