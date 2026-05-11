@@ -32,6 +32,8 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
+REM 确保 pgweb (DB 可视化, localhost:8081) 也起来 (幂等,已在跑就跳过)
+docker compose -f deploy\windows\docker-compose.yml up -d pgweb
 
 echo.
 echo [4/5] 容器状态:

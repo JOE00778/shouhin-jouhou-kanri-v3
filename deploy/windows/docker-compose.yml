@@ -9,7 +9,8 @@ version: "3.9"
 #   - Postgres: 1 GB RAM / 0.5 CPU
 #   - Streamlit: 2 GB RAM / 1.5 CPU
 #   - Cloudflared: 256 MB RAM / 0.25 CPU
-#   合计：约 3.5 GB RAM + 2.25 CPU 核（剩余 12 GB / 3.75 核给影刀 + Windows）
+#   - pgweb (DB 可视化): 256 MB RAM / 0.25 CPU
+#   合计：约 3.8 GB RAM + 2.5 CPU 核（剩余 ~12 GB / 3.5 核给影刀 + Windows）
 # ============================================================
 
 services:
@@ -92,6 +93,35 @@ services:
       - streamlit
     networks:
       - cms_net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+
+  # ------------------------------------------------------------
+  # pgweb · DB 可视化（浏览器看所有表 / 跑 SQL / 导出 CSV·JSON）
+  #   笔记本本机访问 http://localhost:8081（绑 127.0.0.1，不走公网）
+  #   远程查看请用远程桌面登进笔记本再开；不要映射到 0.0.0.0、也别挂到 cloudflared
+  # ------------------------------------------------------------
+  pgweb:
+    image: sosedoff/pgweb:latest
+    container_name: cms_pgweb
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # pgweb は DATABASE_URL を読んで自動接続する
+      DATABASE_URL: postgresql://${POSTGRES_USER:-cms}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-cms}?sslmode=disable
+      # 任意: pgweb 自体に簡易 Basic 認証をかけたい場合は .env で下 2 つを設定（空なら認証なし）
+      PGWEB_AUTH_USER: ${PGWEB_AUTH_USER:-}
+      PGWEB_AUTH_PASS: ${PGWEB_AUTH_PASS:-}
+      TZ: Asia/Tokyo
+    networks:
+      - cms_net
+    ports:
+      - "127.0.0.1:8081:8081"   # 仅本机；公网一律不开
     deploy:
       resources:
         limits:

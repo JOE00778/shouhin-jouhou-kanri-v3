@@ -13,11 +13,12 @@
 │ Postgres                │ 1024 MB   │  0.5 核  │
 │ Streamlit               │ 2048 MB   │  1.5 核  │
 │ Cloudflared             │  256 MB   │ 0.25 核  │
+│ pgweb（DB 可视化）      │  256 MB   │ 0.25 核  │
 │ Docker Desktop 自身     │  300 MB   │  0.25 核 │
 ├─────────────────────────┼───────────┼──────────┤
-│ CMS 总占用              │ ~3.6 GB   │  ~2.5 核 │
+│ CMS 总占用              │ ~3.9 GB   │  ~2.75核 │
 ├─────────────────────────┼───────────┼──────────┤
-│ Windows 11 + 影刀 + 缓冲│ 12 GB+    │  3.5 核+ │  ← 16GB / 6核 笔记本剩余
+│ Windows 11 + 影刀 + 缓冲│ 12 GB+    │  3.25核+ │  ← 16GB / 6核 笔记本剩余
 └─────────────────────────┴───────────┴──────────┘
 ```
 
@@ -111,6 +112,8 @@ docker compose ps
 
 浏览器打开你的 `https://cms.<your-domain>` → 用 JO043 / smikie043 登录 → 进 page 99 上传月度 + 前日 xls。
 
+> 想直接看数据库（所有表、跑 SQL、导出）：在**笔记本本机**浏览器开 `http://localhost:8081`（pgweb，已自动连上 cms 库）。只绑 127.0.0.1，不走公网；远程要看就先远程桌面登进笔记本。
+
 ### ⑧ 配置开机自启（5 分钟）
 
 Docker Desktop 已勾「开机自启」（步骤 ① 里设置过）。
@@ -164,6 +167,20 @@ docker compose -f deploy\windows\docker-compose.yml restart streamlit
 # 完全停掉（影刀不受影响）
 docker compose -f deploy\windows\docker-compose.yml down
 ```
+
+> 首次启用 pgweb（新加的 DB 可视化）：跑一次 `docker compose -f deploy\windows\docker-compose.yml up -d`（把全部服务带起来），或者直接双击 `redeploy.bat`（已含 pgweb 启动步骤）。之后笔记本本机浏览器开 `http://localhost:8081` 就能看库。
+
+---
+
+## 🔎 DB 可视化（pgweb · localhost:8081）
+
+`docker compose up -d` 会顺带起一个 **pgweb** 容器（`sosedoff/pgweb`，限 256 MB / 0.25 核），已用 `DATABASE_URL` 自动连上 `cms` 库。
+
+- 访问：**笔记本本机**浏览器 `http://localhost:8081`（只绑 `127.0.0.1`，**不走公网、不挂 cloudflared**）
+- 能干啥：左侧列出所有表 → 点进去看 / 排序 / 筛选行；上方 SQL 编辑器跑任意查询；导出 CSV·JSON；看表结构、索引、约束
+- 远程查看：先用 Windows 远程桌面登进笔记本，再开 `localhost:8081`（不要把端口改成 `0.0.0.0`）
+- 想再加一层口令：在 `.env` 填 `PGWEB_AUTH_USER` / `PGWEB_AUTH_PASS`，重启 `docker compose up -d pgweb`
+- 它和 Streamlit App 是两回事：App 是给业务看的成品页面，pgweb 是给临时 SQL / 看表结构 / 改数据用的
 
 ---
 
