@@ -82,13 +82,23 @@ Copy-Item deploy\windows\.env.example .env
 notepad .env   # 填入真实密码、Cloudflare token、飞书 credentials
 ```
 
-### ④ Cloudflare Tunnel 设置（5 分钟，跟 NAS 方案一样）
+### ④ Cloudflare Tunnel 设置（5 分钟）
 
-参见 [../nas/README.md](../nas/README.md) 阶段 2。把拿到的 Tunnel Token 填到 `.env` 的 `CLOUDFLARE_TUNNEL_TOKEN`。
+1. 浏览器打开 https://one.dash.cloudflare.com → **Networks → Tunnels → Create a tunnel**
+2. Tunnel name 填 `cms-windows`（任意）→ **Save tunnel**
+3. 复制 token 字符串（`eyJhxxxxx...`）→ 粘到 `.env` 的 `CLOUDFLARE_TUNNEL_TOKEN`
+4. 「install connector」那一步**跳过**（我们用 Docker 装 cloudflared）
+5. **Public Hostname → Add a public hostname**：
+   - Subdomain：`cms`（或你想要的）
+   - Domain：选你在 Cloudflare 托管的域名（现用 `smikie-cms.cc`）
+   - Type：`HTTP`
+   - URL：`streamlit:8501`
+6. **Save** → DNS 自动配好，1 分钟内生效
+7. 强烈建议再加一层 **Cloudflare Access**（Zero Trust → Access → Applications）：限制只有 `@mitsukin.info` 邮箱能进
 
 ### ⑤ 飞书自建应用配置（10 分钟）
 
-参见 [../nas/LARK_SETUP.md](../nas/LARK_SETUP.md)。
+参见 [LARK_SETUP.md](LARK_SETUP.md)。
 
 ### ⑥ 起容器（30 秒）
 
@@ -211,16 +221,21 @@ schtasks /Create /TN "CMS Backup to LS210DC" `
 
 ---
 
-## 📐 跟 NAS 方案差异
+## 📦 这个目录里有什么
 
-| 项 | NAS 方案 | Windows 笔记本方案 |
-|---|---|---|
-| 镜像 / 容器 | 一样 | 一样（Linux 容器在 WSL2 跑）|
-| docker-compose | [../nas/docker-compose.yml](../nas/docker-compose.yml) | [docker-compose.yml](docker-compose.yml) 加资源限制 |
-| schema | [../nas/schema.postgres.sql](../nas/schema.postgres.sql) | 同一份（symlink）|
-| Cloudflare Tunnel | 一样 | 一样 |
-| 飞书 H5 | 一样 | 一样 |
-| 资源管理 | 不限（NAS 专用）| .wslconfig 严控（影刀共存）|
-| 备份目的地 | NAS 自己的另一卷 | LS210DC SMB |
+| 文件 | 用途 |
+|---|---|
+| [docker-compose.yml](docker-compose.yml) | 4 容器编排（postgres / streamlit / cloudflared / pgweb）+ 资源限制 |
+| [Dockerfile](Dockerfile) | streamlit 镜像（python:3.11-slim + psycopg2 + lark-oapi）|
+| [schema.postgres.sql](schema.postgres.sql) | Postgres 建表 SQL（首次 init 自动跑 + 每次 App 启动重跑，幂等）|
+| [.env.example](.env.example) | 环境变量模板 → 复制为 `.env` 填真值 |
+| [.wslconfig.example](.wslconfig.example) | WSL2 资源上限（影刀共存关键）|
+| [redeploy.bat](redeploy.bat) / [redeploy-clean.bat](redeploy-clean.bat) | 一键更新部署（拉代码 + 重建）|
+| [backup-to-ls210dc.ps1](backup-to-ls210dc.ps1) | 每天凌晨把 Postgres dump 备份到 LinkStation LS210DC |
+| [LARK_SETUP.md](LARK_SETUP.md) | 飞书自建应用（OAuth SSO）配置步骤 |
+| [MIGRATION.md](MIGRATION.md) | SQLite → Postgres 适配层说明（历史参考）|
+| [FRESH_INSTALL.md](FRESH_INSTALL.md) | 全新机器从零安装清单 |
+
+> 部署目标已固定为这台 Windows 笔记本（Inspiron 5405）。LinkStation LS210DC 只当 Postgres dump 的备份盘（型号太低跑不了 Docker）。
 
 代码层 100% 共用，明天配完只是多个落地选项。

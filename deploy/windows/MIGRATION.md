@@ -1,14 +1,8 @@
-# SQLite → Postgres 迁移清单
+# SQLite → Postgres 迁移说明（历史参考）
 
-明天 Postgres 部署时需要逐个改造的文件。当前 Cloud 仍跑 SQLite，本清单是切到 Postgres 时的 "to-do"。
+> 2026-05-08 已落地。本机/开发仍跑 SQLite；生产（Windows 笔记本）跑 Postgres，靠环境变量 `DATABASE_URL` 切换，业务代码零 diff。本文留作改造方案的历史记录。
 
-适用所有 Postgres 部署目标（NAS / Windows 笔记本 / VPS）—— 业务代码改造完全相同，仅基础设施不同：
-
-| 部署目标 | 文档 | 现状 |
-|---|---|---|
-| Synology NAS（Plus 系列） | [README.md](README.md) | 等 NAS |
-| **Windows 笔记本（影刀共存）** | [../windows/README.md](../windows/README.md) | ✅ **当前选择**（Boss 办公室常开影刀机器）|
-| 云 VPS | 尚未写（跟 NAS 流程相同）| 备选 |
+部署目标已固定：**Windows 笔记本（Inspiron 5405，影刀共存）**，见 [README.md](README.md)。LinkStation LS210DC 只当备份盘（型号太低跑不了 Docker）。
 
 ---
 
@@ -19,7 +13,7 @@
 | [shared/db.py](../../shared/db.py) | 加 `_PostgresAdapter` wrapper + `DATABASE_URL` 检测 | 默认仍 SQLite，零行为变化 |
 | [shared/lark_auth.py](../../shared/lark_auth.py) | 新增飞书 OAuth 模块 | 未配 LARK_APP_ID 自动跳过 |
 | [shared/auth.py](../../shared/auth.py) | 加 `_try_lark_sso()` 入口 | 飞书未配时 fallback 到现有账密登录 |
-| [deploy/nas/schema.postgres.sql](schema.postgres.sql) | SQLite schema 自动转 Postgres | INTEGER PRIMARY KEY AUTOINCREMENT → BIGSERIAL，REAL → DOUBLE PRECISION |
+| [schema.postgres.sql](schema.postgres.sql) | SQLite schema 自动转 Postgres | INTEGER PRIMARY KEY AUTOINCREMENT → BIGSERIAL，REAL → DOUBLE PRECISION |
 
 ---
 
@@ -92,12 +86,11 @@ import re, pathlib
 切到 Postgres 后跑一次完整 ingest + 抽样查询验证：
 
 ```bash
-# 1. 启动 NAS Postgres
-cd /volume1/docker/cms-v230/deploy/nas
-docker compose up -d postgres
+# 1. 笔记本上启动 Postgres（PowerShell）
+#   cd D:\cms-v230\deploy\windows ; docker compose up -d postgres
 
-# 2. 本地 export DATABASE_URL 跑 ingest
-export DATABASE_URL="postgresql://cms:PASSWORD@<NAS_IP>:5432/cms"
+# 2. 本地 export DATABASE_URL 跑 ingest（先在 docker-compose 给 postgres 临时映射 127.0.0.1:5432:5432）
+export DATABASE_URL="postgresql://cms:PASSWORD@<笔记本IP>:5432/cms"
 .venv/bin/pytest tests/ -q  # 应全过
 
 # 3. 上传一份月度 + 一份前日 xls

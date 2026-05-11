@@ -1,7 +1,7 @@
 # 数据模型 v2 · 以 JAN 为核心，item 主表
 
 > 状态：Phase 3.1 实施 · 2026-05-09
-> 涉及：[schema.sql](../data_warehouse/db/schema.sql) / [schema.postgres.sql](../deploy/nas/schema.postgres.sql) / [tools/migrate_to_v2.py](../tools/migrate_to_v2.py) / [pages/99 Tab 6](../pages/99_⚙️_数据导入与设置.py)
+> 涉及：[schema.sql](../data_warehouse/db/schema.sql) / [schema.postgres.sql](../deploy/windows/schema.postgres.sql) / [tools/migrate_to_v2.py](../tools/migrate_to_v2.py) / [pages/99 Tab 6](../pages/99_⚙️_数据导入与设置.py)
 
 ---
 

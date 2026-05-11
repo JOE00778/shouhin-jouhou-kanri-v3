@@ -26,7 +26,7 @@ services:
     volumes:
       # Windows: D:\cms-v230\data\postgres → 容器内
       - ${DATA_DIR:-./data}/postgres:/var/lib/postgresql/data
-      - ../nas/schema.postgres.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./schema.postgres.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
     networks:
       - cms_net
     deploy:
@@ -46,7 +46,7 @@ services:
   streamlit:
     build:
       context: ../..
-      dockerfile: deploy/nas/Dockerfile
+      dockerfile: deploy/windows/Dockerfile
     container_name: cms_streamlit
     restart: unless-stopped
     depends_on:

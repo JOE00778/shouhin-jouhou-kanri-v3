@@ -2,7 +2,7 @@
 
 目的：在飞书工作台加一个「一元管理系统V2.3」入口，团队成员点开 → 飞书 SSO → 自动登录 CMS（不用记 URL，不用输账号密码）。
 
-前置：CMS 已经在 NAS 上跑起来，可通过 https://cms.<your-domain> 公网访问（见 [README.md](README.md) 阶段 1-4）。
+前置：CMS 已经在 Windows 笔记本上跑起来，可通过 https://cms.<your-domain>（现用 `smikie-cms.cc`）公网访问（见 [README.md](README.md) 部署清单 ①-⑦）。
 
 ---
 
@@ -86,9 +86,9 @@ ADMIN_LARK_EMAILS=lixin@mitsukin.info,boss2@mitsukin.info
 
 ## 六. 验证
 
-1. **重启 NAS Docker 让 .env 生效**：
-   ```bash
-   cd /volume1/docker/cms-v230/deploy/nas
+1. **重启 streamlit 容器让 .env 生效**（PowerShell）：
+   ```powershell
+   cd D:\cms-v230\deploy\windows
    docker compose restart streamlit
    ```
 2. 飞书桌面/手机 → 工作台 → 点「一元管理系统V2.3」

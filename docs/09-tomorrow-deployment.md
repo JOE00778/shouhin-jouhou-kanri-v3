@@ -150,7 +150,7 @@ page 99 → Tab 1「📤 一键导入」→ 拖一个新 xls → 点「开始导
 ```
 
 涉及文件：
-- `data_warehouse/db/schema.sql` + `deploy/nas/schema.postgres.sql` — 11 张新表
+- `data_warehouse/db/schema.sql` + `deploy/windows/schema.postgres.sql` — 11 张新表
 - `data_warehouse/db/migrations.py` — DEPRECATED_TABLES + SCHEMA_VERSION 14
 - `tools/migrate_to_v2.py` — 11 步骤 ETL（最新加 item_supplier_link / benten/warehouse）
 - `shared/db.py` — Postgres 自动 init schema

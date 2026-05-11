@@ -166,7 +166,7 @@ docker compose logs -f streamlit
 
 ## 🛠️ 阶段 6：飞书自建应用（10 分钟）
 
-参见 [../nas/LARK_SETUP.md](../nas/LARK_SETUP.md)（流程跟 NAS 完全一样）。
+参见 [LARK_SETUP.md](LARK_SETUP.md)。
 
 ---
 
@@ -241,4 +241,4 @@ schtasks /Create /TN "CMS Watchdog" `
 | 飞书自建应用 | ¥0 | ¥0 |
 | **总计** | **¥10** | **¥1** |
 
-跟 NAS 方案对比省 ¥4500（不用买 DS224+），跟 VPS 方案对比省 ¥38/月。
+复用办公室常开的影刀笔记本 → 不用额外买 NAS / 不用租 VPS，月成本几乎为 0。
