@@ -165,6 +165,25 @@ def _default_external_id(prefix_dt: datetime | None = None) -> str:
     return dt.strftime("%Y%m%d%H%M")
 
 
+def _build_template_xlsx() -> bytes:
+    """処分リスト 空テンプレート (見出し行のみ) を xlsx として返す。"""
+    import openpyxl
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "処分リスト"
+    ws.append(["アイテム", "表示名", "保管棚番号", "ステータス", "手持"])
+    # ヘッダ太字
+    from openpyxl.styles import Font
+    for c in ws[1]:
+        c.font = Font(bold=True)
+    # 列幅
+    for col, w in zip(["A", "B", "C", "D", "E"], [16, 40, 12, 10, 8]):
+        ws.column_dimensions[col].width = w
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
 # ============================================================
 # UI
 # ============================================================
@@ -190,6 +209,14 @@ col_up, col_cfg = st.columns([1, 2])
 
 with col_up:
     st.subheader(t("① 処分リスト Excel"))
+    st.download_button(
+        t("📥 空テンプレートをダウンロード"),
+        data=_build_template_xlsx(),
+        file_name="処分リスト_template.xlsx",
+        mime="application/vnd.openxmlformats-officedrawing.spreadsheetml.sheet",
+        help=t("見出し行のみの空 xlsx。記入後にアップロードしてください"),
+        use_container_width=True,
+    )
     uploaded = st.file_uploader(
         t("Excel ファイル (.xlsx)"),
         type=["xlsx"],
