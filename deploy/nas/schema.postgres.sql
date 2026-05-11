@@ -513,6 +513,32 @@ CREATE INDEX IF NOT EXISTS idx_supplier_jan_list_jan        ON supplier_jan_list
 CREATE INDEX IF NOT EXISTS idx_supplier_jan_list_supplier   ON supplier_jan_list(supplier_name);
 
 -- ============================================================
+-- 模块 #25：supplier_quote — 仕入先報価単（完整版）
+-- 来源: 仕入先管理リスト.xlsx 的 28 个仕入先 sheet
+-- zone: JD_DIRECT(1) / BENTEN_TRANSIT(2,+3%) / EMERGENCY(3) / PREPAID(4) / OTHER(9)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS supplier_quote (
+  supplier_name     TEXT NOT NULL,
+  jan               TEXT NOT NULL,
+  display_name      TEXT,
+  unit_price        INTEGER,
+  lot_size          INTEGER DEFAULT 1,
+  case_qty          INTEGER,
+  min_order_amount  INTEGER,
+  order_condition   TEXT,
+  lead_time_text    TEXT,
+  zone              TEXT,
+  zone_rank         INTEGER,
+  nst_supplier_code TEXT,
+  source_sheet      TEXT,
+  imported_at       TEXT NOT NULL,
+  PRIMARY KEY (supplier_name, jan)
+);
+CREATE INDEX IF NOT EXISTS idx_sq_jan       ON supplier_quote(jan);
+CREATE INDEX IF NOT EXISTS idx_sq_supplier  ON supplier_quote(supplier_name);
+CREATE INDEX IF NOT EXISTS idx_sq_zone      ON supplier_quote(zone);
+
+-- ============================================================
 -- 模块 #2：inventory_health — 库存健康度指标
 -- ============================================================
 CREATE TABLE IF NOT EXISTS stock_sales_ratio_monthly (

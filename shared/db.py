@@ -154,6 +154,7 @@ class _PostgresAdapter:
         "supplier_cost": ("jan", "supplier_name"),
         "supply_cycle": ("jan",),
         "supplier_jan_list": ("jan", "supplier_name"),
+        "supplier_quote": ("supplier_name", "jan"),
         "item": ("item_code",),
         "item_master": ("jan",),
         "item_master_netsuite": ("internal_id",),
