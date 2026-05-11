@@ -118,20 +118,25 @@ class TestSalesIngest:
         ).fetchone()["c"]
         assert leak == 0
 
-    def test_export_item_has_rank_and_purchase_price(self, conn):
+    def test_export_item_has_rank_and_jan_from_item_column(self, conn):
         _skip_if_missing(EXPORT_ITEM_FILE)
         r = ingest_sales_export_item(EXPORT_ITEM_FILE, conn)
         assert r["errors"] == 0
-        assert r["inserted"] > 1000
-        # rank 和 unit_purchase_price 至少有一些非空
+        assert r["inserted"] > 1000  # この報表は JAN を「アイテム」列に持つ → has_upc=False で取れる
+        # 商品ランク列が入っていること
         has_rank = conn.execute(
-            "SELECT COUNT(*) AS c FROM sales_line WHERE rank IS NOT NULL"
+            "SELECT COUNT(*) AS c FROM shop_sales WHERE source='export_item' AND rank IS NOT NULL"
         ).fetchone()["c"]
-        has_price = conn.execute(
-            "SELECT COUNT(*) AS c FROM sales_line WHERE unit_purchase_price IS NOT NULL"
+        # 全行に jan が入っていること（item_code フォールバックの検証 → NULL jan は 0 件）
+        rows_total = conn.execute(
+            "SELECT COUNT(*) AS c FROM shop_sales WHERE source='export_item'"
+        ).fetchone()["c"]
+        null_jan = conn.execute(
+            "SELECT COUNT(*) AS c FROM shop_sales WHERE source='export_item' AND jan IS NULL"
         ).fetchone()["c"]
         assert has_rank > 0
-        assert has_price > 0
+        assert rows_total > 1000
+        assert null_jan == 0
 
     def test_export_store(self, conn):
         _skip_if_missing(EXPORT_STORE_FILE)

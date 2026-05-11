@@ -673,7 +673,8 @@ def _ingest_sales(
                 "period_start": period_start or "",
                 "period_end": period_end or "",
                 "qty_sold": _to_float(raw.get("販売数量")),
-                "unit_price": _to_float(raw.get("購入価格(単価)")) if has_purchase_price else None,
+                # NetSuite 報表によって全角/半角括弧が混在 → 両方試す
+                "unit_price": (_to_float(raw.get("購入価格（単価）")) or _to_float(raw.get("購入価格(単価)"))) if has_purchase_price else None,
                 "revenue": revenue,
                 "revenue_jpy": revenue,  # 当地币 = JPY 假设（NetSuite ASEAN 报表已折算）
                 "cost": _to_float(raw.get("定義原価")),
@@ -770,7 +771,12 @@ def ingest_sales_asean_daily(path, conn, **kw):
 
 
 def ingest_sales_export_item(path, conn, **kw):
-    """輸出 アイテム別売上 → shop_sales (granularity='monthly', shop_id=netsuite_export_item)"""
+    """輸出 アイテム別売上（概要） → shop_sales (granularity='monthly', shop_id=netsuite_export_item)。
+
+    この報表は UPCコード 列を持たず JAN は アイテム 列に入る（例: 4511413302163）→ has_upc=False で
+    item_code を JAN として使う。
+    """
+    kw.setdefault("has_upc", False)
     return _ingest_sales(
         path, conn, source="export_item", granularity="monthly",
         has_store_column=False, has_store_groups=False,
@@ -780,6 +786,7 @@ def ingest_sales_export_item(path, conn, **kw):
 
 def ingest_sales_export_store(path, conn, **kw):
     """輸出 店舗別売上 → shop_sales (granularity='monthly')"""
+    kw.setdefault("has_upc", False)
     return _ingest_sales(
         path, conn, source="export_store", granularity="monthly",
         has_store_column=True, has_store_groups=False,
