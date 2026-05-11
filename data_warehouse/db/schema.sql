@@ -455,6 +455,38 @@ CREATE INDEX IF NOT EXISTS idx_supplier_jan_list_jan        ON supplier_jan_list
 CREATE INDEX IF NOT EXISTS idx_supplier_jan_list_supplier   ON supplier_jan_list(supplier_name);
 
 -- ============================================================
+-- 模块 #25：supplier_quote — 仕入先報価単（完整版）
+-- 来源: 仕入先管理リスト.xlsx 的 28 个仕入先 sheet
+-- 标准列: JAN / 商品名 / 単価 / ロット / 注文最低金額 / 発注条件 / 納期
+-- zone 分类 (Boss 2026-05-11):
+--   JD_DIRECT      = JD 千葉直送 (NEW WIND/中央物産/菅野/Maple/五洲/アプライド/王子国際/
+--                    ハナモン/HK/オンダ/スケーター/ファイン/新日配/グランジェ/トラスコ/エンパイヤ)
+--   BENTEN_TRANSIT = 弁天倉庫経由 (共和/大木) — 中継費 +3%
+--   EMERGENCY      = 応急/参考 (SD/ハリマ/カード仕入) — 新商品 or 他になし時
+--   PREPAID        = 前払い現金 (流久/富森/風雲商事) — なるべく使わない
+-- ============================================================
+CREATE TABLE IF NOT EXISTS supplier_quote (
+  supplier_name     TEXT NOT NULL,        -- sheet 名そのまま ('中央物産' / 'スケーター' ...)
+  jan               TEXT NOT NULL,
+  display_name      TEXT,
+  unit_price        INTEGER,              -- 単価 (円)
+  lot_size          INTEGER DEFAULT 1,    -- ロット (最小発注単位の数量)
+  case_qty          INTEGER,              -- 入数 (ハリマ等のみ)
+  min_order_amount  INTEGER,              -- 注文最低金額 (この仕入先の最低受注額)
+  order_condition   TEXT,                 -- 発注条件 ('ケース単位'/'ロット単位発注'/'2.5w〜')
+  lead_time_text    TEXT,                 -- 納期 (生テキスト '2週間' 等)
+  zone              TEXT,                 -- 'JD_DIRECT'/'BENTEN_TRANSIT'/'EMERGENCY'/'PREPAID'
+  zone_rank         INTEGER,              -- 1=JD直送 / 2=弁天経由 / 3=応急 / 4=前払い
+  nst_supplier_code TEXT,                 -- NST 仕入先コード ('0490 NEW WIND株式会社' 等)
+  source_sheet      TEXT,
+  imported_at       TEXT NOT NULL,
+  PRIMARY KEY (supplier_name, jan)
+);
+CREATE INDEX IF NOT EXISTS idx_sq_jan       ON supplier_quote(jan);
+CREATE INDEX IF NOT EXISTS idx_sq_supplier  ON supplier_quote(supplier_name);
+CREATE INDEX IF NOT EXISTS idx_sq_zone      ON supplier_quote(zone);
+
+-- ============================================================
 -- 模块 #2：inventory_health — 库存健康度指标
 -- ============================================================
 CREATE TABLE IF NOT EXISTS stock_sales_ratio_monthly (
