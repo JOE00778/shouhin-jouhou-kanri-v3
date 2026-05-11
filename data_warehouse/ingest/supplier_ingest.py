@@ -48,25 +48,27 @@ _SUPPLIER_ZONE: dict[str, tuple[str, int, str | None]] = {
     "グランジェ": ("JD_DIRECT", 1, "0256 株式会社 グランジェ"),
     "トラスコ中山": ("JD_DIRECT", 1, "0202 トラスコ中山株式会社"),
     "エンパイヤ自動車株式会社": ("JD_DIRECT", 1, "0020 エンパイヤ自動車株式会社（KONNGU'S）"),
+    # Boss 2026-05-11 追加: A 区分
+    "カネイシ": ("JD_DIRECT", 1, "0457 カネイシ株式会社"),
+    "京浜商事": ("JD_DIRECT", 1, "0504 京浜商事株式会社"),
+    "太田物産": ("JD_DIRECT", 1, "C000510 太田物産 株式会社"),
     # --- 弁天倉庫経由 (中継費 +3%) ---
     "共和": ("BENTEN_TRANSIT", 2, "0077 大分共和株式会社"),
     "大木": ("BENTEN_TRANSIT", 2, "0197 大木化粧品株式会社"),
-    # --- 応急 / 参考 ---
+    # Boss 2026-05-11 追加: B 区分
+    "若竹園": ("BENTEN_TRANSIT", 2, None),
+    "森フォレスト": ("BENTEN_TRANSIT", 2, "0343 株式会社森フォレスト"),
+    # --- 応急 / 参考 (新商品 or 他に仕入先なし時) ---
     "SD": ("EMERGENCY", 3, "0411 株式会社ラクーンコマース（スーパーデリバリー）"),
     "ハリマ": ("EMERGENCY", 3, "0402 ハリマ共和物産株式会社"),
     "カード仕入": ("EMERGENCY", 3, "0476 カード仕入れ"),
-    # --- 前払い (現金) ---
+    # --- 前払い (現金) — なるべく使わない ---
     "流久": ("PREPAID", 4, "0435 株式会社 流久商事"),
     "冨森": ("PREPAID", 4, "0445 富森商事 株式会社"),
     "現金": ("PREPAID", 4, "0201 現金仕入れ"),
     "風雲商事": ("PREPAID", 4, "0482 風雲商事株式会社"),
-    # --- 未分類 (Boss 未指定 — 後で校正) ---
-    "カネイシ": ("OTHER", 9, "0457 カネイシ株式会社"),
-    "京浜商事": ("OTHER", 9, "0504 京浜商事株式会社"),
-    "若竹園": ("OTHER", 9, None),
-    "森フォレスト": ("OTHER", 9, "0343 株式会社森フォレスト"),
+    # --- その他 (考慮対象外) ---
     "エトワール海渡": ("OTHER", 9, None),
-    "太田物産": ("OTHER", 9, "C000510 太田物産 株式会社"),
 }
 
 
@@ -97,27 +99,33 @@ def _is_valid_jan(jan) -> bool:
     return s.isdigit() and 8 <= len(s) <= 14
 
 
-def _map_columns(headers: list[str]) -> dict[str, int]:
+def _map_columns(headers: list[str], data_rows: list = None) -> dict[str, int]:
     """sheet 表头 → {field: col_index} のマッピング。
 
-    複数の「単価」列がある場合 (共和/大木): 「送料込み」を含まない方を採用。
+    - 複数の「単価」列がある場合 (共和/大木): 「送料込み」を含まない方を採用
+    - 「単価」表头がない場合 (NEW WIND): 「御見積価格」「希望納価」「価格」を fallback
+    - JAN 表头がない場合 (NEW WIND): 先頭数列でデータが JAN らしい列を検出
     """
     m: dict[str, int] = {}
     price_candidates: list[int] = []
+    quote_candidates: list[int] = []  # 御見積/納価 等の代替価格列
     for i, h in enumerate(headers):
-        hs = str(h).strip() if h else ""
+        hs = (str(h).strip().replace("\n", "") if h else "")
         if not hs:
             continue
         if "JAN" in hs.upper() and "jan" not in m:
             m["jan"] = i
         elif "商品名" in hs and "display_name" not in m:
             m["display_name"] = i
-        elif hs == "単価" or (hs.startswith("単価") and "送料" not in hs and "込" not in hs):
+        elif "送料込" in hs or "送料込み" in hs:
+            pass  # 共和/大木「単価（JDへの送料込み）」— 採用しない
+        elif hs == "単価" or (hs.startswith("単価") and "送料" not in hs):
             price_candidates.append(i)
-        elif "送料込" in hs or "送料 込" in hs.replace("　", " "):
-            # 共和/大木 の「単価（JDへの送料込み）」 — 採用しない (原始単価を使う)
-            pass
-        elif ("ケース入数" in hs or hs == "入数" or "入数" in hs) and "case_qty" not in m:
+        elif ("御見積" in hs or "見積価格" in hs):
+            quote_candidates.insert(0, i)   # 御見積価格 最優先
+        elif ("納価" in hs or (("価格" in hs) and "販売価格" not in hs)):
+            quote_candidates.append(i)
+        elif ("ケース入数" in hs or "入数" in hs) and "case_qty" not in m:
             m["case_qty"] = i
         elif "ロット" in hs and "lot_size" not in m:
             m["lot_size"] = i
@@ -129,6 +137,20 @@ def _map_columns(headers: list[str]) -> dict[str, int]:
             m["lead_time_text"] = i
     if price_candidates:
         m["unit_price"] = price_candidates[0]
+    elif quote_candidates:
+        m["unit_price"] = quote_candidates[0]
+
+    # JAN 表头なし → データから検出 (表头セルが空の NEW WIND 等)
+    if "jan" not in m and data_rows:
+        ncols = max((len(r) for r in data_rows[:20]), default=0)
+        for ci in range(min(ncols, 3)):  # 先頭 3 列のみチェック
+            hits = 0
+            for r in data_rows[:20]:
+                if ci < len(r) and _is_valid_jan(r[ci]):
+                    hits += 1
+            if hits >= 5:  # 20 行中 5 行以上が JAN らしい
+                m["jan"] = ci
+                break
     return m
 
 
@@ -170,7 +192,7 @@ def ingest_supplier_master(path, conn: sqlite3.Connection) -> dict:
             sheets_skipped.append(f"{name} (空)")
             continue
         headers = [str(c).strip() if c is not None else "" for c in rows[0]]
-        colmap = _map_columns(headers)
+        colmap = _map_columns(headers, data_rows=rows[1:])
         if "jan" not in colmap:
             sheets_skipped.append(f"{name} (JAN列なし)")
             warnings.append(f"{name}: JAN 列が見つからずスキップ (列: {[h for h in headers if h]})")
