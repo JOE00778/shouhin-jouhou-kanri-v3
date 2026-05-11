@@ -611,11 +611,11 @@ _NAV_GROUPS: list[tuple[str | None, list[tuple[str, str]]]] = [
         ("pages/03_💰_定義原価編集.py", "💰 定义原价编辑"),
         ("pages/15_📝_商品登录.py", "📝 商品登录"),
         ("pages/23_🏷️_Tag管理.py", "🏷️ Tag 管理"),
+        ("pages/24_♻️_不良品処分CSV.py", "♻️ 不良品処分 CSV"),
     ]),
     ("⚙️ 系统设置", [
         ("pages/99_⚙️_数据导入与设置.py", "⚙️ 数据导入与设置"),
         ("pages/22_🗄️_数据库管理.py", "🗄️ 数据库管理"),
-        ("pages/24_♻️_不良品処分CSV.py", "♻️ 不良品処分 CSV"),
     ]),
 ]
 
