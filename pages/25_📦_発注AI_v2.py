@@ -145,6 +145,15 @@ with tab_calc:
 
     st.divider()
     st.subheader(t("② パラメータ"))
+    # 月販データソース
+    SALES_SRC_OPTIONS = {
+        t("自動 (輸出概要 優先 → なければ ASEAN集計)"): "auto",
+        t("【輸出】アイテム別売上（概要）_JO  ← 綜合性 (全輸出商品)"): "export_item",
+        t("【ASEAN】店舗別売上 集計専用  ← ASEAN 局部"): "asean_monthly",
+    }
+    sales_src_label = st.radio(t("月販データソース"), list(SALES_SRC_OPTIONS.keys()), horizontal=True)
+    sales_source = SALES_SRC_OPTIONS[sales_src_label]
+
     p1, p2, p3, p4 = st.columns(4)
     with p1:
         months = st.number_input(t("月販トレンド期間 (ヶ月)"), 1, 12, 3)
@@ -164,6 +173,7 @@ with tab_calc:
                 conn, months=int(months), safety_months=float(safety),
                 trend_factors={"up": f_up, "flat": 1.0, "down": f_dn},
                 fixed_order_months=float(fixed_months) if use_fixed else None,
+                sales_source=sales_source,
             )
         st.session_state["po_reco"] = df
 
@@ -171,8 +181,16 @@ with tab_calc:
     if df is None:
         st.info(t("「🔍 発注計算実行」を押すと推奨清单が出ます"))
     elif df.empty:
-        st.warning(t("⚠️ 発注対象 0 件 — shop_sales に asean_monthly データがあるか、supplier_quote に報価があるか確認"))
+        used = df.attrs.get("sales_source", "?")
+        st.warning(t(
+            f"⚠️ 発注対象 0 件 — 月販データソース '{used}' が空か、supplier_quote に報価がありません。"
+            "page 99 で【輸出】アイテム別売上（概要）or【ASEAN】店舗別売上 集計専用 をアップロードしてください。"
+        ))
     else:
+        used_src = df.attrs.get("sales_source", "?")
+        periods = df.attrs.get("periods", [])
+        src_name = {"export_item": "【輸出】アイテム別売上（概要）", "asean_monthly": "【ASEAN】店舗別売上 集計専用"}.get(used_src, used_src)
+        st.caption(t(f"📅 月販データ: {src_name} · 期間: {', '.join(periods) if periods else '(なし)'}"))
         total_cost = int(df["line_cost"].sum())
         n_sku = len(df)
         n_deferred = int((df["status"] == "deferred_min_order").sum())
@@ -328,13 +346,14 @@ with tab_item:
                 df_c["zone"] = df_c["zone"].map(lambda z: ZONE_LABEL.get(z, z))
                 name = df_c["display_name"].dropna().iloc[0] if df_c["display_name"].notna().any() else "(名称不明)"
                 st.markdown(f"**{name}** — {len(df_c)} 仕入先で取扱")
-                # 月販 (asean_monthly)
-                ms = conn.execute(
-                    "SELECT period_start, SUM(qty_sold) q FROM shop_sales "
-                    "WHERE jan = ? AND source = 'asean_monthly' GROUP BY period_start ORDER BY period_start", (jan,)
-                ).fetchall()
-                if ms:
-                    st.caption(t("月販 (ASEAN集計専用): " + " / ".join(f"{r[0]}:{int(r[1] or 0)}" for r in ms)))
+                # 月販 (両ソース)
+                for src, label in [("export_item", "輸出概要"), ("asean_monthly", "ASEAN集計")]:
+                    ms = conn.execute(
+                        "SELECT period_start, SUM(qty_sold) q FROM shop_sales "
+                        "WHERE jan = ? AND source = ? GROUP BY period_start ORDER BY period_start", (jan, src)
+                    ).fetchall()
+                    if ms:
+                        st.caption(t(f"月販 ({label}): " + " / ".join(f"{r[0]}:{int(r[1] or 0)}" for r in ms)))
                 # 推奨先 highlight
                 best = df_c.sort_values(["zone_rank", "実質単価(比価)"]).iloc[0]
                 st.success(t(f"→ 推奨仕入先: {best['supplier_name']} ({best['zone']}) · 単価 ¥{int(best['unit_price'])} · ロット {int(best['lot_size'] or 1)}"))

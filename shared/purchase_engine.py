@@ -70,25 +70,38 @@ def _classify_trend(months: list[float]) -> str:
     return "flat"
 
 
-def _load_monthly_sales(conn, months: int = 3) -> pd.DataFrame:
-    """shop_sales(source='asean_monthly') から JAN × period_start の月販を取得。
+# 月販データソース優先順位 (Boss 2026-05-11):
+#   1. 'export_item'  = 【輸出】アイテム別売上（概要）_JO  ← 綜合性 (全輸出商品, 全渠道月販)
+#   2. 'asean_monthly' = 【ASEAN】店舗別売上 集計専用       ← ASEAN 局部
+SALES_SOURCE_PRIORITY = ["export_item", "asean_monthly"]
 
-    戻り値: jan, period_start, qty (店舗合算済)
+
+def _load_monthly_sales(conn, months: int = 3, sales_source: str = "auto") -> tuple[pd.DataFrame, str]:
+    """shop_sales から JAN × period_start の月販を取得。
+
+    Args:
+        sales_source: 'auto' = export_item を優先, なければ asean_monthly /
+                      または 'export_item' / 'asean_monthly' を明示指定
+    戻り値: (DataFrame[jan, period_start, qty], 実際に使った source)
     最新 `months` 期間分のみ。
     """
-    rows = conn.execute(
-        "SELECT jan, period_start, SUM(qty_sold) AS qty "
-        "FROM shop_sales WHERE source = 'asean_monthly' AND qty_sold IS NOT NULL "
-        "GROUP BY jan, period_start"
-    ).fetchall()
-    if not rows:
-        return pd.DataFrame(columns=["jan", "period_start", "qty"])
-    df = pd.DataFrame([dict(r) for r in rows])
-    # 最新 months 期間
-    periods = sorted(df["period_start"].dropna().unique())[-months:]
-    df = df[df["period_start"].isin(periods)].copy()
-    df["qty"] = pd.to_numeric(df["qty"], errors="coerce").fillna(0)
-    return df
+    if sales_source == "auto":
+        candidates = SALES_SOURCE_PRIORITY
+    else:
+        candidates = [sales_source]
+    for src in candidates:
+        rows = conn.execute(
+            "SELECT jan, period_start, SUM(qty_sold) AS qty "
+            "FROM shop_sales WHERE source = ? AND qty_sold IS NOT NULL "
+            "GROUP BY jan, period_start", (src,)
+        ).fetchall()
+        if rows:
+            df = pd.DataFrame([dict(r) for r in rows])
+            periods = sorted(df["period_start"].dropna().unique())[-months:]
+            df = df[df["period_start"].isin(periods)].copy()
+            df["qty"] = pd.to_numeric(df["qty"], errors="coerce").fillna(0)
+            return df, src
+    return pd.DataFrame(columns=["jan", "period_start", "qty"]), (candidates[0] if candidates else "")
 
 
 def compute_recommendations(
@@ -98,6 +111,7 @@ def compute_recommendations(
     safety_months: float = 1.0,
     trend_factors: dict | None = None,
     fixed_order_months: float | None = None,
+    sales_source: str = "auto",
 ) -> pd.DataFrame:
     """発注推奨を計算。
 
@@ -106,11 +120,14 @@ def compute_recommendations(
         safety_months: 納期カバーに上乗せする安全在庫(月)
         trend_factors: {'up':1.2,'flat':1.0,'down':0.7}
         fixed_order_months: 指定すると納期補正を無視し全 SKU この月数で発注
+        sales_source: 'auto' / 'export_item' / 'asean_monthly'
+
+    DataFrame.attrs['sales_source'] に実際使った source 名を入れる。
     """
     tf = trend_factors or DEFAULT_TREND_FACTORS
 
     # --- 月販 ---
-    sales = _load_monthly_sales(conn, months=months)
+    sales, used_source = _load_monthly_sales(conn, months=months, sales_source=sales_source)
     periods = sorted(sales["period_start"].dropna().unique()) if not sales.empty else []
     sales_pivot: dict[str, dict[str, float]] = {}
     for _, r in sales.iterrows():
@@ -189,6 +206,8 @@ def compute_recommendations(
 
     df = pd.DataFrame(rows)
     if df.empty:
+        df.attrs["sales_source"] = used_source
+        df.attrs["periods"] = periods
         return df
 
     # --- 仕入先単位の合算 → 最低受注額判定 ---
@@ -208,4 +227,7 @@ def compute_recommendations(
         return base
     df["reason"] = df.apply(_reason, axis=1)
 
-    return df.sort_values(["zone_rank", "supplier_name", "line_cost"], ascending=[True, True, False]).reset_index(drop=True)
+    df = df.sort_values(["zone_rank", "supplier_name", "line_cost"], ascending=[True, True, False]).reset_index(drop=True)
+    df.attrs["sales_source"] = used_source
+    df.attrs["periods"] = periods
+    return df
