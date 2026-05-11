@@ -70,10 +70,10 @@ def _classify_trend(months: list[float]) -> str:
     return "flat"
 
 
-# 月販データソース優先順位 (Boss 2026-05-11):
-#   1. 'export_item'  = 【輸出】アイテム別売上（概要）_JO  ← 綜合性 (全輸出商品, 全渠道月販)
-#   2. 'asean_monthly' = 【ASEAN】店舗別売上 集計専用       ← ASEAN 局部
-SALES_SOURCE_PRIORITY = ["export_item", "asean_monthly"]
+# 月販データソース (Boss 2026-05-11):
+#   'export_item' = 【輸出】アイテム別売上（概要）_JO  ← 綜合性 (全輸出商品, 全渠道月販)
+#   ※【ASEAN】店舗別売上 集計専用 (asean_monthly) は使わない (Boss 指示)
+SALES_SOURCE_PRIORITY = ["export_item"]
 
 
 def _load_monthly_sales(conn, months: int = 3, sales_source: str = "auto") -> tuple[pd.DataFrame, str]:
