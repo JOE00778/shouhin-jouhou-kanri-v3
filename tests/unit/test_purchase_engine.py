@@ -221,3 +221,24 @@ def test_consolidation_price_guard():
     # 甲は 1000 > 100×1.5 なので誰も移らない → 乙(4) + 丙(4) の 2 社のまま, 甲 は使われない
     assert "甲" not in set(df["supplier_name"])
     assert df["supplier_name"].nunique() == 2
+
+
+# ---- optimize モード (Boss 2026-05-12: 最小支出シナリオ) ----
+
+def test_optimize_line_cost_picks_lowest_total_not_lowest_unit_price():
+    c = _conn_no_inv()
+    _add_sku(c, "4900000040001", "ブランドQ", sales=(25, 25, 25))   # base 25, flat ×1.0
+    # 甲: 単価100 だが ロット100 → 25 必要でも 100 個 = ¥10,000
+    _q(c, "甲", "4900000040001", 100, lot=100)
+    # 乙: 単価120 (甲より高い!) だが ロット10 → 30 個 (ceil(25/10*?)...) 実際 order_months=2 で 50必要→ lot10→50個=¥6,000
+    _q(c, "乙", "4900000040001", 120, lot=10)
+    # 注: order_months = ceil(14/30)+1 = 2 → target = 25*1*2 = 50
+    df_cost = compute_recommendations(c, use_inventory=False, consolidate_by_brand=False, optimize="cost")
+    df_lc = compute_recommendations(c, use_inventory=False, consolidate_by_brand=False, optimize="line_cost")
+    # 'cost' は単価最安 → 甲 (100<120) → 100個×100 = 10000
+    assert df_cost.iloc[0]["supplier_name"] == "甲"
+    assert df_cost.iloc[0]["line_cost"] == 100 * 100
+    # 'line_cost' は発注金額最安 → 乙 (50個×120=6000 < 10000)
+    assert df_lc.iloc[0]["supplier_name"] == "乙"
+    assert df_lc.iloc[0]["line_cost"] == 50 * 120
+    assert df_lc.attrs["optimize"] == "line_cost"

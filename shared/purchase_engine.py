@@ -218,6 +218,7 @@ def compute_recommendations(
     consolidate_by_brand: bool = True,
     max_suppliers_per_brand: int = 3,
     small_brand_skip: int = 5,
+    optimize: str = "zone",
 ) -> pd.DataFrame:
     """発注推奨を計算。
 
@@ -228,9 +229,13 @@ def compute_recommendations(
         consolidate_by_brand: True ならメーカー単位で 1〜3 仕入先に集約 (既定 True)
         max_suppliers_per_brand: 1 メーカーを集約する上限仕入先数 (既定 3)
         small_brand_skip: SKU 数がこれ以下のメーカーは集約しない (既定 5)
+        optimize: 'zone' = zone優先→同zone最安 (既定) /
+                  'line_cost' = 発注金額(line_cost)最小 — ロット丸め・納期込みで一番安い仕入先 (= 最小支出プラン) /
+                  'cost' = zone無視で純粋に最安単価 (ロット無視, 比較用)
+                  ※ 'line_cost'/'cost' は consolidate_by_brand=False と併用推奨
 
     DataFrame.attrs: sales_source / periods / n_discontinued_excluded / inventory_loaded
-                     / n_consolidated (集約で発注先が変わった SKU 数)
+                     / n_consolidated (集約で発注先が変わった SKU 数) / optimize
     """
     tf = trend_factors or DEFAULT_TREND_FACTORS
 
@@ -269,16 +274,40 @@ def compute_recommendations(
             continue
         for q in qlist:
             q["_eff"] = q["unit_price"] * ZONE_MARKUP.get(q["zone"], 1.0)
-        candidates = sorted(qlist, key=lambda q: (q["zone_rank"], q["_eff"], q["supplier_name"]))
         iv = inv_map.get(jan, {})
         on_hand, committed, on_order = iv.get("on_hand", 0.0), iv.get("committed", 0.0), iv.get("on_order", 0.0)
+        eff_stock = on_hand - committed + on_order
+        base_monthly = max(avg_monthly, latest_monthly)
+        trend = _classify_trend(m_seq)
+        tfac = tf.get(trend, 1.0)
+
+        def _est_line_cost(q: dict) -> int:
+            """その仕入先で発注した場合の line_cost 見積り (ロット丸め・納期込み)。≤0 なら 0。"""
+            lot_ = q["lot_size"] or 1
+            om = fixed_order_months if fixed_order_months else _order_months_from_lead(
+                _parse_lead_days(q["lead_time_text"]), safety_months)
+            sf = base_monthly * tfac * om - eff_stock
+            if sf <= 0:
+                return 0
+            return math.ceil(sf / lot_) * lot_ * q["unit_price"]
+
+        if optimize == "cost":
+            # 純粋に最安単価 (ロット・納期は無視) → 比較用シナリオ
+            candidates = sorted(qlist, key=lambda q: (q["_eff"], q["zone_rank"], q["supplier_name"]))
+        elif optimize == "line_cost":
+            # 発注金額 (line_cost) 最小 — ロット丸め・納期も込みで一番安い仕入先を採用
+            candidates = sorted(qlist, key=lambda q: (_est_line_cost(q), q["zone_rank"], q["supplier_name"]))
+        else:
+            # 既定: zone 優先 → 同 zone は最安単価
+            candidates = sorted(qlist, key=lambda q: (q["zone_rank"], q["_eff"], q["supplier_name"]))
+
         sku[jan] = {
             "candidates": candidates, "meta": meta, "m_seq": m_seq,
             "avg_monthly": avg_monthly, "latest_monthly": latest_monthly,
-            "base_monthly": max(avg_monthly, latest_monthly),
-            "trend": _classify_trend(m_seq),
+            "base_monthly": base_monthly,
+            "trend": trend,
             "on_hand": on_hand, "committed": committed, "on_order": on_order,
-            "eff_stock": on_hand - committed + on_order,
+            "eff_stock": eff_stock,
         }
         jan_to_candidates[jan] = candidates
 
@@ -370,7 +399,7 @@ def compute_recommendations(
     if df.empty:
         df.attrs.update(sales_source=used_source, periods=periods,
                         n_discontinued_excluded=n_discontinued_excluded,
-                        inventory_loaded=inventory_loaded, n_consolidated=0)
+                        inventory_loaded=inventory_loaded, n_consolidated=0, optimize=optimize)
         return df
 
     sup_total = df.groupby("supplier_name")["line_cost"].sum()
@@ -397,5 +426,5 @@ def compute_recommendations(
                         ascending=[True, True, True, False]).reset_index(drop=True)
     df.attrs.update(sales_source=used_source, periods=periods,
                     n_discontinued_excluded=n_discontinued_excluded,
-                    inventory_loaded=inventory_loaded, n_consolidated=n_consolidated)
+                    inventory_loaded=inventory_loaded, n_consolidated=n_consolidated, optimize=optimize)
     return df

@@ -165,7 +165,14 @@ with tab_calc:
         f_up = st.number_input("📈", 1.0, 3.0, DEFAULT_TREND_FACTORS["up"], 0.1, key="f_up")
         f_dn = st.number_input("📉", 0.1, 1.0, DEFAULT_TREND_FACTORS["down"], 0.1, key="f_dn")
 
-    q1, q2, q3 = st.columns(3)
+    q0, q1, q2, q3 = st.columns([1.4, 1, 1, 1.3])
+    with q0:
+        opt_label = st.radio(
+            t("発注先の選び方"),
+            [t("zone優先(JD直送>弁天>応急>前払い)"), t("発注金額(line_cost)が最小")],
+            help=t("『発注金額最小』はロット丸め・納期込みで一番安い仕入先を選ぶ。zone劣化(JD直送→応急/前払い)が起きる場合あり"),
+        )
+        optimize = "line_cost" if "金額" in opt_label else "zone"
     with q1:
         consol = st.checkbox(t("メーカー単位で仕入先を集約"), value=True)
     with q2:
@@ -185,6 +192,7 @@ with tab_calc:
                 consolidate_by_brand=bool(consol),
                 max_suppliers_per_brand=int(max_sup_brand),
                 small_brand_skip=int(small_brand),
+                optimize=optimize,
             )
         st.session_state["po_reco"] = df
 

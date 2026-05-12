@@ -24,6 +24,13 @@
      - **メーカー全体の SKU 数が小さい場合（既定 ≤5）は集約しない**（「品牌が数 SKU しか無い場合は無視」ルール）。
   3. パラメータ（page 25 UI で調整可）: `consolidate_by_brand` / `max_suppliers_per_brand`(既定3) / `small_brand_skip`(既定5)。
   → 実装: `shared/purchase_engine.py` の `_consolidate_brand()`。出力 DataFrame に `supplier_primary` / `supplier_backup1` / `supplier_backup2`（+各単価）/ `consolidated`(集約で主力が変わったか) 列。
+  4. **発注先の選び方 = `optimize` パラメータ**（page 25 にラジオ）:
+     - `'zone'`（既定）= zone優先 → 同zone最安。会社の zone 戦略（応急は兜底）を守る。
+     - `'line_cost'` = **発注金額(line_cost)が最小になる仕入先**を選ぶ（ロット丸め・納期込み）。= 「最小支出プラン」。
+       ⚠️ zone をまたいで安い方へ動くので JD直送 → 弁天/応急/前払い への移動が起きる。
+     - `'cost'` = 純粋に最安単価（ロット無視）。比較用。
+     - 試算（2026-05-12, ローカル）: 現行(zone優先+品牌≤3集約) ¥21.3M / `line_cost`最小(集約なし) **¥19.3M(−9.3%)** / `line_cost`最小+品牌≤3集約 ¥20.8M(−2.5%)。
+       最低受注額制約は現データではどのシナリオでも非拘束（NEW WIND ¥50k / カネイシ ¥10k / HK ¥48 のみ設定, いずれも余裕で達成）。
 
 ## Boss 決定（2026-05-11）
 
