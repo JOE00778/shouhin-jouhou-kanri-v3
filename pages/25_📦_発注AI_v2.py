@@ -147,6 +147,7 @@ with tab_calc:
     st.subheader(t("② パラメータ"))
     st.caption(t("📅 月販: 【輸出】アイテム別売上（概要）_JO (export_item) ｜ 在庫: 【輸出】在庫のスナップショット (手持 − 確保済 + 注文済)"))
     st.caption(t("発注数 = max(0, 目標在庫 − 有効在庫) を ロット倍数に切り上げ ｜ 目標在庫 = max(平均月販,直近月販) × トレンド係数 × (納期カバー月数 + 安全在庫月数)"))
+    st.caption(t("仕入先選定: zone優先(JD直送>弁天>応急>前払い)→同zoneは最安。各SKUに主力+備用1〜2。さらにメーカー単位で1〜3仕入先に集約(zone劣化なし)"))
     sales_source = "export_item"
 
     p1, p2, p3, p4 = st.columns(4)
@@ -164,6 +165,14 @@ with tab_calc:
         f_up = st.number_input("📈", 1.0, 3.0, DEFAULT_TREND_FACTORS["up"], 0.1, key="f_up")
         f_dn = st.number_input("📉", 0.1, 1.0, DEFAULT_TREND_FACTORS["down"], 0.1, key="f_dn")
 
+    q1, q2, q3 = st.columns(3)
+    with q1:
+        consol = st.checkbox(t("メーカー単位で仕入先を集約"), value=True)
+    with q2:
+        max_sup_brand = st.number_input(t("1メーカーの上限仕入先数"), 1, 5, 3, disabled=not consol)
+    with q3:
+        small_brand = st.number_input(t("これ以下のSKU数のメーカーは集約しない"), 1, 20, 5, disabled=not consol)
+
     if st.button(t("🔍 発注計算実行"), type="primary", disabled=not _has_supplier_quotes()):
         with st.spinner(t("計算中…")):
             df = compute_recommendations(
@@ -173,6 +182,9 @@ with tab_calc:
                 sales_source=sales_source,
                 include_discontinued=bool(incl_disc),
                 use_inventory=bool(use_inv),
+                consolidate_by_brand=bool(consol),
+                max_suppliers_per_brand=int(max_sup_brand),
+                small_brand_skip=int(small_brand),
             )
         st.session_state["po_reco"] = df
 
@@ -188,10 +200,11 @@ with tab_calc:
         periods = df.attrs.get("periods", [])
         n_disc_ex = df.attrs.get("n_discontinued_excluded", 0)
         inv_loaded = df.attrs.get("inventory_loaded", False)
+        n_consol = df.attrs.get("n_consolidated", 0)
         st.caption(t(
             f"📅 月販期間: {', '.join(periods) if periods else '(なし)'} ｜ "
             f"在庫差引: {'✅ 適用' if inv_loaded else '⚠️ 在庫データなし(全量発注)'} ｜ "
-            f"取扱中止 除外: {n_disc_ex} SKU"
+            f"取扱中止 除外: {n_disc_ex} SKU ｜ 品牌集約で発注先変更: {n_consol} SKU"
         ))
         total_cost = int(df["line_cost"].sum())
         n_sku = len(df)
@@ -226,13 +239,17 @@ with tab_calc:
                     sub[["jan", "display_name", "maker", "rank", "avg_monthly", "latest_monthly", "trend",
                          "trend_factor", "order_months", "on_hand", "on_order", "target_stock", "shortfall",
                          "lot_size", "suggested_qty", "unit_price", "line_cost", "lead_time_text",
+                         "consolidated", "supplier_backup1", "backup1_price", "supplier_backup2", "backup2_price",
                          "alt_suppliers", "reason"]]
                     .rename(columns={
                         "rank": "ランク", "avg_monthly": "平均月販", "latest_monthly": "直近月販", "trend": "傾向",
                         "trend_factor": "係数", "order_months": "発注月数",
                         "on_hand": "手持在庫", "on_order": "注文済", "target_stock": "目標在庫", "shortfall": "不足",
                         "lot_size": "ロット", "suggested_qty": "発注数", "unit_price": "単価", "line_cost": "金額",
-                        "lead_time_text": "納期", "alt_suppliers": "他仕入先候補", "reason": "理由",
+                        "lead_time_text": "納期", "consolidated": "集約",
+                        "supplier_backup1": "備用①", "backup1_price": "備①単価",
+                        "supplier_backup2": "備用②", "backup2_price": "備②単価",
+                        "alt_suppliers": "全候補", "reason": "理由",
                     }),
                     use_container_width=True, hide_index=True,
                 )
