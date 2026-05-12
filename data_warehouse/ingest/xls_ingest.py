@@ -43,6 +43,14 @@ def _to_str(v) -> str | None:
     return s if s else None
 
 
+def _first(raw: dict, *keys: str):
+    """複数の列名候補から最初に存在する値を返す（NetSuite 報表の列名ゆれ対策）。"""
+    for k in keys:
+        if k in raw and raw[k] not in (None, ""):
+            return raw[k]
+    return None
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -230,9 +238,11 @@ def ingest_inventory_snapshot(
                 "qty_on_hand": _to_float(raw.get("手持合計")),
                 "qty_committed": _to_float(raw.get("確保済合計")),
                 "qty_backorder": _to_float(raw.get("バック・オーダー合計")),
-                "qty_on_order": None,    # 旧版文件没有这 3 字段
-                "qty_waiting": None,
-                "qty_in_transit": None,
+                # 新版【輸出】在庫のスナップショット は 注文済 / 輸送中 / 入荷待ち を持つ。
+                # 列名のバリエーション（…合計 サフィックス有無）に頑健に。旧版は無い → None。
+                "qty_on_order": _to_float(_first(raw, "注文済合計", "注文済", "発注済合計", "発注済", "オーダー済合計")),
+                "qty_waiting": _to_float(_first(raw, "入荷待ち合計", "入荷待ち", "待機中合計", "待機中")),
+                "qty_in_transit": _to_float(_first(raw, "輸送中合計", "輸送中", "在途合計", "在途")),
                 "std_cost": _to_float(raw.get("アイテム定義原価")),
                 "total_amount": _to_float(raw.get("合計金額")),
                 "avg_cost": _to_float(raw.get("平均原価合計")),

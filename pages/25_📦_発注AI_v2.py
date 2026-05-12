@@ -145,14 +145,17 @@ with tab_calc:
 
     st.divider()
     st.subheader(t("② パラメータ"))
-    st.caption(t("📅 月販データソース: 【輸出】アイテム別売上（概要）_JO (shop_sales source='export_item')"))
+    st.caption(t("📅 月販: 【輸出】アイテム別売上（概要）_JO (export_item) ｜ 在庫: 【輸出】在庫のスナップショット (手持 − 確保済 + 注文済)"))
+    st.caption(t("発注数 = max(0, 目標在庫 − 有効在庫) を ロット倍数に切り上げ ｜ 目標在庫 = max(平均月販,直近月販) × トレンド係数 × (納期カバー月数 + 安全在庫月数)"))
     sales_source = "export_item"
 
     p1, p2, p3, p4 = st.columns(4)
     with p1:
         months = st.number_input(t("月販トレンド期間 (ヶ月)"), 1, 12, 3)
+        use_inv = st.checkbox(t("現在庫を差し引く"), value=True)
     with p2:
         safety = st.number_input(t("安全在庫 (ヶ月分)"), 0.0, 6.0, 1.0, 0.5)
+        incl_disc = st.checkbox(t("取扱中止品も含める"), value=False)
     with p3:
         use_fixed = st.checkbox(t("発注月数を固定 (納期補正しない)"))
         fixed_months = st.number_input(t("固定発注月数"), 0.5, 6.0, 1.0, 0.5, disabled=not use_fixed)
@@ -168,6 +171,8 @@ with tab_calc:
                 trend_factors={"up": f_up, "flat": 1.0, "down": f_dn},
                 fixed_order_months=float(fixed_months) if use_fixed else None,
                 sales_source=sales_source,
+                include_discontinued=bool(incl_disc),
+                use_inventory=bool(use_inv),
             )
         st.session_state["po_reco"] = df
 
@@ -181,7 +186,13 @@ with tab_calc:
         ))
     else:
         periods = df.attrs.get("periods", [])
-        st.caption(t(f"📅 月販データ: 【輸出】アイテム別売上（概要） · 期間: {', '.join(periods) if periods else '(なし)'}"))
+        n_disc_ex = df.attrs.get("n_discontinued_excluded", 0)
+        inv_loaded = df.attrs.get("inventory_loaded", False)
+        st.caption(t(
+            f"📅 月販期間: {', '.join(periods) if periods else '(なし)'} ｜ "
+            f"在庫差引: {'✅ 適用' if inv_loaded else '⚠️ 在庫データなし(全量発注)'} ｜ "
+            f"取扱中止 除外: {n_disc_ex} SKU"
+        ))
         total_cost = int(df["line_cost"].sum())
         n_sku = len(df)
         n_deferred = int((df["status"] == "deferred_min_order").sum())
@@ -212,13 +223,15 @@ with tab_calc:
                 )
                 st.dataframe(by_maker, use_container_width=True, hide_index=True)
                 st.dataframe(
-                    sub[["jan", "display_name", "maker", "avg_monthly", "latest_monthly", "trend",
-                         "trend_factor", "order_months", "lot_size", "suggested_qty", "unit_price",
-                         "line_cost", "lead_time_text", "alt_suppliers", "reason"]]
+                    sub[["jan", "display_name", "maker", "rank", "avg_monthly", "latest_monthly", "trend",
+                         "trend_factor", "order_months", "on_hand", "on_order", "target_stock", "shortfall",
+                         "lot_size", "suggested_qty", "unit_price", "line_cost", "lead_time_text",
+                         "alt_suppliers", "reason"]]
                     .rename(columns={
-                        "avg_monthly": "平均月販", "latest_monthly": "直近月販", "trend": "傾向",
-                        "trend_factor": "係数", "order_months": "発注月数", "lot_size": "ロット",
-                        "suggested_qty": "発注数", "unit_price": "単価", "line_cost": "金額",
+                        "rank": "ランク", "avg_monthly": "平均月販", "latest_monthly": "直近月販", "trend": "傾向",
+                        "trend_factor": "係数", "order_months": "発注月数",
+                        "on_hand": "手持在庫", "on_order": "注文済", "target_stock": "目標在庫", "shortfall": "不足",
+                        "lot_size": "ロット", "suggested_qty": "発注数", "unit_price": "単価", "line_cost": "金額",
                         "lead_time_text": "納期", "alt_suppliers": "他仕入先候補", "reason": "理由",
                     }),
                     use_container_width=True, hide_index=True,
