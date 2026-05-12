@@ -242,3 +242,42 @@ def test_optimize_line_cost_picks_lowest_total_not_lowest_unit_price():
     assert df_lc.iloc[0]["supplier_name"] == "乙"
     assert df_lc.iloc[0]["line_cost"] == 50 * 120
     assert df_lc.attrs["optimize"] == "line_cost"
+
+
+# ---- ランクフィルタ / 在庫月数上限 (Boss 2026-05-12) ----
+
+def test_rank_filter():
+    c = _conn_no_inv()
+    _add_sku(c, "4900000050001", "M", sales=(20, 20, 20))
+    c.execute("UPDATE item_v2 SET rank='Aランク' WHERE jan='4900000050001'")
+    _add_sku(c, "4900000050002", "M", sales=(20, 20, 20))
+    c.execute("UPDATE item_v2 SET rank='Cランク' WHERE jan='4900000050002'")
+    _q(c, "甲", "4900000050001", 100); _q(c, "甲", "4900000050002", 100)
+    df = compute_recommendations(c, use_inventory=False, consolidate_by_brand=False, ranks=("Aランク", "Bランク"))
+    assert len(df) == 1
+    assert df.iloc[0]["jan"] == "4900000050001"
+    assert df.attrs["n_rank_excluded"] == 1
+    df_all = compute_recommendations(c, use_inventory=False, consolidate_by_brand=False)
+    assert len(df_all) == 2
+
+
+def test_max_stock_months_defers_overstock():
+    c = _conn_no_inv()
+    # 月販 1/1/1 (base 1), lot 100 → order_months=2 → target=2 → shortfall=2 → ceil(2/100)*100=100
+    # 発注後在庫 = 0 + 100 = 100 ヶ月分 >>> 上限
+    _add_sku(c, "4900000060001", "M", sales=(1, 1, 1))
+    _q(c, "甲", "4900000060001", 50, lot=100)
+    df_nocap = compute_recommendations(c, use_inventory=False, consolidate_by_brand=False)
+    assert df_nocap.iloc[0]["status"] == "recommended"
+    assert df_nocap.iloc[0]["stock_months_after"] == 100.0
+    df_cap = compute_recommendations(c, use_inventory=False, consolidate_by_brand=False, max_stock_months=4.0)
+    assert df_cap.iloc[0]["status"] == "deferred_overstock"
+    assert df_cap.iloc[0]["overstock"] is True or df_cap.iloc[0]["overstock"] == 1
+    assert df_cap.attrs["n_overstock"] == 1
+    # 上限内の SKU は recommended のまま
+    _add_sku(c, "4900000060002", "M", sales=(100, 100, 100))   # base 100, lot 100 → target 200 → ceil(200/100)*100=200 → 在庫 200/100=2ヶ月
+    _q(c, "甲", "4900000060002", 50, lot=100)
+    df2 = compute_recommendations(c, use_inventory=False, consolidate_by_brand=False, max_stock_months=4.0)
+    rec = df2[df2["jan"] == "4900000060002"].iloc[0]
+    assert rec["status"] == "recommended"
+    assert rec["stock_months_after"] == 2.0

@@ -180,6 +180,18 @@ with tab_calc:
     with q3:
         small_brand = st.number_input(t("これ以下のSKU数のメーカーは集約しない"), 1, 20, 5, disabled=not consol)
 
+    r0, r1 = st.columns([1.6, 1.4])
+    with r0:
+        rank_sel = st.multiselect(
+            t("対象ランク (空 = 全部)"), ["Aランク", "Bランク", "Cランク", "NEW", "取扱中止"],
+            default=["Aランク", "Bランク"],
+            help=t("まず A/B 等級だけ見たい等。空にすると全ランク(取扱中止は別途除外)"),
+        )
+    with r1:
+        cap_on = st.checkbox(t("発注後の在庫月数に上限を設ける"), value=False,
+                             help=t("ロット起定量で買い過ぎになる SKU を『保留』にする。例: 上限4ヶ月なら発注後在庫が4ヶ月超の SKU は発注しない"))
+        max_stock = st.number_input(t("在庫月数の上限 (ヶ月)"), 1.0, 12.0, 4.0, 0.5, disabled=not cap_on)
+
     if st.button(t("🔍 発注計算実行"), type="primary", disabled=not _has_supplier_quotes()):
         with st.spinner(t("計算中…")):
             df = compute_recommendations(
@@ -193,6 +205,8 @@ with tab_calc:
                 max_suppliers_per_brand=int(max_sup_brand),
                 small_brand_skip=int(small_brand),
                 optimize=optimize,
+                ranks=rank_sel or None,
+                max_stock_months=float(max_stock) if cap_on else None,
             )
         st.session_state["po_reco"] = df
 
@@ -207,26 +221,44 @@ with tab_calc:
     else:
         periods = df.attrs.get("periods", [])
         n_disc_ex = df.attrs.get("n_discontinued_excluded", 0)
+        n_rank_ex = df.attrs.get("n_rank_excluded", 0)
         inv_loaded = df.attrs.get("inventory_loaded", False)
         n_consol = df.attrs.get("n_consolidated", 0)
+        n_over = df.attrs.get("n_overstock", 0)
+        cap = df.attrs.get("max_stock_months", None)
         st.caption(t(
             f"📅 月販期間: {', '.join(periods) if periods else '(なし)'} ｜ "
             f"在庫差引: {'✅ 適用' if inv_loaded else '⚠️ 在庫データなし(全量発注)'} ｜ "
-            f"取扱中止 除外: {n_disc_ex} SKU ｜ 品牌集約で発注先変更: {n_consol} SKU"
+            f"取扱中止 除外: {n_disc_ex} SKU ｜ ランク対象外 除外: {n_rank_ex} SKU ｜ "
+            f"品牌集約で発注先変更: {n_consol} SKU ｜ 在庫過多で保留: {n_over} SKU"
+            + (f" (上限{cap}ヶ月)" if cap else "")
         ))
-        total_cost = int(df["line_cost"].sum())
-        n_sku = len(df)
-        n_deferred = int((df["status"] == "deferred_min_order").sum())
+        df_rec = df[df["status"] == "recommended"]
+        df_hold = df[df["status"] != "recommended"]
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric(t("発注対象 SKU"), f"{n_sku:,}")
-        m2.metric(t("総発注コスト"), f"¥{total_cost:,}")
-        m3.metric(t("仕入先数"), f"{df['supplier_name'].nunique()}")
-        m4.metric(t("最低受注額未達"), f"{n_deferred}", delta=None)
+        m1.metric(t("発注 SKU (推奨)"), f"{len(df_rec):,}")
+        m2.metric(t("発注コスト (推奨)"), f"¥{int(df_rec['line_cost'].sum()):,}")
+        m3.metric(t("仕入先数"), f"{df_rec['supplier_name'].nunique()}")
+        m4.metric(t("保留 SKU (在庫過多/最低受注未達)"), f"{len(df_hold)}", delta=None)
 
-        # 仕入先別 → 品牌別 サマリ
-        st.markdown(t("#### 仕入先別 → 品牌別 発注清单"))
-        for sup in df.groupby("supplier_name")["line_cost"].sum().sort_values(ascending=False).index:
-            sub = df[df["supplier_name"] == sup]
+        if len(df_hold):
+            with st.expander(t(f"⚠️ 保留 SKU {len(df_hold)} 件 (発注しない — 在庫過多 / 最低受注額未達)"), expanded=False):
+                st.dataframe(
+                    df_hold[["jan", "display_name", "maker", "rank", "status", "on_hand", "suggested_qty",
+                             "lot_size", "stock_months_after", "supplier_name", "zone", "unit_price",
+                             "line_cost", "reason"]]
+                    .rename(columns={"rank": "ランク", "status": "状態", "on_hand": "手持在庫",
+                                     "suggested_qty": "発注数(参考)", "lot_size": "ロット",
+                                     "stock_months_after": "発注後在庫月数", "supplier_name": "仕入先",
+                                     "unit_price": "単価", "line_cost": "金額(参考)", "reason": "理由"})
+                    .sort_values("発注後在庫月数", ascending=False),
+                    use_container_width=True, hide_index=True,
+                )
+
+        # 仕入先別 → 品牌別 サマリ (推奨分のみ)
+        st.markdown(t("#### 仕入先別 → 品牌別 発注清单 (推奨分)"))
+        for sup in df_rec.groupby("supplier_name")["line_cost"].sum().sort_values(ascending=False).index:
+            sub = df_rec[df_rec["supplier_name"] == sup]
             zone = sub["zone"].iloc[0]
             sup_total = int(sub["line_cost"].sum())
             moq = int(sub["min_order_amount"].iloc[0])
@@ -246,14 +278,15 @@ with tab_calc:
                 st.dataframe(
                     sub[["jan", "display_name", "maker", "rank", "avg_monthly", "latest_monthly", "trend",
                          "trend_factor", "order_months", "on_hand", "on_order", "target_stock", "shortfall",
-                         "lot_size", "suggested_qty", "unit_price", "line_cost", "lead_time_text",
+                         "lot_size", "suggested_qty", "stock_months_after", "unit_price", "line_cost", "lead_time_text",
                          "consolidated", "supplier_backup1", "backup1_price", "supplier_backup2", "backup2_price",
                          "alt_suppliers", "reason"]]
                     .rename(columns={
                         "rank": "ランク", "avg_monthly": "平均月販", "latest_monthly": "直近月販", "trend": "傾向",
                         "trend_factor": "係数", "order_months": "発注月数",
                         "on_hand": "手持在庫", "on_order": "注文済", "target_stock": "目標在庫", "shortfall": "不足",
-                        "lot_size": "ロット", "suggested_qty": "発注数", "unit_price": "単価", "line_cost": "金額",
+                        "lot_size": "ロット", "suggested_qty": "発注数", "stock_months_after": "発注後在庫月数",
+                        "unit_price": "単価", "line_cost": "金額",
                         "lead_time_text": "納期", "consolidated": "集約",
                         "supplier_backup1": "備用①", "backup1_price": "備①単価",
                         "supplier_backup2": "備用②", "backup2_price": "備②単価",
@@ -267,14 +300,14 @@ with tab_calc:
         st.markdown(t("#### ③ NST 発注 CSV 出力 (仕入先別)"))
         cc1, cc2, cc3 = st.columns(3)
         with cc1:
-            sel_sup = st.selectbox(t("仕入先を選択"), sorted(df["supplier_name"].unique()))
+            sel_sup = st.selectbox(t("仕入先を選択"), sorted(df_rec["supplier_name"].unique()))
         with cc2:
             od = st.date_input(t("発注日"), value=date.today())
             emp = st.selectbox(t("従業員"), EMPLOYEES)
         with cc3:
             dept = st.selectbox(t("部門"), DEPARTMENTS)
             memo = st.text_input(t("メモ"), value=f"自動発注 {date.today():%Y-%m}")
-        sub_sel = df[df["supplier_name"] == sel_sup]
+        sub_sel = df_rec[df_rec["supplier_name"] == sel_sup]
         # NST コードの推定 (報価の nst_supplier_code → 一致するものを default に)
         guess_code = sub_sel["nst_supplier_code"].iloc[0]
         nst_idx = NST_SUPPLIERS.index(guess_code) if guess_code in NST_SUPPLIERS else 0

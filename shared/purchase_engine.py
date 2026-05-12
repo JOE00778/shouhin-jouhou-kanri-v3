@@ -219,6 +219,8 @@ def compute_recommendations(
     max_suppliers_per_brand: int = 3,
     small_brand_skip: int = 5,
     optimize: str = "zone",
+    ranks: list[str] | tuple[str, ...] | None = None,
+    max_stock_months: float | None = None,
 ) -> pd.DataFrame:
     """発注推奨を計算。
 
@@ -233,9 +235,13 @@ def compute_recommendations(
                   'line_cost' = 発注金額(line_cost)最小 — ロット丸め・納期込みで一番安い仕入先 (= 最小支出プラン) /
                   'cost' = zone無視で純粋に最安単価 (ロット無視, 比較用)
                   ※ 'line_cost'/'cost' は consolidate_by_brand=False と併用推奨
+        ranks: 指定すると item_v2.rank がこのリストに含まれる SKU のみ対象 (例 ('Aランク','Bランク'))。None=全ランク。
+        max_stock_months: 指定すると「発注後の在庫月数 (= (有効在庫+発注数)/月販)」がこれを超える SKU を
+                          status='deferred_overstock' にする (ロット起定量で買い過ぎになるケースの健全性ガード)。
+                          None=チェックなし。
 
-    DataFrame.attrs: sales_source / periods / n_discontinued_excluded / inventory_loaded
-                     / n_consolidated (集約で発注先が変わった SKU 数) / optimize
+    DataFrame.attrs: sales_source / periods / n_discontinued_excluded / n_rank_excluded / inventory_loaded
+                     / n_consolidated / optimize / n_overstock / max_stock_months
     """
     tf = trend_factors or DEFAULT_TREND_FACTORS
 
@@ -259,12 +265,17 @@ def compute_recommendations(
 
     # ---- Phase 1: SKU ごとの候補リスト + 基礎指標 (発注先はまだ決めない) ----
     n_discontinued_excluded = 0
+    n_rank_excluded = 0
+    rank_set = set(ranks) if ranks else None
     sku: dict[str, dict] = {}          # jan -> {candidates, meta, m_seq, base_monthly, trend, tfac, on_hand, committed, on_order, eff_stock}
     jan_to_candidates: dict[str, list[dict]] = {}
     for jan, qlist in quotes.items():
         meta = item_map.get(jan, {})
         if meta.get("discontinued") and not include_discontinued:
             n_discontinued_excluded += 1
+            continue
+        if rank_set is not None and (meta.get("rank") not in rank_set):
+            n_rank_excluded += 1
             continue
         msales = sales_pivot.get(jan, {})
         m_seq = [msales.get(p, 0.0) for p in periods]
@@ -346,6 +357,9 @@ def compute_recommendations(
         if suggested_qty <= 0:
             continue
         line_cost = round(suggested_qty * best["unit_price"])
+        # 発注後の在庫月数 (= 在庫回転の目安)。ロット起定量のために多めに買う場合の健全性チェック用。
+        stock_months_after = (eff_stock + suggested_qty) / max(d["base_monthly"], 1e-6)
+        overstock = (max_stock_months is not None) and (stock_months_after > max_stock_months)
 
         backups = [q for q in cands if q["supplier_name"] != fs][:2]
         b1 = backups[0] if len(backups) >= 1 else None
@@ -388,6 +402,8 @@ def compute_recommendations(
             "backup2_price": b2["unit_price"] if b2 else None,
             # --- 数量・金額 ---
             "suggested_qty": suggested_qty,
+            "stock_months_after": round(stock_months_after, 1),
+            "overstock": overstock,
             "line_cost": line_cost,
             "min_order_amount": best["min_order_amount"] or 0,
             "order_condition": best["order_condition"],
@@ -398,8 +414,9 @@ def compute_recommendations(
     df = pd.DataFrame(rows)
     if df.empty:
         df.attrs.update(sales_source=used_source, periods=periods,
-                        n_discontinued_excluded=n_discontinued_excluded,
-                        inventory_loaded=inventory_loaded, n_consolidated=0, optimize=optimize)
+                        n_discontinued_excluded=n_discontinued_excluded, n_rank_excluded=n_rank_excluded,
+                        inventory_loaded=inventory_loaded, n_consolidated=0, optimize=optimize,
+                        n_overstock=0, max_stock_months=max_stock_months)
         return df
 
     sup_total = df.groupby("supplier_name")["line_cost"].sum()
@@ -408,15 +425,25 @@ def compute_recommendations(
         lambda r: (r["min_order_amount"] == 0) or (r["supplier_total"] >= r["min_order_amount"]),
         axis=1,
     )
-    df["status"] = df["meets_min_order"].map({True: "recommended", False: "deferred_min_order"})
+
+    def _status(r):
+        if r["overstock"]:
+            return "deferred_overstock"
+        if not r["meets_min_order"]:
+            return "deferred_min_order"
+        return "recommended"
+    df["status"] = df.apply(_status, axis=1)
 
     def _reason(r):
         z = ZONE_LABEL_JA.get(r["zone"], r["zone"])
         base = (f"{z}・単価{r['unit_price']}・{r['trend']}×{r['trend_factor']}・{r['order_months']:.0f}ヶ月分"
                 f"｜目標{r['target_stock']:.0f}−在庫{r['eff_stock']:.0f}(手持{r['on_hand']:.0f}"
-                f"+注文済{r['on_order']:.0f}−確保{r['qty_committed']:.0f})＝不足{r['shortfall']:.0f}")
+                f"+注文済{r['on_order']:.0f}−確保{r['qty_committed']:.0f})＝不足{r['shortfall']:.0f}"
+                f"→発注{r['suggested_qty']}(発注後在庫{r['stock_months_after']:.1f}ヶ月)")
         if r["consolidated"]:
             base += "・🔗品牌集約"
+        if r["overstock"]:
+            base += f"・⚠️起定量で在庫{r['stock_months_after']:.1f}ヶ月>上限{max_stock_months}→保留"
         if not r["meets_min_order"]:
             base += f"・⚠️最低受注¥{r['min_order_amount']:,}未達(現¥{r['supplier_total']:,.0f})"
         return base
@@ -425,6 +452,7 @@ def compute_recommendations(
     df = df.sort_values(["zone_rank", "supplier_name", "maker", "line_cost"],
                         ascending=[True, True, True, False]).reset_index(drop=True)
     df.attrs.update(sales_source=used_source, periods=periods,
-                    n_discontinued_excluded=n_discontinued_excluded,
-                    inventory_loaded=inventory_loaded, n_consolidated=n_consolidated, optimize=optimize)
+                    n_discontinued_excluded=n_discontinued_excluded, n_rank_excluded=n_rank_excluded,
+                    inventory_loaded=inventory_loaded, n_consolidated=n_consolidated, optimize=optimize,
+                    n_overstock=int(df["overstock"].sum()), max_stock_months=max_stock_months)
     return df
