@@ -281,3 +281,24 @@ def test_max_stock_months_defers_overstock():
     rec = df2[df2["jan"] == "4900000060002"].iloc[0]
     assert rec["status"] == "recommended"
     assert rec["stock_months_after"] == 2.0
+
+
+def test_no_lot_suppliers_ignore_lot():
+    c = _conn_no_inv()
+    # 月販 10/10/10 (base 10), order_months=2 → target 20, eff_stock 0 → shortfall 20
+    _add_sku(c, "4900000070001", "M", sales=(10, 10, 10))
+    # JD「甲」: lot 100 → ceil(20/100)*100 = 100 個 = ¥10,000
+    _q(c, "甲", "4900000070001", 100, lot=100)
+    # 応急「ハリマ」: lot 100 だが NO_LOT → 必要数ぴったり 20 個 = ¥2,400
+    _q(c, "ハリマ", "4900000070001", 120, zone="EMERGENCY", zr=3, lot=100)
+    # 甲(JD) しか無い場合 → 100 個
+    df_jd = compute_recommendations(c, use_inventory=False, consolidate_by_brand=False)
+    assert df_jd.iloc[0]["supplier_name"] == "甲"   # zone優先
+    assert df_jd.iloc[0]["suggested_qty"] == 100
+    # 甲を消して ハリマ のみ → ロット無視で 20 個
+    c.execute("DELETE FROM supplier_quote WHERE supplier_name='甲'")
+    df_h = compute_recommendations(c, use_inventory=False, consolidate_by_brand=False)
+    assert df_h.iloc[0]["supplier_name"] == "ハリマ"
+    assert df_h.iloc[0]["suggested_qty"] == 20      # lot 100 無視 → 必要数ぴったり
+    assert df_h.iloc[0]["lot_size"] == 1
+    assert df_h.iloc[0]["line_cost"] == 20 * 120

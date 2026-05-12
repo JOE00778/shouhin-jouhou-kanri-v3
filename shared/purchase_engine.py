@@ -41,6 +41,15 @@ DEFAULT_TREND_FACTORS = {"up": 1.2, "flat": 1.0, "down": 0.7}
 DISCONTINUED_VALUES = {"取扱中止", "メーカー取扱中止", "取扱停止", "廃番", "生産終了"}
 ZONE_LABEL_JA = {"JD_DIRECT": "JD直送", "BENTEN_TRANSIT": "弁天経由", "EMERGENCY": "応急",
                  "PREPAID": "前払い", "OTHER": "他"}
+# ロット起定量を無視して「必要数ぴったり」で発注する仕入先 (応急/参考用なので。Boss 2026-05-12)
+NO_LOT_SUPPLIERS = {"ハリマ", "SD"}
+
+
+def _effective_lot(q: dict) -> int:
+    """その仕入先で実際に使う発注ロット。NO_LOT_SUPPLIERS は 1 (起定量なし)。"""
+    if q.get("supplier_name") in NO_LOT_SUPPLIERS:
+        return 1
+    return q.get("lot_size") or 1
 
 
 def _parse_lead_days(text: str | None) -> int:
@@ -294,7 +303,7 @@ def compute_recommendations(
 
         def _est_line_cost(q: dict) -> int:
             """その仕入先で発注した場合の line_cost 見積り (ロット丸め・納期込み)。≤0 なら 0。"""
-            lot_ = q["lot_size"] or 1
+            lot_ = _effective_lot(q)
             om = fixed_order_months if fixed_order_months else _order_months_from_lead(
                 _parse_lead_days(q["lead_time_text"]), safety_months)
             sf = base_monthly * tfac * om - eff_stock
@@ -345,7 +354,7 @@ def compute_recommendations(
         if moved:
             n_consolidated += 1
         tfac = tf.get(d["trend"], 1.0)
-        lot = best["lot_size"] or 1
+        lot = _effective_lot(best)
         lead_days = _parse_lead_days(best["lead_time_text"])
         order_months = fixed_order_months if fixed_order_months else _order_months_from_lead(lead_days, safety_months)
         target_stock = d["base_monthly"] * tfac * order_months
