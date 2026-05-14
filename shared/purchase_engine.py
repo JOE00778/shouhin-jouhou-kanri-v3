@@ -41,15 +41,26 @@ DEFAULT_TREND_FACTORS = {"up": 1.2, "flat": 1.0, "down": 0.7}
 DISCONTINUED_VALUES = {"取扱中止", "メーカー取扱中止", "取扱停止", "廃番", "生産終了"}
 ZONE_LABEL_JA = {"JD_DIRECT": "JD直送", "BENTEN_TRANSIT": "弁天経由", "EMERGENCY": "応急",
                  "PREPAID": "前払い", "OTHER": "他"}
-# ロット起定量を無視して「必要数ぴったり」で発注する仕入先 (応急/参考用なので。Boss 2026-05-12)
+# 起定量を無視して「必要数ぴったり」で発注する仕入先 (応急/参考用なので。Boss 2026-05-12)
 NO_LOT_SUPPLIERS = {"ハリマ", "SD"}
 
 
-def _effective_lot(q: dict) -> int:
-    """その仕入先で実際に使う発注ロット。NO_LOT_SUPPLIERS は 1 (起定量なし)。"""
+def _effective_pack(q: dict) -> int:
+    """発注単位 (ケース入数)。NO_LOT_SUPPLIERS は 1 (起定量なし)。
+    ケース入数が無ければ lot_size, それも無ければ 1 にフォールバック (人工確認フラグは別途立てる)。"""
     if q.get("supplier_name") in NO_LOT_SUPPLIERS:
         return 1
-    return q.get("lot_size") or 1
+    cq = q.get("case_qty")
+    if cq and cq > 0:
+        return int(cq)
+    lot = q.get("lot_size")
+    if lot and lot > 0:
+        return int(lot)
+    return 1
+
+
+# 旧名のエイリアス (後方互換)
+_effective_lot = _effective_pack
 
 
 def _parse_lead_days(text: str | None) -> int:
@@ -107,19 +118,44 @@ def _load_monthly_sales(conn, months: int = 3, sales_source: str = "auto") -> tu
 
 
 def _load_inventory(conn) -> dict[str, dict]:
-    """item_inventory_snapshot_v2 を JAN 単位に集計。on_order='注文済'。輸送中は無視。"""
+    """item_inventory_snapshot_v2 を JAN 単位に集計（Boss 2026-05-14 仕様）。
+
+      jd_on_hand   = JD-物流-千葉 倉庫 の手持のみ (弁天は除外)
+      on_order     = 注文済 (発注済で未入荷 = 在途, 倉庫横断 SUM)
+      committed    = 確保済 (参考用, 計算には使わない)
+      実質在庫 = jd_on_hand + on_order
+    """
     inv: dict[str, dict] = {}
+    # location 列ありの本番スキーマ
     try:
         rows = conn.execute(
-            "SELECT jan, COALESCE(SUM(qty_on_hand),0) AS oh, COALESCE(SUM(qty_committed),0) AS cm, "
-            "COALESCE(SUM(qty_on_order),0) AS oo FROM item_inventory_snapshot_v2 "
-            "WHERE jan IS NOT NULL GROUP BY jan"
+            "SELECT jan, "
+            "COALESCE(SUM(CASE WHEN location LIKE 'JD%' THEN qty_on_hand ELSE 0 END),0) AS jd_oh, "
+            "COALESCE(SUM(qty_on_hand),0) AS oh_all, "
+            "COALESCE(SUM(qty_committed),0) AS cm, "
+            "COALESCE(SUM(qty_on_order),0) AS oo "
+            "FROM item_inventory_snapshot_v2 WHERE jan IS NOT NULL GROUP BY jan"
         ).fetchall()
     except Exception:
-        return inv
+        # location 列なし (テスト fixture 等) → 全 on_hand を JD 扱い
+        try:
+            rows = conn.execute(
+                "SELECT jan, "
+                "COALESCE(SUM(qty_on_hand),0) AS jd_oh, "
+                "COALESCE(SUM(qty_on_hand),0) AS oh_all, "
+                "COALESCE(SUM(qty_committed),0) AS cm, "
+                "COALESCE(SUM(qty_on_order),0) AS oo "
+                "FROM item_inventory_snapshot_v2 WHERE jan IS NOT NULL GROUP BY jan"
+            ).fetchall()
+        except Exception:
+            return inv
     for r in rows:
-        inv[r["jan"]] = {"on_hand": float(r["oh"] or 0), "committed": float(r["cm"] or 0),
-                         "on_order": float(r["oo"] or 0)}
+        inv[r["jan"]] = {
+            "jd_on_hand": float(r["jd_oh"] or 0),
+            "on_hand_all": float(r["oh_all"] or 0),
+            "committed": float(r["cm"] or 0),
+            "on_order": float(r["oo"] or 0),
+        }
     return inv
 
 
@@ -217,10 +253,10 @@ def _consolidate_brand(jan_to_candidates: dict[str, list[dict]], maker_jans: dic
 def compute_recommendations(
     conn,
     *,
-    months: int = 3,
-    safety_months: float = 1.0,
+    months: int = 4,
+    safety_months: float = 1.0,            # 互換のため残置 (Boss 2026-05-14 仕様では未使用)
     trend_factors: dict | None = None,
-    fixed_order_months: float | None = None,
+    fixed_order_months: float | None = None,  # 互換のため残置 (未使用)
     sales_source: str = "auto",
     include_discontinued: bool = False,
     use_inventory: bool = True,
@@ -231,26 +267,38 @@ def compute_recommendations(
     ranks: list[str] | tuple[str, ...] | None = None,
     max_stock_months: float | None = None,
 ) -> pd.DataFrame:
-    """発注推奨を計算。
+    """発注推奨を計算 (Boss 2026-05-14 仕様)。
+
+    数量公式:
+      推奨月販 = max(平均月販, 直近月販) × トレンド係数(1.2/1.0/0.7)    ← 近 `months` 月のトレンド
+      実質在庫 = JD-物流-千葉 手持 + 注文済(全倉横断)                   ← 弁天は含めない (Boss 2026-05-14)
+      上次発注時剩余 = 実質在庫 − 推奨月販
+      目標在庫 = 推奨月販 × 1.5
+      必要数 = 目標在庫 − 上次発注時剩余 = 推奨月販 × 2.5 − 実質在庫
+      発注箱数 = CEIL(必要数 / ケース入数)     ← ロット ではなく ケース で取整 (ハリマ/SD は 1)
+      発注数 = 発注箱数 × ケース入数
+
+    スキップ / 人工確認:
+      ランク = 取扱中止 → スキップ (除外件数表示)
+      ランク = NEW → status='new_passive' (受動的発注: 需要が来たら手動)
+      推奨月販 = 0 → スキップ (実績なし)
+      必要数 ≤ 0 → スキップ (在庫充足)
+      ケース入数 が 0/欠落 → status='needs_review_pack' (人工確認 + 単位=1 で計算)
+      ケース入数 / 推奨月販 ≥ 2.5 → status='needs_review_oversize' (箱規が大き過ぎ → 出はするが人工確認)
 
     主な引数:
-        months / safety_months / trend_factors / fixed_order_months / sales_source
+        months: 月販トレンドに使う直近期間数 (既定 4)
+        trend_factors: {'up':1.2,'flat':1.0,'down':0.7}
         include_discontinued: True なら 取扱中止 品も含める (既定 False)
-        use_inventory: True なら現在庫を差し引く (既定 True)
-        consolidate_by_brand: True ならメーカー単位で 1〜3 仕入先に集約 (既定 True)
-        max_suppliers_per_brand: 1 メーカーを集約する上限仕入先数 (既定 3)
-        small_brand_skip: SKU 数がこれ以下のメーカーは集約しない (既定 5)
-        optimize: 'zone' = zone優先→同zone最安 (既定) /
-                  'line_cost' = 発注金額(line_cost)最小 — ロット丸め・納期込みで一番安い仕入先 (= 最小支出プラン) /
-                  'cost' = zone無視で純粋に最安単価 (ロット無視, 比較用)
-                  ※ 'line_cost'/'cost' は consolidate_by_brand=False と併用推奨
-        ranks: 指定すると item_v2.rank がこのリストに含まれる SKU のみ対象 (例 ('Aランク','Bランク'))。None=全ランク。
-        max_stock_months: 指定すると「発注後の在庫月数 (= (有効在庫+発注数)/月販)」がこれを超える SKU を
-                          status='deferred_overstock' にする (ロット起定量で買い過ぎになるケースの健全性ガード)。
-                          None=チェックなし。
+        use_inventory: True なら 実質在庫 (JD手持+注文済) を差し引く (既定 True)
+        consolidate_by_brand / max_suppliers_per_brand / small_brand_skip: 品牌集約 (Boss 2026-05-12)
+        optimize: 'zone'(既定) / 'line_cost' / 'cost' (仕入先選定方針)
+        ranks: 対象ランク絞り込み (例 ('Aランク','Bランク'))
+        max_stock_months: 発注後在庫月数の上限 (None=チェックなし)
+        safety_months / fixed_order_months: 旧仕様の名残, Boss 2026-05-14 仕様では未使用
 
     DataFrame.attrs: sales_source / periods / n_discontinued_excluded / n_rank_excluded / inventory_loaded
-                     / n_consolidated / optimize / n_overstock / max_stock_months
+                     / n_consolidated / optimize / n_overstock / max_stock_months / n_new_passive / n_needs_review
     """
     tf = trend_factors or DEFAULT_TREND_FACTORS
 
@@ -276,7 +324,7 @@ def compute_recommendations(
     n_discontinued_excluded = 0
     n_rank_excluded = 0
     rank_set = set(ranks) if ranks else None
-    sku: dict[str, dict] = {}          # jan -> {candidates, meta, m_seq, base_monthly, trend, tfac, on_hand, committed, on_order, eff_stock}
+    sku: dict[str, dict] = {}
     jan_to_candidates: dict[str, list[dict]] = {}
     for jan, qlist in quotes.items():
         meta = item_map.get(jan, {})
@@ -286,48 +334,55 @@ def compute_recommendations(
         if rank_set is not None and (meta.get("rank") not in rank_set):
             n_rank_excluded += 1
             continue
+        is_new_passive = (meta.get("rank") == "NEW")    # NEW = 需要待ちで受動発注 (Boss 2026-05-14)
+
         msales = sales_pivot.get(jan, {})
         m_seq = [msales.get(p, 0.0) for p in periods]
         avg_monthly = (sum(m_seq) / len(m_seq)) if m_seq else 0.0
         latest_monthly = m_seq[-1] if m_seq else 0.0
-        if avg_monthly <= 0 and latest_monthly <= 0:
+        # 実績ゼロは NEW 以外スキップ
+        if not is_new_passive and avg_monthly <= 0 and latest_monthly <= 0:
             continue
+
         for q in qlist:
             q["_eff"] = q["unit_price"] * ZONE_MARKUP.get(q["zone"], 1.0)
         iv = inv_map.get(jan, {})
-        on_hand, committed, on_order = iv.get("on_hand", 0.0), iv.get("committed", 0.0), iv.get("on_order", 0.0)
-        eff_stock = on_hand - committed + on_order
+        jd_on_hand = iv.get("jd_on_hand", 0.0)
+        on_hand_all = iv.get("on_hand_all", 0.0)
+        committed = iv.get("committed", 0.0)
+        on_order = iv.get("on_order", 0.0)
+        # Boss 2026-05-14: 実質在庫 = JD仓 + 注文済  (弁天は除外, 確保済も差し引かない)
+        eff_stock = jd_on_hand + on_order
+
         base_monthly = max(avg_monthly, latest_monthly)
         trend = _classify_trend(m_seq)
         tfac = tf.get(trend, 1.0)
+        rec_monthly = base_monthly * tfac   # 推奨月販 (= Boss 公式の「実績(30日)」相当)
 
         def _est_line_cost(q: dict) -> int:
-            """その仕入先で発注した場合の line_cost 見積り (ロット丸め・納期込み)。≤0 なら 0。"""
-            lot_ = _effective_lot(q)
-            om = fixed_order_months if fixed_order_months else _order_months_from_lead(
-                _parse_lead_days(q["lead_time_text"]), safety_months)
-            sf = base_monthly * tfac * om - eff_stock
-            if sf <= 0:
+            """その仕入先で発注した場合の line_cost 見積り (Boss 2026-05-14 公式 + ケース丸め)。"""
+            pack_ = _effective_pack(q)
+            needed = rec_monthly * 2.5 - eff_stock
+            if needed <= 0:
                 return 0
-            return math.ceil(sf / lot_) * lot_ * q["unit_price"]
+            return math.ceil(needed / pack_) * pack_ * q["unit_price"]
 
         if optimize == "cost":
-            # 純粋に最安単価 (ロット・納期は無視) → 比較用シナリオ
             candidates = sorted(qlist, key=lambda q: (q["_eff"], q["zone_rank"], q["supplier_name"]))
         elif optimize == "line_cost":
-            # 発注金額 (line_cost) 最小 — ロット丸め・納期も込みで一番安い仕入先を採用
             candidates = sorted(qlist, key=lambda q: (_est_line_cost(q), q["zone_rank"], q["supplier_name"]))
         else:
-            # 既定: zone 優先 → 同 zone は最安単価
             candidates = sorted(qlist, key=lambda q: (q["zone_rank"], q["_eff"], q["supplier_name"]))
 
         sku[jan] = {
             "candidates": candidates, "meta": meta, "m_seq": m_seq,
             "avg_monthly": avg_monthly, "latest_monthly": latest_monthly,
-            "base_monthly": base_monthly,
+            "base_monthly": base_monthly, "rec_monthly": rec_monthly,
             "trend": trend,
-            "on_hand": on_hand, "committed": committed, "on_order": on_order,
+            "jd_on_hand": jd_on_hand, "on_hand_all": on_hand_all,
+            "committed": committed, "on_order": on_order,
             "eff_stock": eff_stock,
+            "is_new_passive": is_new_passive,
         }
         jan_to_candidates[jan] = candidates
 
@@ -343,7 +398,7 @@ def compute_recommendations(
     else:
         final_supplier = {jan: d["candidates"][0]["supplier_name"] for jan, d in sku.items()}
 
-    # ---- Phase 3: 発注先確定後に数量・金額を確定 ----
+    # ---- Phase 3: 発注先確定後に数量・金額を確定 (Boss 2026-05-14 公式) ----
     n_consolidated = 0
     rows: list[dict] = []
     for jan, d in sku.items():
@@ -354,27 +409,27 @@ def compute_recommendations(
         if moved:
             n_consolidated += 1
         tfac = tf.get(d["trend"], 1.0)
-        lot = _effective_lot(best)
-        lead_days = _parse_lead_days(best["lead_time_text"])
-        order_months = fixed_order_months if fixed_order_months else _order_months_from_lead(lead_days, safety_months)
-        target_stock = d["base_monthly"] * tfac * order_months
-        eff_stock = d["eff_stock"]
-        shortfall = target_stock - eff_stock
-        if shortfall <= 0:
-            continue
-        suggested_qty = math.ceil(shortfall / lot) * lot
-        if suggested_qty <= 0:
-            continue
-        line_cost = round(suggested_qty * best["unit_price"])
-        # 発注後の在庫月数 (= 在庫回転の目安)。ロット起定量のために多めに買う場合の健全性チェック用。
-        stock_months_after = (eff_stock + suggested_qty) / max(d["base_monthly"], 1e-6)
-        overstock = (max_stock_months is not None) and (stock_months_after > max_stock_months)
+        rec_monthly = d["rec_monthly"]            # 推奨月販 = base × トレンド係数
+        eff_stock = d["eff_stock"]                # 実質在庫 = JD手持 + 注文済
+        target_stock = rec_monthly * 1.5          # Boss: 目標在庫 = 推奨月販 × 1.5
+        prev_remaining = eff_stock - rec_monthly  # Boss: 上次発注時剩余 = 実質在庫 − 推奨月販
+        needed = target_stock - prev_remaining    # = rec_monthly × 2.5 − eff_stock
+        meta = d["meta"]
 
+        # 発注単位 (ケース入数) と ロット欠落の検知
+        raw_case = best.get("case_qty")
+        raw_lot = best.get("lot_size")
+        pack = _effective_pack(best)              # ハリマ/SD は 1, それ以外は case → lot → 1
+        pack_source = ("ケース" if (raw_case and raw_case > 0)
+                       else ("ロット(代替)" if (raw_lot and raw_lot > 0)
+                             else ("ぴったり(応急)" if best["supplier_name"] in NO_LOT_SUPPLIERS else "未設定")))
+        needs_review_pack = (best["supplier_name"] not in NO_LOT_SUPPLIERS) and not (
+            (raw_case and raw_case > 0) or (raw_lot and raw_lot > 0))
+        needs_review_oversize = (rec_monthly > 0) and (pack > 0) and (pack / rec_monthly >= 2.5)
         backups = [q for q in cands if q["supplier_name"] != fs][:2]
         b1 = backups[0] if len(backups) >= 1 else None
         b2 = backups[1] if len(backups) >= 2 else None
-        meta = d["meta"]
-        rows.append({
+        base_row = {
             "jan": jan,
             "display_name": meta.get("display_name") or best.get("display_name") or "",
             "maker": meta.get("maker", "(不明)"),
@@ -385,83 +440,137 @@ def compute_recommendations(
             "latest_monthly": d["latest_monthly"],
             "trend": d["trend"],
             "trend_factor": tfac,
-            "order_months": order_months,
+            "rec_monthly": round(rec_monthly, 1),
             "lead_time_text": best["lead_time_text"],
-            "on_hand": d["on_hand"],
+            "jd_on_hand": d["jd_on_hand"],
+            "on_hand_all": d["on_hand_all"],
             "qty_committed": d["committed"],
             "on_order": d["on_order"],
             "eff_stock": eff_stock,
             "target_stock": round(target_stock, 1),
-            "shortfall": round(shortfall, 1),
+            "prev_remaining": round(prev_remaining, 1),
+            "shortfall": round(needed, 1),
             # --- 発注先 (主力) + 備用 ---
-            "supplier_name": fs,                # = 主力 (互換のため supplier_name 維持)
+            "supplier_name": fs,
             "supplier_primary": fs,
             "zone": best["zone"],
             "zone_rank": best["zone_rank"],
             "nst_supplier_code": best["nst_supplier_code"],
             "unit_price": best["unit_price"],
             "effective_price": round(best["_eff"]),
-            "lot_size": lot,
-            "consolidated": moved,              # 品牌集約で主力が最安以外に変わったか
+            "case_qty": raw_case,
+            "lot_size": raw_lot,
+            "pack_size": pack,
+            "pack_source": pack_source,
+            "consolidated": moved,
             "supplier_backup1": b1["supplier_name"] if b1 else None,
             "backup1_zone": b1["zone"] if b1 else None,
             "backup1_price": b1["unit_price"] if b1 else None,
             "supplier_backup2": b2["supplier_name"] if b2 else None,
             "backup2_zone": b2["zone"] if b2 else None,
             "backup2_price": b2["unit_price"] if b2 else None,
-            # --- 数量・金額 ---
-            "suggested_qty": suggested_qty,
-            "stock_months_after": round(stock_months_after, 1),
-            "overstock": overstock,
-            "line_cost": line_cost,
+            "needs_review_pack": needs_review_pack,
+            "needs_review_oversize": needs_review_oversize,
             "min_order_amount": best["min_order_amount"] or 0,
             "order_condition": best["order_condition"],
             "n_alt_suppliers": len(cands),
             "alt_suppliers": " / ".join(_supplier_label(q) for q in cands[:5]),
+            # 旧仕様互換用フィールド (UI 表示はこれら使う場面あり)
+            "on_hand": d["jd_on_hand"],          # = 実質在庫の JD 部分 (旧名)
+            "order_months": 2.5,                  # 新仕様の固定相当値
+        }
+
+        # NEW = 受動発注 → 0 個・status='new_passive' で出力
+        if d["is_new_passive"]:
+            base_row.update({
+                "suggested_qty": 0, "boxes": 0, "line_cost": 0,
+                "stock_months_after": round(eff_stock / max(rec_monthly, 1e-6), 1) if rec_monthly > 0 else None,
+                "overstock": False,
+            })
+            rows.append(base_row)
+            continue
+
+        # 必要数 ≤ 0 → スキップ (在庫充足)
+        if needed <= 0:
+            continue
+
+        boxes = math.ceil(needed / pack)
+        suggested_qty = boxes * pack
+        if suggested_qty <= 0:
+            continue
+        line_cost = round(suggested_qty * best["unit_price"])
+        stock_months_after = (eff_stock + suggested_qty) / max(rec_monthly, 1e-6)
+        overstock = (max_stock_months is not None) and (stock_months_after > max_stock_months)
+
+        base_row.update({
+            "boxes": boxes,
+            "suggested_qty": suggested_qty,
+            "stock_months_after": round(stock_months_after, 1),
+            "overstock": overstock,
+            "line_cost": line_cost,
         })
+        rows.append(base_row)
 
     df = pd.DataFrame(rows)
     if df.empty:
         df.attrs.update(sales_source=used_source, periods=periods,
                         n_discontinued_excluded=n_discontinued_excluded, n_rank_excluded=n_rank_excluded,
                         inventory_loaded=inventory_loaded, n_consolidated=0, optimize=optimize,
-                        n_overstock=0, max_stock_months=max_stock_months)
+                        n_overstock=0, max_stock_months=max_stock_months,
+                        n_new_passive=0, n_needs_review=0)
         return df
 
-    sup_total = df.groupby("supplier_name")["line_cost"].sum()
-    df["supplier_total"] = df["supplier_name"].map(sup_total)
+    # 推奨分のみで supplier_total を集計 (NEW/保留 は 0 円なので除外しても同じ)
+    df["supplier_total"] = df["supplier_name"].map(
+        df[df["line_cost"] > 0].groupby("supplier_name")["line_cost"].sum()
+    ).fillna(0).astype(int)
     df["meets_min_order"] = df.apply(
         lambda r: (r["min_order_amount"] == 0) or (r["supplier_total"] >= r["min_order_amount"]),
         axis=1,
     )
 
     def _status(r):
+        # NEW = 受動発注 (Boss 2026-05-14)
+        if r.get("rank") == "NEW":
+            return "new_passive"
         if r["overstock"]:
             return "deferred_overstock"
         if not r["meets_min_order"]:
             return "deferred_min_order"
+        if r["needs_review_pack"] or r["needs_review_oversize"]:
+            return "needs_review"   # 出はするが人工確認 (Boss 2026-05-14: 仍出在订货单 + 标记)
         return "recommended"
     df["status"] = df.apply(_status, axis=1)
 
     def _reason(r):
+        if r.get("rank") == "NEW":
+            return f"🆕NEW (受動発注)・候補仕入先={r['supplier_primary']}・ケース{r['pack_size']}"
         z = ZONE_LABEL_JA.get(r["zone"], r["zone"])
-        base = (f"{z}・単価{r['unit_price']}・{r['trend']}×{r['trend_factor']}・{r['order_months']:.0f}ヶ月分"
-                f"｜目標{r['target_stock']:.0f}−在庫{r['eff_stock']:.0f}(手持{r['on_hand']:.0f}"
-                f"+注文済{r['on_order']:.0f}−確保{r['qty_committed']:.0f})＝不足{r['shortfall']:.0f}"
-                f"→発注{r['suggested_qty']}(発注後在庫{r['stock_months_after']:.1f}ヶ月)")
+        rm = r["rec_monthly"]
+        base = (f"{z}・単価{r['unit_price']}・{r['trend']}×{r['trend_factor']}"
+                f"｜推奨月販{rm:.1f}×2.5={rm*2.5:.0f}−実質在庫{r['eff_stock']:.0f}(JD{r['jd_on_hand']:.0f}+注文済{r['on_order']:.0f})"
+                f"＝必要{r['shortfall']:.0f}→{r['boxes']}箱×{r['pack_size']}={r['suggested_qty']}個"
+                f"(発注後在庫{r['stock_months_after']:.1f}ヶ月)")
         if r["consolidated"]:
             base += "・🔗品牌集約"
+        if r["needs_review_pack"]:
+            base += "・⚠️ケース/ロット未設定"
+        if r["needs_review_oversize"]:
+            base += f"・⚠️箱規{r['pack_size']}/月販{rm:.0f}={r['pack_size']/max(rm,1e-6):.1f}≥2.5"
         if r["overstock"]:
-            base += f"・⚠️起定量で在庫{r['stock_months_after']:.1f}ヶ月>上限{max_stock_months}→保留"
+            base += f"・⚠️発注後在庫{r['stock_months_after']:.1f}>上限{max_stock_months}→保留"
         if not r["meets_min_order"]:
             base += f"・⚠️最低受注¥{r['min_order_amount']:,}未達(現¥{r['supplier_total']:,.0f})"
         return base
     df["reason"] = df.apply(_reason, axis=1)
 
-    df = df.sort_values(["zone_rank", "supplier_name", "maker", "line_cost"],
-                        ascending=[True, True, True, False]).reset_index(drop=True)
+    df = df.sort_values(["status", "zone_rank", "supplier_name", "maker", "line_cost"],
+                        ascending=[True, True, True, True, False]).reset_index(drop=True)
+    n_new = int((df["status"] == "new_passive").sum())
+    n_need = int((df["status"] == "needs_review").sum())
     df.attrs.update(sales_source=used_source, periods=periods,
                     n_discontinued_excluded=n_discontinued_excluded, n_rank_excluded=n_rank_excluded,
                     inventory_loaded=inventory_loaded, n_consolidated=n_consolidated, optimize=optimize,
-                    n_overstock=int(df["overstock"].sum()), max_stock_months=max_stock_months)
+                    n_overstock=int(df["overstock"].sum()), max_stock_months=max_stock_months,
+                    n_new_passive=n_new, n_needs_review=n_need)
     return df

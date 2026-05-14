@@ -33,32 +33,36 @@ def _seed_sales(c, jan, vals):
 
 
 def test_inventory_deduction_and_lot_rounding():
+    """Boss 2026-05-14 公式: 推奨月販×2.5 − 実質在庫 → ケース切り上げ。"""
     c = _conn()
-    # JAN A: 月販 100/100/100 → base 100, flat ×1.0, 納期2週→order_months=ceil(14/30)+1=2 → 目標=200
+    # 月販 100/100/100 → rec_monthly = 100×1.0 = 100, 目標 = 100×1.5 = 150, 必要 = 100×2.5 − 在庫
     _seed_sales(c, "4900000000001", [100, 100, 100])
     c.execute("INSERT INTO item_v2 VALUES ('4900000000001','商品A','メーカーX','Aランク','取扱中')")
+    # case_qty=NULL → lot_size=50 にフォールバック → pack=50
     c.execute("INSERT INTO supplier_quote VALUES ('仕入先甲','4900000000001','商品A',100,50,NULL,0,'掛','2週間','JD_DIRECT',1,'NST1')")
-    # 手持 30, 確保 0, 注文済 20 → 有効在庫 50 → 不足 150 → lot 50 切り上げ = 150
-    c.execute("INSERT INTO item_inventory_snapshot_v2 VALUES ('4900000000001',30,0,20,999)")  # 輸送中999は無視
+    # 手持30 + 注文済20 = 実質在庫50 (確保済は引かない、輸送中無視)
+    c.execute("INSERT INTO item_inventory_snapshot_v2 VALUES ('4900000000001',30,0,20,999)")
 
-    df = compute_recommendations(c, months=3, safety_months=1.0)
+    df = compute_recommendations(c, months=3)
     assert len(df) == 1
     r = df.iloc[0]
-    assert r["target_stock"] == pytest.approx(200.0)
-    assert r["eff_stock"] == pytest.approx(50.0)        # 30 - 0 + 20、輸送中は入らない
-    assert r["shortfall"] == pytest.approx(150.0)
-    assert r["suggested_qty"] == 150                     # 既に 50 倍数
-    assert r["line_cost"] == 150 * 100
+    assert r["rec_monthly"] == pytest.approx(100.0)
+    assert r["target_stock"] == pytest.approx(150.0)    # 100 × 1.5
+    assert r["eff_stock"] == pytest.approx(50.0)         # JD 30 + 注文済 20
+    assert r["shortfall"] == pytest.approx(200.0)        # 100×2.5 − 50
+    assert r["suggested_qty"] == 200                     # ceil(200/50)*50
+    assert r["line_cost"] == 200 * 100
     assert df.attrs["inventory_loaded"] is True
 
 
 def test_skip_when_enough_stock():
+    """在庫充足 (実質在庫 ≥ 推奨月販×2.5) → 必要数 ≤0 → スキップ。"""
     c = _conn()
     _seed_sales(c, "4900000000002", [10, 10, 10])
     c.execute("INSERT INTO item_v2 VALUES ('4900000000002','商品B','メーカーX',NULL,'取扱中')")
     c.execute("INSERT INTO supplier_quote VALUES ('仕入先甲','4900000000002','商品B',100,1,NULL,0,'掛','1週間','JD_DIRECT',1,'NST1')")
-    c.execute("INSERT INTO item_inventory_snapshot_v2 VALUES ('4900000000002',9999,0,0,0)")  # 在庫過多
-    df = compute_recommendations(c, months=3, safety_months=1.0)
+    c.execute("INSERT INTO item_inventory_snapshot_v2 VALUES ('4900000000002',9999,0,0,0)")  # JD手持 9999
+    df = compute_recommendations(c, months=3)
     assert df.empty
 
 
@@ -109,11 +113,11 @@ def test_runs_without_inventory_table():
     _seed_sales(c, "4900000000005", [30, 30, 30])
     c.execute("INSERT INTO item_v2 VALUES ('4900000000005','商品E','メーカーX','Cランク','取扱中')")
     c.execute("INSERT INTO supplier_quote VALUES ('仕入先甲','4900000000005','商品E',50,1,NULL,0,'掛','2週間','JD_DIRECT',1,'NST1')")
-    df = compute_recommendations(c, months=3, safety_months=1.0)
+    df = compute_recommendations(c, months=3)
     assert len(df) == 1
     assert df.attrs["inventory_loaded"] is False
-    assert df.iloc[0]["eff_stock"] == 0.0           # 在庫なし → 0 扱い
-    assert df.iloc[0]["suggested_qty"] == math.ceil(30 * 1.0 * 2)
+    assert df.iloc[0]["eff_stock"] == 0.0           # 在庫テーブル無し → 0 扱い
+    assert df.iloc[0]["suggested_qty"] == math.ceil(30 * 1.0 * 2.5)   # rec_monthly × 2.5
 
 
 # ---- 品牌集約 (Boss 2026-05-12) ----
@@ -226,21 +230,18 @@ def test_consolidation_price_guard():
 # ---- optimize モード (Boss 2026-05-12: 最小支出シナリオ) ----
 
 def test_optimize_line_cost_picks_lowest_total_not_lowest_unit_price():
+    """Boss 2026-05-14 公式: 必要 = 25×2.5 = 62.5。甲 lot100 = 100個=¥10,000; 乙 lot10 = 70個×¥120 = ¥8,400。
+    'line_cost' は発注金額最安 → 乙。'cost' は単価最安 → 甲。"""
     c = _conn_no_inv()
-    _add_sku(c, "4900000040001", "ブランドQ", sales=(25, 25, 25))   # base 25, flat ×1.0
-    # 甲: 単価100 だが ロット100 → 25 必要でも 100 個 = ¥10,000
-    _q(c, "甲", "4900000040001", 100, lot=100)
-    # 乙: 単価120 (甲より高い!) だが ロット10 → 30 個 (ceil(25/10*?)...) 実際 order_months=2 で 50必要→ lot10→50個=¥6,000
-    _q(c, "乙", "4900000040001", 120, lot=10)
-    # 注: order_months = ceil(14/30)+1 = 2 → target = 25*1*2 = 50
+    _add_sku(c, "4900000040001", "ブランドQ", sales=(25, 25, 25))   # rec_monthly = 25
+    _q(c, "甲", "4900000040001", 100, lot=100)   # 100*100 = 10,000
+    _q(c, "乙", "4900000040001", 120, lot=10)    # ceil(62.5/10)*10*120 = 70*120 = 8,400
     df_cost = compute_recommendations(c, use_inventory=False, consolidate_by_brand=False, optimize="cost")
     df_lc = compute_recommendations(c, use_inventory=False, consolidate_by_brand=False, optimize="line_cost")
-    # 'cost' は単価最安 → 甲 (100<120) → 100個×100 = 10000
     assert df_cost.iloc[0]["supplier_name"] == "甲"
     assert df_cost.iloc[0]["line_cost"] == 100 * 100
-    # 'line_cost' は発注金額最安 → 乙 (50個×120=6000 < 10000)
     assert df_lc.iloc[0]["supplier_name"] == "乙"
-    assert df_lc.iloc[0]["line_cost"] == 50 * 120
+    assert df_lc.iloc[0]["line_cost"] == 70 * 120
     assert df_lc.attrs["optimize"] == "line_cost"
 
 
@@ -262,43 +263,42 @@ def test_rank_filter():
 
 
 def test_max_stock_months_defers_overstock():
+    """Boss 2026-05-14 公式: 月販 1, 必要=2.5, lot=100 → qty=100, 発注後在庫=100ヶ月分。
+    無 cap: status='needs_review' (箱規/月販=100≥2.5)。cap=4: 'deferred_overstock' が優先。"""
     c = _conn_no_inv()
-    # 月販 1/1/1 (base 1), lot 100 → order_months=2 → target=2 → shortfall=2 → ceil(2/100)*100=100
-    # 発注後在庫 = 0 + 100 = 100 ヶ月分 >>> 上限
     _add_sku(c, "4900000060001", "M", sales=(1, 1, 1))
     _q(c, "甲", "4900000060001", 50, lot=100)
     df_nocap = compute_recommendations(c, use_inventory=False, consolidate_by_brand=False)
-    assert df_nocap.iloc[0]["status"] == "recommended"
+    # 箱規 100 / 推奨月販 1 = 100 ≥ 2.5 → needs_review
+    assert df_nocap.iloc[0]["status"] == "needs_review"
     assert df_nocap.iloc[0]["stock_months_after"] == 100.0
     df_cap = compute_recommendations(c, use_inventory=False, consolidate_by_brand=False, max_stock_months=4.0)
     assert df_cap.iloc[0]["status"] == "deferred_overstock"
     assert df_cap.iloc[0]["overstock"] is True or df_cap.iloc[0]["overstock"] == 1
     assert df_cap.attrs["n_overstock"] == 1
-    # 上限内の SKU は recommended のまま
-    _add_sku(c, "4900000060002", "M", sales=(100, 100, 100))   # base 100, lot 100 → target 200 → ceil(200/100)*100=200 → 在庫 200/100=2ヶ月
+    # 推奨月販 100, lot 100 → 必要 250, ceil(250/100)*100 = 300, 在庫 300/100 = 3ヶ月 → 上限内
+    _add_sku(c, "4900000060002", "M", sales=(100, 100, 100))
     _q(c, "甲", "4900000060002", 50, lot=100)
     df2 = compute_recommendations(c, use_inventory=False, consolidate_by_brand=False, max_stock_months=4.0)
     rec = df2[df2["jan"] == "4900000060002"].iloc[0]
     assert rec["status"] == "recommended"
-    assert rec["stock_months_after"] == 2.0
+    assert rec["stock_months_after"] == 3.0    # 300/100 = 3
 
 
 def test_no_lot_suppliers_ignore_lot():
+    """Boss 2026-05-14 公式: 月販 10, 必要 = 10×2.5 = 25。
+    甲(lot 100) → 100 個 (rounded up)。ハリマ(NO_LOT) → 25 個 (ぴったり)。"""
     c = _conn_no_inv()
-    # 月販 10/10/10 (base 10), order_months=2 → target 20, eff_stock 0 → shortfall 20
     _add_sku(c, "4900000070001", "M", sales=(10, 10, 10))
-    # JD「甲」: lot 100 → ceil(20/100)*100 = 100 個 = ¥10,000
     _q(c, "甲", "4900000070001", 100, lot=100)
-    # 応急「ハリマ」: lot 100 だが NO_LOT → 必要数ぴったり 20 個 = ¥2,400
     _q(c, "ハリマ", "4900000070001", 120, zone="EMERGENCY", zr=3, lot=100)
-    # 甲(JD) しか無い場合 → 100 個
     df_jd = compute_recommendations(c, use_inventory=False, consolidate_by_brand=False)
     assert df_jd.iloc[0]["supplier_name"] == "甲"   # zone優先
-    assert df_jd.iloc[0]["suggested_qty"] == 100
+    assert df_jd.iloc[0]["suggested_qty"] == 100    # ceil(25/100)*100
     # 甲を消して ハリマ のみ → ロット無視で 20 個
     c.execute("DELETE FROM supplier_quote WHERE supplier_name='甲'")
     df_h = compute_recommendations(c, use_inventory=False, consolidate_by_brand=False)
     assert df_h.iloc[0]["supplier_name"] == "ハリマ"
-    assert df_h.iloc[0]["suggested_qty"] == 20      # lot 100 無視 → 必要数ぴったり
-    assert df_h.iloc[0]["lot_size"] == 1
-    assert df_h.iloc[0]["line_cost"] == 20 * 120
+    assert df_h.iloc[0]["suggested_qty"] == 25      # NO_LOT: pack=1 → ceil(25/1)*1 = 25
+    assert df_h.iloc[0]["pack_size"] == 1
+    assert df_h.iloc[0]["line_cost"] == 25 * 120
