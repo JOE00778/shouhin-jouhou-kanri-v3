@@ -150,20 +150,17 @@ with tab_calc:
     st.caption(t("仕入先選定: zone優先(JD直送>弁天>応急>前払い)→同zoneは最安。各SKUに主力+備用1〜2。さらにメーカー単位で1〜3仕入先に集約(zone劣化なし)"))
     sales_source = "export_item"
 
-    p1, p2, p3, p4 = st.columns(4)
+    p1, p2, p3 = st.columns([1.2, 1, 1.5])
     with p1:
-        months = st.number_input(t("月販トレンド期間 (ヶ月)"), 1, 12, 3)
-        use_inv = st.checkbox(t("現在庫を差し引く"), value=True)
+        months = st.number_input(t("月販トレンド期間 (ヶ月)"), 1, 12, 4,
+                                  help=t("Boss 2026-05-14: 既定 4 ヶ月"))
+        use_inv = st.checkbox(t("実質在庫を差し引く (JD手持+注文済)"), value=True)
     with p2:
-        safety = st.number_input(t("安全在庫 (ヶ月分)"), 0.0, 6.0, 1.0, 0.5)
         incl_disc = st.checkbox(t("取扱中止品も含める"), value=False)
     with p3:
-        use_fixed = st.checkbox(t("発注月数を固定 (納期補正しない)"))
-        fixed_months = st.number_input(t("固定発注月数"), 0.5, 6.0, 1.0, 0.5, disabled=not use_fixed)
-    with p4:
-        st.caption(t("トレンド係数"))
-        f_up = st.number_input("📈", 1.0, 3.0, DEFAULT_TREND_FACTORS["up"], 0.1, key="f_up")
-        f_dn = st.number_input("📉", 0.1, 1.0, DEFAULT_TREND_FACTORS["down"], 0.1, key="f_dn")
+        st.caption(t("トレンド係数 (Boss 2026-05-14 仕様で保持)"))
+        f_up = st.number_input("📈 up", 1.0, 3.0, DEFAULT_TREND_FACTORS["up"], 0.1, key="f_up")
+        f_dn = st.number_input("📉 down", 0.1, 1.0, DEFAULT_TREND_FACTORS["down"], 0.1, key="f_dn")
 
     q0, q1, q2, q3 = st.columns([1.4, 1, 1, 1.3])
     with q0:
@@ -195,9 +192,8 @@ with tab_calc:
     if st.button(t("🔍 発注計算実行"), type="primary", disabled=not _has_supplier_quotes()):
         with st.spinner(t("計算中…")):
             df = compute_recommendations(
-                conn, months=int(months), safety_months=float(safety),
+                conn, months=int(months),
                 trend_factors={"up": f_up, "flat": 1.0, "down": f_dn},
-                fixed_order_months=float(fixed_months) if use_fixed else None,
                 sales_source=sales_source,
                 include_discontinued=bool(incl_disc),
                 use_inventory=bool(use_inv),
@@ -233,11 +229,15 @@ with tab_calc:
             f"品牌集約で発注先変更: {n_consol} SKU ｜ 在庫過多で保留: {n_over} SKU"
             + (f" (上限{cap}ヶ月)" if cap else "")
         ))
-        df_rec = df[df["status"] == "recommended"]
-        df_hold = df[df["status"] != "recommended"]
+        # Boss 2026-05-14: needs_review は「出はするが人工確認」→ 発注リストに含める。
+        # new_passive (NEW = 受動発注) と deferred_* は別枠。
+        df_rec = df[df["status"].isin(["recommended", "needs_review"])]
+        df_new = df[df["status"] == "new_passive"]
+        df_hold = df[df["status"].isin(["deferred_overstock", "deferred_min_order"])]
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric(t("発注 SKU (推奨)"), f"{len(df_rec):,}")
-        m2.metric(t("発注コスト (推奨)"), f"¥{int(df_rec['line_cost'].sum()):,}")
+        m1.metric(t("発注 SKU (推奨+要確認)"), f"{len(df_rec):,}",
+                  delta=f"うち要確認 {int((df_rec['status']=='needs_review').sum())}")
+        m2.metric(t("発注コスト"), f"¥{int(df_rec['line_cost'].sum()):,}")
         m3.metric(t("仕入先数"), f"{df_rec['supplier_name'].nunique()}")
         m4.metric(t("保留 SKU (在庫過多/最低受注未達)"), f"{len(df_hold)}", delta=None)
 
@@ -245,13 +245,25 @@ with tab_calc:
             with st.expander(t(f"⚠️ 保留 SKU {len(df_hold)} 件 (発注しない — 在庫過多 / 最低受注額未達)"), expanded=False):
                 st.dataframe(
                     df_hold[["jan", "display_name", "maker", "rank", "status", "on_hand", "suggested_qty",
-                             "lot_size", "stock_months_after", "supplier_name", "zone", "unit_price",
+                             "pack_size", "stock_months_after", "supplier_name", "zone", "unit_price",
                              "line_cost", "reason"]]
-                    .rename(columns={"rank": "ランク", "status": "状態", "on_hand": "手持在庫",
-                                     "suggested_qty": "発注数(参考)", "lot_size": "ロット",
+                    .rename(columns={"rank": "ランク", "status": "状態", "on_hand": "JD在庫",
+                                     "suggested_qty": "発注数(参考)", "pack_size": "ケース",
                                      "stock_months_after": "発注後在庫月数", "supplier_name": "仕入先",
                                      "unit_price": "単価", "line_cost": "金額(参考)", "reason": "理由"})
                     .sort_values("発注後在庫月数", ascending=False),
+                    use_container_width=True, hide_index=True,
+                )
+
+        # NEW = 受動発注 (Boss 2026-05-14: 引擎不下单, 但出在「待需求」列表)
+        if len(df_new):
+            with st.expander(t(f"🆕 NEW 待需求 SKU {len(df_new)} 件 (受動発注 — 引擎不出単, 需要が来たら手動)"), expanded=False):
+                st.dataframe(
+                    df_new[["jan", "display_name", "maker", "rank", "rec_monthly", "on_hand", "supplier_primary",
+                            "zone", "unit_price", "pack_size", "lead_time_text", "reason"]]
+                    .rename(columns={"rank": "ランク", "rec_monthly": "推奨月販", "on_hand": "JD在庫",
+                                     "supplier_primary": "候補仕入先", "unit_price": "単価", "pack_size": "ケース",
+                                     "lead_time_text": "納期", "reason": "理由"}),
                     use_container_width=True, hide_index=True,
                 )
 
@@ -276,16 +288,23 @@ with tab_calc:
                 )
                 st.dataframe(by_maker, use_container_width=True, hide_index=True)
                 st.dataframe(
-                    sub[["jan", "display_name", "maker", "rank", "avg_monthly", "latest_monthly", "trend",
-                         "trend_factor", "order_months", "on_hand", "on_order", "target_stock", "shortfall",
-                         "lot_size", "suggested_qty", "stock_months_after", "unit_price", "line_cost", "lead_time_text",
+                    sub[["jan", "display_name", "maker", "rank", "status", "avg_monthly", "latest_monthly",
+                         "trend", "trend_factor", "rec_monthly",
+                         "jd_on_hand", "on_order", "eff_stock", "target_stock", "shortfall",
+                         "case_qty", "lot_size", "pack_size", "pack_source",
+                         "boxes", "suggested_qty", "stock_months_after",
+                         "unit_price", "line_cost", "lead_time_text",
                          "consolidated", "supplier_backup1", "backup1_price", "supplier_backup2", "backup2_price",
                          "alt_suppliers", "reason"]]
                     .rename(columns={
-                        "rank": "ランク", "avg_monthly": "平均月販", "latest_monthly": "直近月販", "trend": "傾向",
-                        "trend_factor": "係数", "order_months": "発注月数",
-                        "on_hand": "手持在庫", "on_order": "注文済", "target_stock": "目標在庫", "shortfall": "不足",
-                        "lot_size": "ロット", "suggested_qty": "発注数", "stock_months_after": "発注後在庫月数",
+                        "rank": "ランク", "status": "状態",
+                        "avg_monthly": "平均月販", "latest_monthly": "直近月販", "trend": "傾向",
+                        "trend_factor": "係数", "rec_monthly": "推奨月販",
+                        "jd_on_hand": "JD在庫", "on_order": "注文済", "eff_stock": "実質在庫",
+                        "target_stock": "目標(×1.5)", "shortfall": "必要数",
+                        "case_qty": "ケース入数", "lot_size": "ロット",
+                        "pack_size": "取整単位", "pack_source": "単位種別",
+                        "boxes": "箱数", "suggested_qty": "発注数", "stock_months_after": "発注後月数",
                         "unit_price": "単価", "line_cost": "金額",
                         "lead_time_text": "納期", "consolidated": "集約",
                         "supplier_backup1": "備用①", "backup1_price": "備①単価",
