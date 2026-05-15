@@ -65,7 +65,7 @@ C:\Smikie-N8N\
 
 - 飞书群机器人 Webhook（部署后想要群通知再填）
 - Shopee Partner ID / Partner Key（跑 Shopee 自动上架时填）
-- Anthropic / OpenAI API Key（跑 LLM 类 workflow 时填）
+- DeepSeek / 火山方舟 API Key（跑 LLM / 图像类 workflow 时填，国产本地化合规）
 
 填好 → 点 **开始安装**。
 
