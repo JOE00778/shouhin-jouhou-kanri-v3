@@ -41,6 +41,8 @@ services:
       CMS_CALLBACK_URL: ${CMS_CALLBACK_URL:-https://smikie-cms.cc/api/automation/callback}
       # Lark webhook（飞书群机器人，所有 workflow 共用）
       LARK_WEBHOOK_URL: ${LARK_WEBHOOK_URL:-}
+      # 飞书机器人签名校验 Secret（启用「签名校验」时填，留空=用关键词校验）
+      LARK_BOT_SIGN_SECRET: ${LARK_BOT_SIGN_SECRET:-}
       # Shopee Open API 凭证
       SHOPEE_PARTNER_ID: ${SHOPEE_PARTNER_ID:-}
       SHOPEE_PARTNER_KEY: ${SHOPEE_PARTNER_KEY:-}

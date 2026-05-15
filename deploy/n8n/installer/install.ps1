@@ -141,6 +141,7 @@ Add-Field "* N8N 管理员账号:"                  "N8N_BASIC_AUTH_USER"  "admi
 Add-Field "* N8N 管理员密码:"                  "N8N_BASIC_AUTH_PASSWORD" ""          $true
 Add-Field "  CMS 回调地址:"                    "CMS_CALLBACK_URL"     "https://smikie-cms.cc/api/automation/callback"
 Add-Field "  飞书群机器人 Webhook (可空):"     "LARK_WEBHOOK_URL"     ""
+Add-Field "  飞书机器人签名 Secret (可空):"    "LARK_BOT_SIGN_SECRET" ""             $true
 Add-Field "  飞书 App ID (改廃监控用):"        "LARK_APP_ID"          ""
 Add-Field "  飞书 App Secret (改廃监控用):"    "LARK_APP_SECRET"      ""             $true
 Add-Field "  Shopee Partner ID (可空):"        "SHOPEE_PARTNER_ID"    ""
@@ -217,7 +218,7 @@ $envLines = @(
 foreach ($k in @(
     "N8N_HOST", "CLOUDFLARE_TUNNEL_TOKEN",
     "N8N_BASIC_AUTH_USER", "N8N_BASIC_AUTH_PASSWORD", "N8N_ENCRYPTION_KEY",
-    "CMS_CALLBACK_URL", "LARK_WEBHOOK_URL",
+    "CMS_CALLBACK_URL", "LARK_WEBHOOK_URL", "LARK_BOT_SIGN_SECRET",
     "LARK_APP_ID", "LARK_APP_SECRET",
     "SHOPEE_PARTNER_ID", "SHOPEE_PARTNER_KEY",
     "DEEPSEEK_API_KEY", "VOLC_ARK_API_KEY",

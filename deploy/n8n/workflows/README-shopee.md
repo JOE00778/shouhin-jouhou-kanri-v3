@@ -2,6 +2,7 @@
 
 > 关联任务：**T-309**（Streamlit Page 21 集成 done 2026-05-06）+ **T-313**（端到端验证 2026-05-16）
 > 配套代码：`shared/n8n_client.py` · `pages/21_🚀_Shopee上架.py` · `shared/lark_notify.py`
+> 当前 workflow 版本：v1.7（含飞书签名校验支持）
 
 ---
 
@@ -33,13 +34,19 @@ N8N (smikie-n8n stack, n8n.smikie-cms.cc)
 飞书群 ⬅ 收到结构化卡片
 ```
 
-### 步骤 1：拿飞书群机器人 Webhook
+### 步骤 1：拿飞书群机器人 Webhook + 签名 Secret
 
 1. 飞书群（建一个测试群比如「Smikie 自动化通知」）
 2. 群设置 → 群机器人 → 添加 → 自定义机器人
 3. 名称：`Smikie N8N`，图标随意
-4. **关键安全设置**：勾选「**签名校验**」或「**自定义关键词**：Shopee, 自动上架」（防止 webhook URL 泄漏被滥发）
-5. 复制 Webhook URL（形如 `https://open.feishu.cn/open-apis/bot/v2/hook/xxxx-yyyy-zzzz`）
+4. **安全设置二选一**（强烈建议至少一个）：
+   - **A. 签名校验**（推荐，更安全）：勾选并**复制生成的 Signing Secret**（形如随机字符串）
+   - **B. 自定义关键词**：填 `Shopee` 或 `Smikie`（workflow 卡片已含「Shopee」会自动通过）
+5. 复制 Webhook URL（Lark Suite 国际版形如 `https://open.larksuite.com/open-apis/bot/v2/hook/...`；国内版 `open.feishu.cn`）
+
+> **如果选 A（签名校验）**：需要把 Signing Secret 填到 `.env` 的 `LARK_BOT_SIGN_SECRET=`，
+> N8N workflow 内的「飞书签名计算」Code node 会自动用 HMAC-SHA256 算签名。
+> Signing Secret 在飞书机器人**详细设置**页底部的「签名校验」展开后可以看到（启用后才显示）。
 
 ### 步骤 2：在 Inspiron 补 LARK_WEBHOOK_URL
 
@@ -49,16 +56,18 @@ N8N (smikie-n8n stack, n8n.smikie-cms.cc)
 notepad .env
 ```
 
-找到这一行：
+找到这两行：
 
 ```
 LARK_WEBHOOK_URL=
+LARK_BOT_SIGN_SECRET=
 ```
 
-把刚拿到的 URL 粘到 `=` 后面（不要加引号）：
+把步骤 1 拿到的两个值分别粘到 `=` 后面（不要加引号、不要带空格）：
 
 ```
-LARK_WEBHOOK_URL=https://open.feishu.cn/open-apis/bot/v2/hook/xxxx-yyyy-zzzz
+LARK_WEBHOOK_URL=https://open.larksuite.com/open-apis/bot/v2/hook/xxxx-yyyy-zzzz
+LARK_BOT_SIGN_SECRET=AbCdEfGhIjKlMnOp...   ← 选签名校验才填，没选留空
 ```
 
 保存（Ctrl+S）+ 关闭。

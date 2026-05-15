@@ -1,5 +1,5 @@
 {
-  "name": "Shopee 自动上架 · CMS XLSX → Shopee API（MVP scaffold）",
+  "name": "Shopee 自动上架 · CMS XLSX → Shopee API（MVP scaffold + 飞书签名）",
   "nodes": [
     {
       "parameters": {
@@ -82,11 +82,22 @@
     },
     {
       "parameters": {
+        "language": "javaScript",
+        "jsCode": "// 飞书自定义机器人「签名校验」算法（Lark Open Platform）\n// 算法：HMAC-SHA256(key = `${timestamp}\\n${secret}`, data = '')，结果 base64 编码\n// LARK_BOT_SIGN_SECRET 为空 → 跳过（不启用签名 / 用关键词校验）\n\nconst crypto = require('crypto');\nconst secret = $env.LARK_BOT_SIGN_SECRET || '';\nconst now = Math.floor(Date.now() / 1000);\n\nlet ts = '';\nlet sign = '';\nif (secret) {\n  const stringToSign = `${now}\\n${secret}`;\n  const hmac = crypto.createHmac('sha256', stringToSign);\n  hmac.update('');\n  sign = hmac.digest('base64');\n  ts = String(now);\n}\n\nconst prev = $input.first().json;\nreturn [{\n  json: {\n    ...prev,\n    lark_timestamp: ts,\n    lark_sign: sign\n  }\n}];"
+      },
+      "id": "n05b-lark-sign",
+      "name": "飞书签名计算",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, 300]
+    },
+    {
+      "parameters": {
         "url": "={{ $json.lark_webhook }}",
         "method": "POST",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"msg_type\": \"interactive\",\n  \"card\": {\n    \"header\": {\n      \"title\": { \"tag\": \"plain_text\", \"content\": \"Shopee 自动上架完成\" },\n      \"template\": \"green\"\n    },\n    \"elements\": [\n      { \"tag\": \"div\", \"text\": { \"tag\": \"lark_md\", \"content\": \"**任务 ID**: {{ $json.run_id }}\\n**市场**: {{ $json.market }}\\n**总 SPU**: {{ $json.summary.total_spu }}\\n**成功**: {{ $json.summary.created }}\\n**失败**: {{ $json.summary.failed }}\\n**跳过**: {{ $json.summary.skipped }}\" } }\n    ]\n  }\n}",
+        "jsonBody": "={\n  \"timestamp\": \"{{ $json.lark_timestamp }}\",\n  \"sign\": \"{{ $json.lark_sign }}\",\n  \"msg_type\": \"interactive\",\n  \"card\": {\n    \"header\": {\n      \"title\": { \"tag\": \"plain_text\", \"content\": \"Shopee 自动上架完成\" },\n      \"template\": \"green\"\n    },\n    \"elements\": [\n      { \"tag\": \"div\", \"text\": { \"tag\": \"lark_md\", \"content\": \"**任务 ID**: {{ $json.run_id }}\\n**市场**: {{ $json.market }}\\n**总 SPU**: {{ $json.summary.total_spu }}\\n**成功**: {{ $json.summary.created }}\\n**失败**: {{ $json.summary.failed }}\\n**跳过**: {{ $json.summary.skipped }}\" } }\n    ]\n  }\n}",
         "options": {
           "response": { "response": { "neverError": true } }
         }
@@ -95,7 +106,7 @@
       "name": "飞书通知",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1200, 300]
+      "position": [1400, 300]
     },
     {
       "parameters": {
@@ -127,6 +138,9 @@
       "main": [[{ "node": "CMS 回调 · completed", "type": "main", "index": 0 }]]
     },
     "CMS 回调 · completed": {
+      "main": [[{ "node": "飞书签名计算", "type": "main", "index": 0 }]]
+    },
+    "飞书签名计算": {
       "main": [[{ "node": "飞书通知", "type": "main", "index": 0 }]]
     }
   },
@@ -137,6 +151,7 @@
   "tags": [
     { "name": "shopee" },
     { "name": "cms-integration" },
-    { "name": "mvp" }
+    { "name": "mvp" },
+    { "name": "lark-sign" }
   ]
 }
