@@ -76,6 +76,33 @@ for f in $(find "${STAGING}" -type f \( \
     fi
 done
 
+echo "==> 给 .ps1 加 UTF-8 BOM (Windows PowerShell 5 GBK 默认编码兼容)"
+# 中文 Windows 自带 PS 5.x 默认用 ANSI/GBK 读 .ps1。
+# 无 BOM 的 UTF-8 中文会被当 GBK 解码乱码 → PS 解析失败。
+# 加 UTF-8 BOM (EF BB BF) 让 PS 强制走 UTF-8。
+for f in $(find "${STAGING}" -type f -name '*.ps1'); do
+    # 前 3 字节不是 EF BB BF 才加（防止重复）
+    if ! head -c 3 "${f}" | xxd -p 2>/dev/null | grep -qi '^efbbbf'; then
+        tmp="${f}.bom.tmp"
+        printf '\xEF\xBB\xBF' > "${tmp}"
+        cat "${f}" >> "${tmp}"
+        mv "${tmp}" "${f}"
+    fi
+done
+
+echo "==> 给 .bat 顶部插 chcp 65001 (cmd UTF-8 代码页，让中文 echo 不乱码)"
+# .bat 文件不能加 BOM (cmd 处理 BOM 有 bug)，
+# 改成在 @echo off 之后插一行 chcp 65001 >nul 让 cmd 切到 UTF-8 代码页。
+for f in $(find "${STAGING}" -type f -name '*.bat'); do
+    # 跳过已经有 chcp 的
+    if ! grep -q 'chcp 65001' "${f}"; then
+        tmp="${f}.chcp.tmp"
+        # 在第一行 (@echo off) 之后插入 chcp 65001 行
+        awk 'NR==1 {print; print "chcp 65001 >nul\r"; next} {print}' "${f}" > "${tmp}"
+        mv "${tmp}" "${f}"
+    fi
+done
+
 echo "==> 打 zip"
 ZIP_PATH="${OUT_DIR}/${PKG_NAME}.zip"
 rm -f "${ZIP_PATH}"
