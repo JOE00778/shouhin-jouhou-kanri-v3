@@ -52,6 +52,8 @@ services:
       # 备用国产 LLM（灰度切换可选）
       QWEN_API_KEY: ${QWEN_API_KEY:-}
       ZHIPU_API_KEY: ${ZHIPU_API_KEY:-}
+      # N8N UI 语言（zh-CN / ja / en；翻译覆盖率 60-80%）
+      N8N_DEFAULT_LOCALE: ${N8N_DEFAULT_LOCALE:-en}
       # 暴露给 workflow 用的工作目录（Boss 可挂载 SmikieJapan 共享文件夹）
       N8N_USER_FOLDER: /data
     volumes:
