@@ -146,9 +146,10 @@ Add-Field "  飞书 App ID (改廃监控用):"        "LARK_APP_ID"          ""
 Add-Field "  飞书 App Secret (改廃监控用):"    "LARK_APP_SECRET"      ""             $true
 Add-Field "  Shopee Partner ID (可空):"        "SHOPEE_PARTNER_ID"    ""
 Add-Field "  Shopee Partner Key (可空):"       "SHOPEE_PARTNER_KEY"   ""             $true
-Add-Field "  Anthropic API Key (可空):"        "ANTHROPIC_API_KEY"    ""             $true
-Add-Field "  OpenAI API Key (可空):"           "OPENAI_API_KEY"       ""             $true
-Add-Field "  Gemini API Key (Nano Banana 2):"  "GEMINI_API_KEY"       ""             $true
+Add-Field "  DeepSeek API Key (文本/翻译):"    "DEEPSEEK_API_KEY"     ""             $true
+Add-Field "  火山方舟 API Key (图像/生图):"     "VOLC_ARK_API_KEY"     ""             $true
+Add-Field "  通义千问 API Key (备用,可空):"     "QWEN_API_KEY"         ""             $true
+Add-Field "  智谱 GLM API Key (备用,可空):"     "ZHIPU_API_KEY"        ""             $true
 
 # 加密 keychain（自动生成，不让用户改）
 $keyLabel = New-Object System.Windows.Forms.Label
@@ -220,8 +221,8 @@ foreach ($k in @(
     "CMS_CALLBACK_URL", "LARK_WEBHOOK_URL",
     "LARK_APP_ID", "LARK_APP_SECRET",
     "SHOPEE_PARTNER_ID", "SHOPEE_PARTNER_KEY",
-    "ANTHROPIC_API_KEY", "OPENAI_API_KEY",
-    "GEMINI_API_KEY"
+    "DEEPSEEK_API_KEY", "VOLC_ARK_API_KEY",
+    "QWEN_API_KEY", "ZHIPU_API_KEY"
 )) {
     $envLines += "$k=$($config[$k])"
 }

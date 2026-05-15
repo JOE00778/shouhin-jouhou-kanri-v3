@@ -1,0 +1,174 @@
+{
+  "name": "SmikieJapan 批量商品图生成 v1",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "a1000000-0000-0000-0000-000000000001",
+      "name": "手动触发",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [200, 400]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "b0001",
+              "name": "products",
+              "value": "=[\n  {\n    \"jan\": \"4901111310490\",\n    \"商品名\": \"AGF ブレンディ カフェラトリー スティック 濃厚キャラメルマキアート 7本\",\n    \"メーカー\": \"AGF\",\n    \"カテゴリ\": \"インスタントコーヒー / スティック\",\n    \"卖点\": \"濃厚カラメル、ミルク感たっぷり、オフィスで手軽に\",\n    \"风格\": \"日系カフェ、温かみ、自然光\"\n  },\n  {\n    \"jan\": \"4902430714083\",\n    \"商品名\": \"P&G アリエール ジェルボール 4D 抗菌\",\n    \"メーカー\": \"P&G\",\n    \"カテゴリ\": \"洗濯洗剤 / ジェルボール\",\n    \"卖点\": \"4層構造、抗菌、汚れ落ち\",\n    \"风格\": \"清潔感、白基調、ミニマル\"\n  },\n  {\n    \"jan\": \"4901301400000\",\n    \"商品名\": \"花王 メリット シャンプー リンスのいらない\",\n    \"メーカー\": \"花王\",\n    \"カテゴリ\": \"ヘアケア / シャンプー\",\n    \"卖点\": \"地肌すっきり、家族で使える、フケかゆみ防止\",\n    \"风格\": \"バスルーム、ナチュラル、生活感\"\n  }\n]",
+              "type": "array"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1000000-0000-0000-0000-000000000002",
+      "name": "商品样例（替换为 CSV/飞书/Shopify）",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [420, 400]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "products",
+        "options": {}
+      },
+      "id": "a1000000-0000-0000-0000-000000000003",
+      "name": "拆分商品",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [640, 400]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "## 役割\nあなたは日系越境ECブランド「SmikieJapan」のビジュアルデザイナー。商品の特徴から、AI画像生成モデル向けの英語の高品質プロンプトを作成する。\n\n## 出力スタイル要件\n- 構図: 商品単体、画面中央、4:5縦構図\n- 美学: 日系ミニマル、自然光、柔らかい影、ナチュラルテクスチャ\n- 背景: ライトベージュまたは淡い木目、もしくはバスルーム/キッチンなどカテゴリに合わせた生活シーン\n- 文字や日本語ラベルは画面に描かない\n- 過度な装飾、誇張表現、テクスチャ過多を避ける\n- Etsy/无印良品/Muji 風の落ち着いた色調\n\n## 厳守事項\n- 出力は1段落の英語プロンプトのみ。説明・前置き・コメント禁止\n- 商品の本体形状を変えない、ロゴやパッケージ文字を再現しない\n- 5〜8個の視覚要素キーワードを「,」で連結\n\n## 商品情報\n- 名称: {{ $json['商品名'] }}\n- メーカー: {{ $json['メーカー'] }}\n- カテゴリ: {{ $json['カテゴリ'] }}\n- 売り: {{ $json['卖点'] }}\n- 期待トーン: {{ $json['风格'] }}\n",
+        "hasOutputParser": false,
+        "options": {}
+      },
+      "id": "a1000000-0000-0000-0000-000000000004",
+      "name": "AI Agent: 商品图 prompt",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [880, 400]
+    },
+    {
+      "parameters": {
+        "model": "deepseek-chat",
+        "options": {
+          "temperature": 0.4
+        }
+      },
+      "id": "a1000000-0000-0000-0000-000000000005",
+      "name": "DeepSeek Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatDeepSeek",
+      "typeVersion": 1,
+      "position": [880, 620]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ark.cn-beijing.volces.com/api/v3/images/generations",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"doubao-seedream-4-0-250828\",\n  \"prompt\": \"{{ $json.output.replace(/\"/g, '\\\\\"') }}\",\n  \"size\": \"2K\",\n  \"sequential_image_generation\": \"disabled\",\n  \"stream\": false,\n  \"response_format\": \"url\",\n  \"watermark\": false\n}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "a1000000-0000-0000-0000-000000000006",
+      "name": "Seedream 4.0 生图",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1160, 400]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "data",
+        "options": {
+          "includeBinary": false
+        }
+      },
+      "id": "a1000000-0000-0000-0000-000000000007",
+      "name": "拆分生图结果",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [1400, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://YOUR-STORE.myshopify.com/admin/api/2025-01/graphql.json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"query\": \"mutation FileCreate($files: [FileCreateInput!]!) { fileCreate(files: $files) { files { id alt fileStatus ... on MediaImage { image { url } } } userErrors { field message } } }\",\n  \"variables\": {\n    \"files\": [\n      {\n        \"originalSource\": \"{{ $json.url }}\",\n        \"contentType\": \"IMAGE\",\n        \"alt\": \"{{ $('拆分商品').item.json['商品名'].replace(/\"/g, '\\\\\"') }}\"\n      }\n    ]\n  }\n}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "a1000000-0000-0000-0000-000000000008",
+      "name": "上传到 Shopify Files",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1640, 400]
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "a1000000-0000-0000-0000-000000000009",
+      "name": "汇总结果",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [1880, 400]
+    }
+  ],
+  "connections": {
+    "手动触发": {
+      "main": [[{ "node": "商品样例（替换为 CSV/飞书/Shopify）", "type": "main", "index": 0 }]]
+    },
+    "商品样例（替换为 CSV/飞书/Shopify）": {
+      "main": [[{ "node": "拆分商品", "type": "main", "index": 0 }]]
+    },
+    "拆分商品": {
+      "main": [[{ "node": "AI Agent: 商品图 prompt", "type": "main", "index": 0 }]]
+    },
+    "DeepSeek Chat Model": {
+      "ai_languageModel": [[{ "node": "AI Agent: 商品图 prompt", "type": "ai_languageModel", "index": 0 }]]
+    },
+    "AI Agent: 商品图 prompt": {
+      "main": [[{ "node": "Seedream 4.0 生图", "type": "main", "index": 0 }]]
+    },
+    "Seedream 4.0 生图": {
+      "main": [[{ "node": "拆分生图结果", "type": "main", "index": 0 }]]
+    },
+    "拆分生图结果": {
+      "main": [[{ "node": "上传到 Shopify Files", "type": "main", "index": 0 }]]
+    },
+    "上传到 Shopify Files": {
+      "main": [[{ "node": "汇总结果", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "description": "SmikieJapan 批量商品图：手动触发 → 商品列表 → LLM 写日系电商图 prompt → Seedream 4.0 生图 → Shopify Files 入库。改造自小红书 @六六AI研究所 的单图生图工作流。"
+  }
+}
