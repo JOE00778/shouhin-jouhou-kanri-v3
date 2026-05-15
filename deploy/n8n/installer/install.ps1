@@ -117,7 +117,6 @@ $y = 90
 $inputs = @{}
 
 function Add-Field($label, $key, $default = "", $isPassword = $false) {
-    param()
     $script:y = $script:y
     $lbl = New-Object System.Windows.Forms.Label
     $lbl.Text = $label
