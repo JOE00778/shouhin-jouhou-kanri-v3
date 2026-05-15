@@ -44,11 +44,14 @@ services:
       # Shopee Open API 凭证
       SHOPEE_PARTNER_ID: ${SHOPEE_PARTNER_ID:-}
       SHOPEE_PARTNER_KEY: ${SHOPEE_PARTNER_KEY:-}
-      # Anthropic / OpenAI API key（workflow 用）
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      # Gemini Nano Banana 2（商品图自动生成）
-      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      # 国产 LLM / 图像模型 API（本地化合规：国内云、承诺不训练用户数据）
+      # DeepSeek（文本：标题/详情/7 国翻译）
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      # 火山方舟（图像：Seedream 4.0 / 豆包 Vision，OCR + 翻译重绘 + 商品图生成）
+      VOLC_ARK_API_KEY: ${VOLC_ARK_API_KEY:-}
+      # 备用国产 LLM（灰度切换可选）
+      QWEN_API_KEY: ${QWEN_API_KEY:-}
+      ZHIPU_API_KEY: ${ZHIPU_API_KEY:-}
       # 暴露给 workflow 用的工作目录（Boss 可挂载 SmikieJapan 共享文件夹）
       N8N_USER_FOLDER: /data
     volumes:
