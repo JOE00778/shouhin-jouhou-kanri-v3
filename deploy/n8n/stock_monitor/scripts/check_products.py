@@ -9,7 +9,6 @@ import argparse
 import csv
 import json
 import sys
-from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 
@@ -18,7 +17,7 @@ from config import (
     COOKIE_NETDEOROSHI, COOKIE_SUPERDELIVERY,
 )
 from scraper import (
-    LookupResult, lookup_netdeoroshi, lookup_superdelivery,
+    lookup_netdeoroshi, lookup_superdelivery,
     _build_opener, _load_cookies, throttle,
 )
 

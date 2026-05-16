@@ -9,6 +9,46 @@ PKG_NAME="Smikie-N8N-Installer-v${VERSION}"
 STAGING="${SCRIPT_DIR}/.build/${PKG_NAME}"
 OUT_DIR="${SCRIPT_DIR}/dist"
 
+# ============================================================
+# Pre-build 检查（v2.12 起；防 v2.11 _PK_MODE 那种 stale ref bug 进 zip）
+# ============================================================
+echo "==> Pre-build · Python 语法 + lint 检查"
+SIDECAR_PY_FILES=(
+    "${SCRIPT_DIR}/cms_api/app.py"
+    "${SCRIPT_DIR}/image_processor/app.py"
+    "${SCRIPT_DIR}/stock_monitor/webhook_server.py"
+    "${SCRIPT_DIR}/stock_monitor/scripts/check_products.py"
+    "${SCRIPT_DIR}/stock_monitor/scripts/scraper.py"
+    "${SCRIPT_DIR}/stock_monitor/scripts/config.py"
+    "${SCRIPT_DIR}/stock_monitor/scripts/notify_lark.py"
+    "${SCRIPT_DIR}/stock_monitor/scripts/scan_supplier_list.py"
+)
+for f in "${SIDECAR_PY_FILES[@]}"; do
+    [ -f "$f" ] || continue
+    python3 -c "import ast; ast.parse(open('$f').read())" || { echo "❌ syntax error: $f"; exit 1; }
+done
+if command -v python3 -m pyflakes >/dev/null 2>&1 || python3 -c "import pyflakes" 2>/dev/null; then
+    python3 -m pyflakes "${SIDECAR_PY_FILES[@]}" 2>/dev/null || {
+        echo "⚠️  pyflakes 报 warning（unused import / undefined name），打包仍继续"
+        echo "   若是 'undefined name' 强烈建议先修复（NameError 进生产）"
+    }
+else
+    echo "⚠️  pyflakes 没装（pip install --user pyflakes），跳过 lint"
+fi
+echo "==> Pre-build · cms-api 单元测试"
+if [ -f "${SCRIPT_DIR}/cms_api/tests/test_shopee_signing.py" ]; then
+    python3 "${SCRIPT_DIR}/cms_api/tests/test_shopee_signing.py" 2>&1 | tail -3 || {
+        echo "❌ cms-api 单元测试失败，build aborted"
+        exit 1
+    }
+fi
+echo "==> Pre-build · workflow JSON 合法性"
+for j in "${SCRIPT_DIR}"/workflows/*.json; do
+    python3 -c "import json; json.loads(open('$j').read())" || { echo "❌ JSON parse fail: $j"; exit 1; }
+done
+echo "==> Pre-build 检查全部通过 ✅"
+echo ""
+
 echo "==> 清理 staging"
 rm -rf "${SCRIPT_DIR}/.build"
 mkdir -p "${STAGING}"
@@ -28,6 +68,8 @@ cp -v "${SCRIPT_DIR}/installer/install-docker.ps1" "${STAGING}/installer/"
 cp -v "${SCRIPT_DIR}/installer/uninstall.bat" "${STAGING}/installer/"
 cp -v "${SCRIPT_DIR}/installer/uninstall.ps1" "${STAGING}/installer/"
 cp -v "${SCRIPT_DIR}/installer/oauth-7-markets.ps1" "${STAGING}/installer/" 2>/dev/null || true
+cp -v "${SCRIPT_DIR}/installer/healthcheck.ps1" "${STAGING}/installer/" 2>/dev/null || true
+cp -v "${SCRIPT_DIR}/installer/trigger-shopee-workflow.ps1" "${STAGING}/installer/" 2>/dev/null || true
 
 mkdir -p "${STAGING}/workflows"
 cp -v "${SCRIPT_DIR}"/workflows/*.json "${STAGING}/workflows/" 2>/dev/null || echo "  (no workflows yet)"
