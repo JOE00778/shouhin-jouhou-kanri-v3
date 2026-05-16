@@ -279,7 +279,9 @@ async def xlsx_upload(
 SHOPEE_TOKENS_FILE = OUTPUTS_DIR / "shopee_tokens.json"
 SHOPEE_API_BASE = os.environ.get("SHOPEE_API_BASE", "https://partner.shopeemobile.com")
 SHOPEE_PARTNER_ID = os.environ.get("SHOPEE_PARTNER_ID", "")
-SHOPEE_PARTNER_KEY = os.environ.get("SHOPEE_PARTNER_KEY", "")
+_RAW_PK = os.environ.get("SHOPEE_PARTNER_KEY", "")
+# Shopee Test 环境 partner_key 带 'shpk' UI 前缀，签名时必须去掉
+SHOPEE_PARTNER_KEY = _RAW_PK.removeprefix("shpk") if _RAW_PK.startswith("shpk") else _RAW_PK
 
 
 @app.get("/api/automation/shopee/tokens")
