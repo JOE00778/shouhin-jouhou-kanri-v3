@@ -93,11 +93,11 @@
     },
     {
       "parameters": {
-        "url": "={{ $json.lark_webhook }}",
+        "url": "={{ $env.LARK_WEBHOOK_URL }}",
         "method": "POST",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"timestamp\": \"{{ $json.lark_timestamp }}\",\n  \"sign\": \"{{ $json.lark_sign }}\",\n  \"msg_type\": \"interactive\",\n  \"card\": {\n    \"header\": {\n      \"title\": { \"tag\": \"plain_text\", \"content\": \"Shopee 自动上架完成\" },\n      \"template\": \"green\"\n    },\n    \"elements\": [\n      { \"tag\": \"div\", \"text\": { \"tag\": \"lark_md\", \"content\": \"**任务 ID**: {{ $json.run_id }}\\n**市场**: {{ $json.market }}\\n**总 SPU**: {{ $json.summary.total_spu }}\\n**成功**: {{ $json.summary.created }}\\n**失败**: {{ $json.summary.failed }}\\n**跳过**: {{ $json.summary.skipped }}\" } }\n    ]\n  }\n}",
+        "jsonBody": "={\n  \"timestamp\": \"{{ $json.lark_timestamp }}\",\n  \"sign\": \"{{ $json.lark_sign }}\",\n  \"msg_type\": \"interactive\",\n  \"card\": {\n    \"header\": {\n      \"title\": { \"tag\": \"plain_text\", \"content\": \"Shopee 自动上架完成\" },\n      \"template\": \"green\"\n    },\n    \"elements\": [\n      { \"tag\": \"div\", \"text\": { \"tag\": \"lark_md\", \"content\": \"**任务 ID**: {{ $('处理 SPU（占位）').item.json.run_id }}\\n**市场**: {{ $('处理 SPU（占位）').item.json.market }}\\n**总 SPU**: {{ $('处理 SPU（占位）').item.json.summary.total_spu }}\\n**成功**: {{ $('处理 SPU（占位）').item.json.summary.created }}\\n**失败**: {{ $('处理 SPU（占位）').item.json.summary.failed }}\\n**跳过**: {{ $('处理 SPU（占位）').item.json.summary.skipped }}\" } }\n    ]\n  }\n}",
         "options": {
           "response": { "response": { "neverError": true } }
         }
