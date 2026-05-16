@@ -37,6 +37,9 @@ services:
       TZ: Asia/Tokyo
       # 凭证密钥不写日志
       N8N_LOG_LEVEL: info
+      # 允许 workflow node 通过 $env.XXX 读取容器环境变量 (默认 true 禁止)
+      # 必须 false 才能让「环境变量提取」节点拿到 LARK_WEBHOOK_URL / LARK_BOT_SIGN_SECRET 等
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
       # CMS 回调地址（用于 N8N workflow 内部回写状态）
       CMS_CALLBACK_URL: ${CMS_CALLBACK_URL:-https://smikie-cms.cc/api/automation/callback}
       # Lark webhook（飞书群机器人，所有 workflow 共用）
