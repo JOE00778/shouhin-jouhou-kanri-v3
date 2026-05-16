@@ -3,7 +3,7 @@
 # 用法：./build-installer.sh [version]   (默认 1.0)
 set -euo pipefail
 
-VERSION="${1:-1.1}"
+VERSION="${1:-1.8}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PKG_NAME="Smikie-N8N-Installer-v${VERSION}"
 STAGING="${SCRIPT_DIR}/.build/${PKG_NAME}"
@@ -46,6 +46,14 @@ cat > "${STAGING}/stock_monitor/cookies/README.txt" <<'EOF'
 具体文件命名见 ../scripts/scraper.py 顶部说明。
 没有 cookies 也能跑，仅免登录公开页可访问。
 EOF
+
+# image_processor 容器源码（商品图处理：抠图/超分/SPU 多图合成）
+echo "==> 复制 image_processor 源码"
+mkdir -p "${STAGING}/image_processor/assets"
+cp -v "${SCRIPT_DIR}/image_processor/Dockerfile" "${STAGING}/image_processor/"
+cp -v "${SCRIPT_DIR}/image_processor/requirements.txt" "${STAGING}/image_processor/"
+cp -v "${SCRIPT_DIR}/image_processor/app.py" "${STAGING}/image_processor/"
+cp -v "${SCRIPT_DIR}"/image_processor/assets/*.png "${STAGING}/image_processor/assets/" 2>/dev/null || true
 
 # 占位空目录（首次启动后会填充；要让 Windows 上 zip 能解出空目录）
 mkdir -p "${STAGING}/data/n8n"

@@ -141,6 +141,46 @@ services:
           cpus: '0.5'
           memory: 512M
 
+  # ============================================================
+  # 商品图处理（image-processor）· N8N HTTP 调用 :8788/{upscale,cutout,compose-spu}
+  # N8N workflow shopee-mass-upload v1.8+ 用其生成 Shopee 主图 / SPU 多图
+  # 输入图: 远程 URL（CMS / NAS）或 base64
+  # 落盘: Win D 盘 ${WHITEBG_HOST_PATH} → 容器内 /data/whitebg
+  # ============================================================
+  image-processor:
+    build:
+      context: ./image_processor
+      dockerfile: Dockerfile
+    container_name: smikie_image_processor
+    restart: unless-stopped
+    environment:
+      PORT: "8788"
+      WHITEBG_ROOT: /data/whitebg
+      TEMPLATE_PATH: /app/assets/template_red.png
+      TZ: Asia/Tokyo
+    volumes:
+      # Windows D 盘单独文件夹，N8N 跑完成品 Boss 可直接资源管理器看图
+      # 默认 D:/Smikie-Images；首跑会自动建 raw/upscaled/branded/spu 4 子目录
+      - ${WHITEBG_HOST_PATH:-D:/Smikie-Images}:/data/whitebg
+    networks:
+      - smikie_n8n_net
+    expose:
+      - "8788"
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 2048M
+        reservations:
+          cpus: '0.25'
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8788/health').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
 networks:
   smikie_n8n_net:
     driver: bridge

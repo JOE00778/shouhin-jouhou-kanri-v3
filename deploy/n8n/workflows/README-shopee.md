@@ -171,6 +171,78 @@ N8N 容器启动时**只自动导入一次**（首次 install）。之后改 wor
 
 ---
 
+## 🖼 商品图处理 sidecar (image-processor v0.1)
+
+shopee-mass-upload v1.8+ 把「白底图准备 + 抠图套模板 + SPU 多图合成」抽到独立容器 `smikie_image_processor`，N8N 用 HTTP Request 节点调用。脚本逻辑来自 `shopify/scripts/compose_with_template.py` + `upscale_images_to_1500.py`（Mac Upscayl 改 Pillow Lanczos 做 CPU baseline，以后插 GPU 再换 Real-ESRGAN）。
+
+**为什么不塞进 N8N Code node**：N8N 沙盒不让 require rembg / PIL；模型权重几百 MB 撑爆 1 GB 内存限制；图像处理跟 N8N 抢 CPU 不合适。
+
+### 端点（容器内 8788，N8N 通过 `http://image-processor:8788/` 调）
+
+| Endpoint | 用途 | 输入 | 落盘 |
+|---|---|---|---|
+| `GET /health` | 健康检查 | — | — |
+| `POST /upscale` | 原图 → 1500×1500 白底方图 | `{jan, image_url\|image_b64, method=lanczos}` | `/data/whitebg/upscaled/<JAN>.jpg` |
+| `POST /cutout` | 白底图 → 抠图 + 套 RED 模板 | `{jan, image_url\|image_b64}`（优先用 upscaled/<JAN>.jpg 已有） | `/data/whitebg/branded/<JAN>.jpg` |
+| `POST /compose-spu` | N 个 SKU 已处理图 → SPU 拼图 | `{spu_key, sku_jans[], source=branded}` | `/data/whitebg/spu/<SPU_KEY>.jpg` |
+| `GET /list/{kind}/{key}` | 查 kind∈{raw,upscaled,branded,spu} 下某 key 是否已生成 | — | — |
+
+### Windows D 盘文件夹设置（**一次性 · 必做**）
+
+在 Inspiron PowerShell：
+
+```powershell
+New-Item -ItemType Directory -Force -Path D:\Smikie-Images\raw, D:\Smikie-Images\upscaled, D:\Smikie-Images\branded, D:\Smikie-Images\spu
+```
+
+`.env` 内已默认 `WHITEBG_HOST_PATH=D:/Smikie-Images`；要换位置改 `.env` 这行即可（用正斜杠，不要反斜杠）。
+
+### 手动测试（不依赖 N8N，直接 curl）
+
+进 Inspiron PowerShell：
+
+```powershell
+docker compose up -d --build image-processor
+```
+
+```powershell
+docker exec smikie_image_processor curl -s http://localhost:8788/health
+```
+
+期望返回 `{"status":"ok","template_ready":true,...}`。
+
+从主机测：
+
+```powershell
+Invoke-RestMethod -Uri "http://localhost:8788/upscale" -Method Post -ContentType "application/json" -Body (@{jan="4901872888881";image_url="https://example.com/sample.jpg";method="lanczos"} | ConvertTo-Json)
+```
+
+成功后 `D:\Smikie-Images\upscaled\4901872888881.jpg` 会出现 1500×1500 白底图。
+
+### 已知限制（v0.1）
+
+| # | 限制 | 后续 |
+|---|---|---|
+| 1 | `/upscale` 只实装 Lanczos（无 AI 超分），效果不如 Mac Upscayl | 等接 GPU 后加 Real-ESRGAN ncnn-vulkan backend |
+| 2 | `/cutout` 用 rembg u2net（首次启动会预热下载到镜像内 ~170MB） | OK |
+| 3 | `/compose-spu` 用纯 PIL 网格拼，不调 AI | OK，Boss 已确认此方案 |
+| 4 | 图片上传走 URL 拉取，CMS 必须公网可达或共享卷 | shopee-mass-upload v1.8 用 CMS API URL |
+
+### 当 shopee-mass-upload v1.8 出来后的调用顺序
+
+```
+B1 拉 SKU 主档 ─→ B2 翻译 ─→ B3 类目映射 ─→
+   ↓
+B4 主图：
+   ├ b4a foreach SKU: POST /upscale (image_url=CMS 商品登录 APP 主图)
+   ├ b4b foreach SKU: POST /cutout
+   └ b4c POST /compose-spu (sku_jans=本 SPU 的 SKU 列表)
+   ↓
+B5a XLSX 输出 → 主图列填 /data/whitebg/spu/<spu>.jpg
+```
+
+---
+
 ## 🎯 下一步路线图（按优先级）
 
 | 优先级 | 任务 | 谁做 |
