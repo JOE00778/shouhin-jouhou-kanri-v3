@@ -171,6 +171,107 @@ N8N 容器启动时**只自动导入一次**（首次 install）。之后改 wor
 
 ---
 
+## 🆕 shopee-mass-upload v2.0 完整 B1-B5 编排（2026-05-16）
+
+v1.7 是 MVP scaffold（mock 0/0/0/0）；v2.0 把真业务节点全铺上，18 个节点串成完整 SPU 编排。
+
+### 节点拓扑（v2.0）
+
+```
+n01 Webhook · CMS 触发
+   ↓
+n02 变量提取 (run_id, market_list, sku_master_url, spu_groups_json, ...)
+   ↓ ⤳ n07 立即返回 CMS（并行 ACK）
+n03 CMS 回调 · processing
+   ↓
+[B1] n10 查 SKU 主档 (GET CMS_BASE_URL + /api/sku/master?jans=...)
+   ↓
+[B2] n11 SPU 聚合 + 类目映射 (Code: 按 spu_key 分组 + cat-* → category_id)
+   ↓
+n12 SPU 循环 · SplitInBatches (size=1)
+   ├─[done]→ n17 B5b 导出 XLSX → n18 上传 CMS → n19 B5c Shopee stub
+   │                                                  ↓ n20 汇总 → n21 CMS done
+   │                                                  → n22 Lark sign → n23 Lark 通知
+   └─[loop]→
+       [B3] n13 火山方舟 DeepSeek-V3.2 (一次生成 SPU 标题/详情/SEO + 7 国翻译)
+           ↓
+           n14 解析 LLM JSON 输出
+           ↓
+       [B4] n15 主图流水线 (Code 内串行调 image-processor):
+              foreach SKU → POST /upscale → POST /cutout
+              整 SPU → POST /compose-spu
+           ↓
+       [B5a] n16 拼 XLSX 行 (每 SPU 1 行；7 国 title/desc/category_id 并列)
+           ↓ (回 n12 继续下一 SPU)
+```
+
+### Webhook payload schema（Page 21 端要按这个传）
+
+```json
+POST https://n8n.smikie-cms.cc/webhook/shopee-mass-upload
+{
+  "run_id": "uuid-xxx",
+  "markets": ["TW","PH","MY","SG","TH","VN","ID"],
+  "sku_jans": ["4901872888881","4901872888898", ...],
+  "spu_groups": [
+    {"spu_key": "smikie-bed-2024-blue", "sku_jans": ["4901872888881","4901872888898"]},
+    {"spu_key": "smikie-bath-2024-red", "sku_jans": ["4901872888902"]}
+  ]
+}
+```
+
+不给 `spu_groups` → 自动退化到 1 SKU = 1 SPU。
+
+### v2.0 已知缺口（**部署前必看**）
+
+| # | 缺口 | 影响 | 后续 |
+|---|---|---|---|
+| 1 | CMS 没装 `/api/sku/master` 端点 | B1 节点 GET 会 404，sku_list 为空 | 起 CMS FastAPI sidecar；或 Page 21 端预查 SKU 主档塞进 webhook payload |
+| 2 | CMS 没装 `/api/automation/xlsx-upload` 端点 | B5b.2 上传 XLSX 会 404；XLSX 仍在 N8N 容器内 `/files/` 可手动下 | 同上 |
+| 3 | 类目映射表只填 5 个 cat-* 示例（cat-bedding / kitchen / bath / stationary / baby） | 其他 cat-* tag 命中不上 → 走 fallback category_id 100636 | Boss 提供完整 cat-* → Shopee 7 国 category_id 表，覆盖 n11 节点 `CAT_MAP` |
+| 4 | category_id 数字是占位的（100636/24474/11013155）非真实 ID | Shopee 上架时会被拒 | Boss 在 Shopee Seller Center 拿真实 category_id |
+| 5 | SKU 主档字段名假设 `jan/sku/tags/main_image_url/image_url` | CMS 实际字段名可能不同 | 拿到 CMS API 第一份响应后校准 n11 / n15 字段名 |
+| 6 | B5c Shopee 上架是 stub | 不会真上架 | 等 Partner Key + 单独排期补真实 Shopee Open API 调用 |
+
+### v2.0 部署前 Boss 要补的 env
+
+`.env` 加这 2 行（v1.8 已有 `WHITEBG_HOST_PATH`）：
+
+```
+VOLC_ARK_TEXT_MODEL=deepseek-v3-2-251201
+CMS_BASE_URL=https://smikie-cms.cc
+```
+
+### v2.0 部署步骤
+
+```powershell
+# 1. 拉 docker-compose + workflow JSON
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/JOE00778/CMS-v230/main/deploy/n8n/docker-compose.yml" -OutFile docker-compose.yml -UseBasicParsing
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/JOE00778/CMS-v230/main/deploy/n8n/workflows/shopee-mass-upload.json" -OutFile workflows\shopee-mass-upload.json -UseBasicParsing
+
+# 2. 加新 env vars（如果已存在跳过）
+Add-Content -Path .env -Value "`r`nVOLC_ARK_TEXT_MODEL=deepseek-v3-2-251201"
+Add-Content -Path .env -Value "CMS_BASE_URL=https://smikie-cms.cc"
+
+# 3. 重启 N8N 让新 env 生效
+docker compose up -d --force-recreate n8n
+
+# 4. N8N UI 重导 workflow（覆盖 v1.7）
+# 浏览器 https://n8n.smikie-cms.cc → Workflows → 找到旧 Shopee 自动上架 → 删除
+# Workflows → Import from File → 选 workflows\shopee-mass-upload.json
+# 右上角 Active toggle 打开
+```
+
+### v2.0 端到端测试
+
+走 Page 21（v1.7 已有的 Tab 1），上传一份测试 CSV（必须含 SPU 分组列），点「全自动管线」：
+- 预期飞书绿卡片显示 `SPU 总数 / LLM 成功 / 图像成功 / 类目命中率 / Shopee 上架: STUB`
+- N8N UI Executions 应能看到 18 节点全部 ✅ 或个别 ⚠️（已知缺口节点）
+- D 盘 `D:\Smikie-Images\branded\` 出现套模板成品图
+- D 盘 `D:\Smikie-Images\spu\` 出现 SPU 拼图
+
+---
+
 ## 🖼 商品图处理 sidecar (image-processor v0.1)
 
 shopee-mass-upload v1.8+ 把「白底图准备 + 抠图套模板 + SPU 多图合成」抽到独立容器 `smikie_image_processor`，N8N 用 HTTP Request 节点调用。脚本逻辑来自 `shopify/scripts/compose_with_template.py` + `upscale_images_to_1500.py`（Mac Upscayl 改 Pillow Lanczos 做 CPU baseline，以后插 GPU 再换 Real-ESRGAN）。

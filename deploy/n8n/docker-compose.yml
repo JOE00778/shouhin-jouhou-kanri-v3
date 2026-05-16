@@ -54,10 +54,14 @@ services:
       SHOPEE_PARTNER_ID: ${SHOPEE_PARTNER_ID:-}
       SHOPEE_PARTNER_KEY: ${SHOPEE_PARTNER_KEY:-}
       # 国产 LLM / 图像模型 API（本地化合规：国内云、承诺不训练用户数据）
-      # DeepSeek（文本：标题/详情/7 国翻译）
+      # DeepSeek（备用，主力走火山方舟 DeepSeek-V3.2 endpoint）
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
-      # 火山方舟（图像：Seedream 4.0 / 豆包 Vision，OCR + 翻译重绘 + 商品图生成）
+      # 火山方舟（文本: DeepSeek-V3.2 / 豆包；图像: Seedream / 豆包 Vision）
       VOLC_ARK_API_KEY: ${VOLC_ARK_API_KEY:-}
+      # 火山方舟「文本」模型 endpoint ID（shopee v2.0 workflow 用）
+      VOLC_ARK_TEXT_MODEL: ${VOLC_ARK_TEXT_MODEL:-deepseek-v3-2-251201}
+      # CMS 基础 URL（v2.0 workflow 拼 /api/sku/master + /api/automation/xlsx-upload）
+      CMS_BASE_URL: ${CMS_BASE_URL:-https://smikie-cms.cc}
       # 备用国产 LLM（灰度切换可选）
       QWEN_API_KEY: ${QWEN_API_KEY:-}
       ZHIPU_API_KEY: ${ZHIPU_API_KEY:-}

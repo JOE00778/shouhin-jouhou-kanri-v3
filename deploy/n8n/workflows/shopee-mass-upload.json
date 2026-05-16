@@ -1,5 +1,5 @@
 {
-  "name": "Shopee 自动上架 · CMS XLSX → Shopee API（MVP scaffold + 飞书签名）",
+  "name": "Shopee 自动上架 · v2.0 完整编排（B1-B5 + image-processor）",
   "nodes": [
     {
       "parameters": {
@@ -12,7 +12,7 @@
       "name": "Webhook · CMS 触发",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [200, 300],
+      "position": [200, 400],
       "webhookId": "shopee-mass-upload"
     },
     {
@@ -20,20 +20,36 @@
         "values": {
           "string": [
             { "name": "run_id", "value": "={{ $json.body.run_id }}" },
-            { "name": "market", "value": "={{ $json.body.market || 'TW' }}" },
+            { "name": "market_list", "value": "={{ JSON.stringify($json.body.markets || ['TW','PH','MY','SG','TH','VN','ID']) }}" },
+            { "name": "sku_master_url", "value": "={{ $json.body.sku_master_url || ($env.CMS_BASE_URL + '/api/sku/master?jans=' + ($json.body.sku_jans || []).join(',')) }}" },
+            { "name": "spu_groups_json", "value": "={{ JSON.stringify($json.body.spu_groups || []) }}" },
             { "name": "cms_callback", "value": "={{ $env.CMS_CALLBACK_URL }}" },
-            { "name": "lark_webhook", "value": "={{ $env.LARK_WEBHOOK_URL }}" },
-            { "name": "shopee_partner_id", "value": "={{ $env.SHOPEE_PARTNER_ID }}" },
-            { "name": "shopee_partner_key", "value": "={{ $env.SHOPEE_PARTNER_KEY }}" }
+            { "name": "cms_xlsx_upload_url", "value": "={{ $env.CMS_BASE_URL + '/api/automation/xlsx-upload' }}" },
+            { "name": "image_processor_base", "value": "http://image-processor:8788" },
+            { "name": "volc_ark_url", "value": "https://ark.cn-beijing.volces.com/api/v3/chat/completions" },
+            { "name": "volc_ark_model", "value": "={{ $env.VOLC_ARK_TEXT_MODEL || 'deepseek-v3-2-251201' }}" },
+            { "name": "volc_ark_api_key", "value": "={{ $env.VOLC_ARK_API_KEY }}" }
           ]
         },
         "options": {}
       },
       "id": "n02-vars",
-      "name": "环境变量提取",
+      "name": "变量提取",
       "type": "n8n-nodes-base.set",
       "typeVersion": 2,
-      "position": [400, 300]
+      "position": [400, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ run_id: $json.run_id, status: 'accepted', message: 'N8N v2.0 已接受，开始 B1-B5 编排' }) }}",
+        "options": {}
+      },
+      "id": "n07-response",
+      "name": "立即返回 CMS",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [400, 600]
     },
     {
       "parameters": {
@@ -41,7 +57,7 @@
         "method": "POST",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"run_id\": \"{{ $json.run_id }}\",\n  \"module\": \"shopee_mass_upload\",\n  \"status\": \"processing\",\n  \"message\": \"N8N 已接收，开始处理\"\n}",
+        "jsonBody": "={\n  \"run_id\": \"{{ $json.run_id }}\",\n  \"module\": \"shopee_mass_upload\",\n  \"status\": \"processing\",\n  \"message\": \"v2.0 编排启动: B1 SKU 查询\"\n}",
         "options": {
           "response": { "response": { "neverError": true } }
         }
@@ -50,18 +66,165 @@
       "name": "CMS 回调 · processing",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [600, 300]
+      "position": [600, 400]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.sku_master_url }}",
+        "method": "GET",
+        "options": {
+          "response": { "response": { "neverError": true } }
+        }
+      },
+      "id": "n10-sku-master",
+      "name": "B1 · 查 SKU 主档",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [800, 400]
     },
     {
       "parameters": {
         "language": "javaScript",
-        "jsCode": "// TODO: 实际处理逻辑\n// 1. 从 $json.body.xlsx_urls 拉 5 个类目 + 1 dianxiaomi XLSX\n// 2. 用 spreadsheetFile 节点解析\n// 3. 按 SPU 分组 → 调 Shopee Item API → 调 Shopee Image API\n// 4. 汇总成功 / 失败 / 跳过计数\n// 当前：占位 — 直接返回 mock 结果\nreturn [{\n  json: {\n    run_id: $('环境变量提取').item.json.run_id,\n    market: $('环境变量提取').item.json.market,\n    cms_callback: $('环境变量提取').item.json.cms_callback,\n    lark_webhook: $('环境变量提取').item.json.lark_webhook,\n    summary: {\n      total_spu: 0,\n      created: 0,\n      failed: 0,\n      skipped: 0\n    },\n    note: 'MVP scaffold — 实际 Shopee API 节点待 Boss 提供 partner_id/partner_key 后充实'\n  }\n}];"
+        "jsCode": "// B2 · SPU 聚合 + B5a 类目映射\n// 输入: B1 返回的 SKU 主档数组 + Boss 预指定的 spu_groups\n// 输出: [{ spu_key, sku_list, category_per_market }]\n\nconst vars = $('变量提取').item.json;\nconst skuMasterResp = $input.first().json;\nconst skuList = Array.isArray(skuMasterResp) ? skuMasterResp\n              : (skuMasterResp.skus || skuMasterResp.data || []);\nconst spuGroups = JSON.parse(vars.spu_groups_json || '[]');\nconst markets = JSON.parse(vars.market_list);\n\n// === 类目映射（硬编码示例表，Boss 后续补全 cat-* → Shopee category_id） ===\n// TODO Boss 提供完整 cat-* 到 Shopee 各国 category_id 映射表\nconst CAT_MAP = {\n  'cat-bedding':   { TW: 100636, PH: 24474, MY: 11013155, SG: 100636, TH: 100636, VN: 100636, ID: 100636 },\n  'cat-kitchen':   { TW: 100012, PH: 24475, MY: 11013156, SG: 100012, TH: 100012, VN: 100012, ID: 100012 },\n  'cat-bath':      { TW: 100013, PH: 24476, MY: 11013157, SG: 100013, TH: 100013, VN: 100013, ID: 100013 },\n  'cat-stationary':{ TW: 100014, PH: 24477, MY: 11013158, SG: 100014, TH: 100014, VN: 100014, ID: 100014 },\n  'cat-baby':      { TW: 100015, PH: 24478, MY: 11013159, SG: 100015, TH: 100015, VN: 100015, ID: 100015 },\n};\nconst CAT_FALLBACK = { TW: 100636, PH: 24474, MY: 11013155, SG: 100636, TH: 100636, VN: 100636, ID: 100636 };\n\nfunction firstCatTag(tags) {\n  if (!Array.isArray(tags)) return null;\n  return tags.find(t => typeof t === 'string' && t.startsWith('cat-')) || null;\n}\n\n// === SPU 分组：Boss 给了 spu_groups 就用，没给就退化到 1 SKU = 1 SPU ===\nlet groups;\nif (spuGroups.length > 0) {\n  groups = spuGroups.map(g => ({\n    spu_key: g.spu_key,\n    sku_list: skuList.filter(s => g.sku_jans.includes(s.jan || s.sku))\n  })).filter(g => g.sku_list.length > 0);\n} else {\n  groups = skuList.map(s => ({ spu_key: s.jan || s.sku, sku_list: [s] }));\n}\n\n// 给每个 SPU 算类目（取第一个 SKU 的 cat-* tag）\nreturn groups.map(g => {\n  const tag = firstCatTag(g.sku_list[0]?.tags);\n  const catRow = tag && CAT_MAP[tag] ? CAT_MAP[tag] : CAT_FALLBACK;\n  return {\n    json: {\n      spu_key: g.spu_key,\n      sku_count: g.sku_list.length,\n      sku_list: g.sku_list,\n      cat_tag: tag,\n      cat_per_market: catRow,\n      markets: markets,\n      // 透传给后续节点\n      _vars: vars\n    }\n  };\n});\n"
       },
-      "id": "n04-process",
-      "name": "处理 SPU（占位）",
+      "id": "n11-aggregate",
+      "name": "B2 · SPU 聚合 + 类目映射",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [800, 300]
+      "position": [1000, 400]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "n12-split",
+      "name": "SPU 循环 · 每次 1 个",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [1200, 400]
+    },
+    {
+      "parameters": {
+        "url": "={{ $('B2 · SPU 聚合 + 类目映射').first().json._vars.volc_ark_url }}",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Authorization", "value": "={{ 'Bearer ' + $('B2 · SPU 聚合 + 类目映射').first().json._vars.volc_ark_api_key }}" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"{{ $('B2 · SPU 聚合 + 类目映射').first().json._vars.volc_ark_model }}\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"你是 Shopee 跨境上架内容专家。给你 N 个 SKU 的中/日文标题和卖点，请输出 1 个 SPU 的完整上架内容。严格按 JSON schema 返回，不要 markdown 围栏，不要解释文字。Schema: { spu_title_zh: string(<=30字), spu_desc_zh: string(200-400字), spu_seo: { keywords: string[<=10], tag: string[<=8], meta_desc: string(<=160字) }, translations: { TW: {title, desc}, PH: {title, desc}, MY: {title, desc}, SG: {title, desc}, TH: {title, desc}, VN: {title, desc}, ID: {title, desc} } }。每国 title 控制在 60 字内，desc 在 200-400 字内。TW/SG 用繁体中文；PH 用英语；MY 用马来语；TH 用泰语；VN 用越南语；ID 用印尼语。\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"={{ JSON.stringify({ spu_key: $json.spu_key, sku_list: $json.sku_list }) }}\"\n    }\n  ],\n  \"response_format\": { \"type\": \"json_object\" },\n  \"temperature\": 0.3\n}",
+        "options": {
+          "response": { "response": { "neverError": true } },
+          "timeout": 60000
+        }
+      },
+      "id": "n13-llm",
+      "name": "B3 · 火山方舟 DeepSeek-V3.2",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1400, 400]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// B3.2 · 解析 LLM JSON 输出，挂回 SPU 上下文\nconst llmResp = $input.first().json;\nconst spuCtx = $('SPU 循环 · 每次 1 个').item.json;\n\nlet content = null;\ntry {\n  const choice = llmResp.choices?.[0]?.message?.content;\n  if (typeof choice === 'string') {\n    // 去掉可能的 ```json 围栏\n    const cleaned = choice.replace(/^```(?:json)?\\s*/, '').replace(/\\s*```$/, '').trim();\n    content = JSON.parse(cleaned);\n  } else if (choice && typeof choice === 'object') {\n    content = choice;\n  }\n} catch (e) {\n  content = { _parse_error: String(e), _raw: llmResp.choices?.[0]?.message?.content };\n}\n\nreturn [{\n  json: {\n    ...spuCtx,\n    llm_content: content,\n    llm_ok: !!(content && content.spu_title_zh && content.translations)\n  }\n}];\n"
+      },
+      "id": "n14-parse-llm",
+      "name": "B3.2 · 解析 LLM 输出",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1600, 400]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// B4 · 主图流水线（串行调 image-processor sidecar）\n// 对每个 SKU 跑 upscale → cutout，最后对整个 SPU 跑 compose-spu\n// 注：N8N Code node 没法 await fetch（v1.x 限制），用 node-fetch 同步样式\nconst ctx = $input.first().json;\nconst base = ctx._vars.image_processor_base;\nconst skuList = ctx.sku_list;\n\n// 用 N8N 内置 helpers.httpRequest（typeVersion 2 Code node 支持）\nconst http = this.helpers.httpRequest;\n\nconst results = { upscale: [], cutout: [], spu_image: null, errors: [] };\n\n// Step 1: foreach SKU upscale + cutout\nfor (const sku of skuList) {\n  const jan = sku.jan || sku.sku;\n  const imgUrl = sku.main_image_url || sku.image_url || sku.image;\n  if (!jan || !imgUrl) {\n    results.errors.push({ jan, reason: 'no jan or image_url in SKU master' });\n    continue;\n  }\n  try {\n    const up = await http({\n      method: 'POST', url: base + '/upscale',\n      headers: { 'Content-Type': 'application/json' },\n      body: { jan, image_url: imgUrl, method: 'lanczos' },\n      json: true, timeout: 60000\n    });\n    results.upscale.push(up);\n    const cut = await http({\n      method: 'POST', url: base + '/cutout',\n      headers: { 'Content-Type': 'application/json' },\n      body: { jan },\n      json: true, timeout: 120000\n    });\n    results.cutout.push(cut);\n  } catch (e) {\n    results.errors.push({ jan, reason: String(e).slice(0, 200) });\n  }\n}\n\n// Step 2: 1 次 compose-spu 拼接\nif (results.cutout.length > 0) {\n  try {\n    const spu = await http({\n      method: 'POST', url: base + '/compose-spu',\n      headers: { 'Content-Type': 'application/json' },\n      body: { spu_key: ctx.spu_key, sku_jans: results.cutout.map(c => c.jan), source: 'branded' },\n      json: true, timeout: 60000\n    });\n    results.spu_image = spu;\n  } catch (e) {\n    results.errors.push({ stage: 'compose-spu', reason: String(e).slice(0, 200) });\n  }\n}\n\nreturn [{\n  json: {\n    ...ctx,\n    image_results: results,\n    image_ok: !!(results.spu_image && results.spu_image.saved_path) && results.errors.length === 0\n  }\n}];\n"
+      },
+      "id": "n15-images",
+      "name": "B4 · 主图流水线",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1800, 400]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// B5a · 拼装 XLSX 行（每 SPU 1 行；7 国并列字段）\n// 输出结构对应 Shopee 通用上架表 simplified 版\nconst ctx = $input.first().json;\nconst tr = ctx.llm_content?.translations || {};\nconst row = {\n  spu_key: ctx.spu_key,\n  sku_count: ctx.sku_count,\n  cat_tag: ctx.cat_tag || '',\n  spu_title_zh: ctx.llm_content?.spu_title_zh || '',\n  spu_desc_zh: ctx.llm_content?.spu_desc_zh || '',\n  seo_keywords: (ctx.llm_content?.spu_seo?.keywords || []).join('|'),\n  seo_tag: (ctx.llm_content?.spu_seo?.tag || []).join('|'),\n  seo_meta_desc: ctx.llm_content?.spu_seo?.meta_desc || '',\n  main_image_path: ctx.image_results?.spu_image?.saved_path || '',\n  sku_jans: ctx.sku_list.map(s => s.jan || s.sku).join(','),\n};\nfor (const mk of ctx.markets) {\n  row[`title_${mk}`] = tr[mk]?.title || '';\n  row[`desc_${mk}`]  = tr[mk]?.desc || '';\n  row[`category_id_${mk}`] = ctx.cat_per_market?.[mk] || '';\n}\nreturn [{ json: row }];\n"
+      },
+      "id": "n16-xlsx-row",
+      "name": "B5a · 拼 XLSX 行",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2000, 400]
+    },
+    {
+      "parameters": {
+        "operation": "toFile",
+        "fileFormat": "xlsx",
+        "binaryPropertyName": "data",
+        "options": {
+          "fileName": "shopee_upload_dry_run.xlsx"
+        }
+      },
+      "id": "n17-xlsx-out",
+      "name": "B5b · 导出 XLSX",
+      "type": "n8n-nodes-base.spreadsheetFile",
+      "typeVersion": 2,
+      "position": [2200, 400]
+    },
+    {
+      "parameters": {
+        "url": "={{ $('变量提取').first().json.cms_xlsx_upload_url }}",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-Run-Id", "value": "={{ $('变量提取').first().json.run_id }}" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            { "parameterType": "formBinaryData", "name": "file", "inputDataFieldName": "data" }
+          ]
+        },
+        "options": {
+          "response": { "response": { "neverError": true } }
+        }
+      },
+      "id": "n18-cms-upload",
+      "name": "B5b.2 · 上传 XLSX 给 CMS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2400, 400]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// B5c · Shopee 上架（stub，等 Partner Key）\n// TODO 接 Shopee Open API:\n//   1. POST /api/v2/product/add_item per market\n//   2. POST /api/v2/product/upload_image\n//   3. 解析 item_id，写回 CMS\n// 当前: 直接透传 + 占位\nconst rows = $input.all().map(i => i.json);\nreturn [{\n  json: {\n    rows_processed: rows.length,\n    shopee_status: 'STUB · 等 Partner Key',\n    spu_keys: rows.map(r => r.spu_key)\n  }\n}];\n"
+      },
+      "id": "n19-shopee-stub",
+      "name": "B5c · Shopee 上架（stub）",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2600, 400]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// 汇总：从所有 SPU 处理结果统计 → 给 CMS 回调和飞书用\nconst rows = $('B5c · Shopee 上架（stub）').first().json;\nconst vars = $('变量提取').first().json;\n\n// 拉所有 SPU 结果（从 B5a 拼 XLSX 行节点的全部 items）\nconst allRows = $items('B5a · 拼 XLSX 行').map(i => i.json);\nconst llmOk = allRows.filter(r => r.spu_title_zh).length;\nconst imageOk = allRows.filter(r => r.main_image_path).length;\nconst catHit = allRows.filter(r => r.cat_tag).length;\n\nreturn [{\n  json: {\n    run_id: vars.run_id,\n    cms_callback: vars.cms_callback,\n    summary: {\n      total_spu: allRows.length,\n      llm_ok: llmOk,\n      image_ok: imageOk,\n      cat_hit: catHit,\n      cat_hit_rate: allRows.length ? (catHit / allRows.length * 100).toFixed(1) + '%' : '0%',\n      shopee: rows.shopee_status\n    }\n  }\n}];\n"
+      },
+      "id": "n20-summary",
+      "name": "汇总统计",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2800, 400]
     },
     {
       "parameters": {
@@ -69,27 +232,27 @@
         "method": "POST",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"run_id\": \"{{ $json.run_id }}\",\n  \"module\": \"shopee_mass_upload\",\n  \"status\": \"completed\",\n  \"summary\": {{ JSON.stringify($json.summary) }},\n  \"message\": \"{{ $json.note }}\"\n}",
+        "jsonBody": "={\n  \"run_id\": \"{{ $json.run_id }}\",\n  \"module\": \"shopee_mass_upload\",\n  \"status\": \"completed\",\n  \"summary\": {{ JSON.stringify($json.summary) }}\n}",
         "options": {
           "response": { "response": { "neverError": true } }
         }
       },
-      "id": "n05-cms-done",
+      "id": "n21-cms-done",
       "name": "CMS 回调 · completed",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1000, 300]
+      "position": [3000, 400]
     },
     {
       "parameters": {
         "language": "javaScript",
-        "jsCode": "// 飞书自定义机器人「签名校验」算法（Lark Open Platform）\n// 算法：HMAC-SHA256(key = `${timestamp}\\n${secret}`, data = '')，结果 base64 编码\n// LARK_BOT_SIGN_SECRET 为空 → 跳过（不启用签名 / 用关键词校验）\n\nconst crypto = require('crypto');\nconst secret = $env.LARK_BOT_SIGN_SECRET || '';\nconst now = Math.floor(Date.now() / 1000);\n\nlet ts = '';\nlet sign = '';\nif (secret) {\n  const stringToSign = `${now}\\n${secret}`;\n  const hmac = crypto.createHmac('sha256', stringToSign);\n  hmac.update('');\n  sign = hmac.digest('base64');\n  ts = String(now);\n}\n\nconst prev = $input.first().json;\nreturn [{\n  json: {\n    ...prev,\n    lark_timestamp: ts,\n    lark_sign: sign\n  }\n}];"
+        "jsCode": "// 飞书签名计算（HMAC-SHA256，跟 v1.7 一致）\nconst crypto = require('crypto');\nconst secret = $env.LARK_BOT_SIGN_SECRET || '';\nconst now = Math.floor(Date.now() / 1000);\nlet ts = '';\nlet sign = '';\nif (secret) {\n  const stringToSign = `${now}\\n${secret}`;\n  const hmac = crypto.createHmac('sha256', stringToSign);\n  hmac.update('');\n  sign = hmac.digest('base64');\n  ts = String(now);\n}\nconst prev = $input.first().json;\nreturn [{ json: { ...prev, lark_timestamp: ts, lark_sign: sign } }];\n"
       },
-      "id": "n05b-lark-sign",
+      "id": "n22-lark-sign",
       "name": "飞书签名计算",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1200, 300]
+      "position": [3200, 400]
     },
     {
       "parameters": {
@@ -97,44 +260,67 @@
         "method": "POST",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"timestamp\": \"{{ $json.lark_timestamp }}\",\n  \"sign\": \"{{ $json.lark_sign }}\",\n  \"msg_type\": \"interactive\",\n  \"card\": {\n    \"header\": {\n      \"title\": { \"tag\": \"plain_text\", \"content\": \"Shopee 自动上架完成\" },\n      \"template\": \"green\"\n    },\n    \"elements\": [\n      { \"tag\": \"div\", \"text\": { \"tag\": \"lark_md\", \"content\": \"**任务 ID**: {{ $('处理 SPU（占位）').item.json.run_id }}\\n**市场**: {{ $('处理 SPU（占位）').item.json.market }}\\n**总 SPU**: {{ $('处理 SPU（占位）').item.json.summary.total_spu }}\\n**成功**: {{ $('处理 SPU（占位）').item.json.summary.created }}\\n**失败**: {{ $('处理 SPU（占位）').item.json.summary.failed }}\\n**跳过**: {{ $('处理 SPU（占位）').item.json.summary.skipped }}\" } }\n    ]\n  }\n}",
+        "jsonBody": "={\n  \"timestamp\": \"{{ $json.lark_timestamp }}\",\n  \"sign\": \"{{ $json.lark_sign }}\",\n  \"msg_type\": \"interactive\",\n  \"card\": {\n    \"header\": {\n      \"title\": { \"tag\": \"plain_text\", \"content\": \"Shopee v2.0 编排完成\" },\n      \"template\": \"green\"\n    },\n    \"elements\": [\n      { \"tag\": \"div\", \"text\": { \"tag\": \"lark_md\", \"content\": \"**任务 ID**: {{ $('汇总统计').item.json.run_id }}\\n**SPU 总数**: {{ $('汇总统计').item.json.summary.total_spu }}\\n**LLM 生成成功**: {{ $('汇总统计').item.json.summary.llm_ok }}\\n**主图生成成功**: {{ $('汇总统计').item.json.summary.image_ok }}\\n**类目命中**: {{ $('汇总统计').item.json.summary.cat_hit }} ({{ $('汇总统计').item.json.summary.cat_hit_rate }})\\n**Shopee 上架**: {{ $('汇总统计').item.json.summary.shopee }}\" } }\n    ]\n  }\n}",
         "options": {
           "response": { "response": { "neverError": true } }
         }
       },
-      "id": "n06-lark",
+      "id": "n23-lark",
       "name": "飞书通知",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1400, 300]
-    },
-    {
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ run_id: $json.run_id, status: 'accepted', message: 'N8N 已接受任务，处理结果稍后回调 CMS' }) }}",
-        "options": {}
-      },
-      "id": "n07-response",
-      "name": "返回 CMS",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1,
-      "position": [600, 500]
+      "position": [3400, 400]
     }
   ],
   "connections": {
     "Webhook · CMS 触发": {
       "main": [[
-        { "node": "环境变量提取", "type": "main", "index": 0 },
-        { "node": "返回 CMS", "type": "main", "index": 0 }
+        { "node": "变量提取", "type": "main", "index": 0 }
       ]]
     },
-    "环境变量提取": {
-      "main": [[{ "node": "CMS 回调 · processing", "type": "main", "index": 0 }]]
+    "变量提取": {
+      "main": [[
+        { "node": "立即返回 CMS", "type": "main", "index": 0 },
+        { "node": "CMS 回调 · processing", "type": "main", "index": 0 }
+      ]]
     },
     "CMS 回调 · processing": {
-      "main": [[{ "node": "处理 SPU（占位）", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "B1 · 查 SKU 主档", "type": "main", "index": 0 }]]
     },
-    "处理 SPU（占位）": {
+    "B1 · 查 SKU 主档": {
+      "main": [[{ "node": "B2 · SPU 聚合 + 类目映射", "type": "main", "index": 0 }]]
+    },
+    "B2 · SPU 聚合 + 类目映射": {
+      "main": [[{ "node": "SPU 循环 · 每次 1 个", "type": "main", "index": 0 }]]
+    },
+    "SPU 循环 · 每次 1 个": {
+      "main": [
+        [{ "node": "B5b · 导出 XLSX", "type": "main", "index": 0 }],
+        [{ "node": "B3 · 火山方舟 DeepSeek-V3.2", "type": "main", "index": 0 }]
+      ]
+    },
+    "B3 · 火山方舟 DeepSeek-V3.2": {
+      "main": [[{ "node": "B3.2 · 解析 LLM 输出", "type": "main", "index": 0 }]]
+    },
+    "B3.2 · 解析 LLM 输出": {
+      "main": [[{ "node": "B4 · 主图流水线", "type": "main", "index": 0 }]]
+    },
+    "B4 · 主图流水线": {
+      "main": [[{ "node": "B5a · 拼 XLSX 行", "type": "main", "index": 0 }]]
+    },
+    "B5a · 拼 XLSX 行": {
+      "main": [[{ "node": "SPU 循环 · 每次 1 个", "type": "main", "index": 0 }]]
+    },
+    "B5b · 导出 XLSX": {
+      "main": [[{ "node": "B5b.2 · 上传 XLSX 给 CMS", "type": "main", "index": 0 }]]
+    },
+    "B5b.2 · 上传 XLSX 给 CMS": {
+      "main": [[{ "node": "B5c · Shopee 上架（stub）", "type": "main", "index": 0 }]]
+    },
+    "B5c · Shopee 上架（stub）": {
+      "main": [[{ "node": "汇总统计", "type": "main", "index": 0 }]]
+    },
+    "汇总统计": {
       "main": [[{ "node": "CMS 回调 · completed", "type": "main", "index": 0 }]]
     },
     "CMS 回调 · completed": {
@@ -151,7 +337,8 @@
   "tags": [
     { "name": "shopee" },
     { "name": "cms-integration" },
-    { "name": "mvp" },
-    { "name": "lark-sign" }
+    { "name": "v2.0" },
+    { "name": "lark-sign" },
+    { "name": "image-processor" }
   ]
 }
