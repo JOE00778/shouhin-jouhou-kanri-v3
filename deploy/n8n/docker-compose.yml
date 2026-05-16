@@ -56,6 +56,7 @@ services:
       SHOPEE_API_BASE: ${SHOPEE_API_BASE:-https://partner.shopeemobile.com}
       SHOPEE_SHOP_IDS: ${SHOPEE_SHOP_IDS:-{}}
       SHOPEE_ACCESS_TOKENS: ${SHOPEE_ACCESS_TOKENS:-{}}
+      SHOPEE_REFRESH_TOKENS: ${SHOPEE_REFRESH_TOKENS:-{}}
       # 国产 LLM / 图像模型 API（本地化合规：国内云、承诺不训练用户数据）
       # DeepSeek（备用，主力走火山方舟 DeepSeek-V3.2 endpoint）
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}

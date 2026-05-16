@@ -268,3 +268,38 @@ async def xlsx_upload(
         "bytes": len(body),
         "filename": dst.name,
     }
+
+
+# ────────────────────────────────────────────────────────────────
+# Shopee tokens persistence （v2.3 给 shopee-mass-upload n02b 节点用）
+# 文件存储，0 DB 改动；每次 N8N workflow 触发时 refresh 一次 access_token
+# 并把新的 refresh_token 持久化（refresh_token 每次也会变）。
+# ────────────────────────────────────────────────────────────────
+SHOPEE_TOKENS_FILE = OUTPUTS_DIR / "shopee_tokens.json"
+
+
+@app.get("/api/automation/shopee/tokens")
+def get_shopee_tokens():
+    if SHOPEE_TOKENS_FILE.exists():
+        try:
+            return json.loads(SHOPEE_TOKENS_FILE.read_text(encoding="utf-8"))
+        except Exception as e:
+            log.error("read shopee_tokens.json failed: %s", e)
+            return {"refresh_tokens": {}, "updated_at": None, "error": str(e)}
+    return {"refresh_tokens": {}, "updated_at": None}
+
+
+class ShopeeTokensReq(BaseModel):
+    refresh_tokens: dict[str, str]
+    updated_at: str | None = None
+
+
+@app.put("/api/automation/shopee/tokens")
+def put_shopee_tokens(req: ShopeeTokensReq):
+    OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
+    body = {
+        "refresh_tokens": req.refresh_tokens,
+        "updated_at": req.updated_at or dt.datetime.utcnow().isoformat(timespec="seconds") + "Z",
+    }
+    SHOPEE_TOKENS_FILE.write_text(json.dumps(body, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {"saved": True, "path": str(SHOPEE_TOKENS_FILE), "markets": list(req.refresh_tokens.keys())}

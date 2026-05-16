@@ -249,9 +249,11 @@ POST https://n8n.smikie-cms.cc/webhook/shopee-mass-upload
 | 1 | `SHOPEE_PARTNER_ID` | Shopee Open Platform → 我的应用 → 应用详情 |
 | 2 | `SHOPEE_PARTNER_KEY` | 同上（页面有「显示密钥」按钮，64 位 hex 串）|
 | 3 | `SHOPEE_SHOP_IDS` (JSON dict) | 7 国分别走 OAuth 授权流程：`https://partner.shopeemobile.com/api/v2/shop/auth_partner?partner_id=...&redirect=...` 走完拿 `shop_id`，每国一份 |
-| 4 | `SHOPEE_ACCESS_TOKENS` (JSON dict) | OAuth 完成后回调里的 `code` 换 `access_token`（4 小时有效，需 cron auto-refresh）|
+| 4 | `SHOPEE_REFRESH_TOKENS` (JSON dict) | OAuth 完成后回调里的 `code` 换 `refresh_token`（30 天有效）|
 
-**未配齐前**：B3.5 节点自动 stub，飞书卡片显示「**类目自动判定：⏸ STUB（等 Shopee 凭证）**」，其他节点照常跑。
+**v2.3+ 已不需要 ACCESS_TOKEN**：n02b 节点每次 workflow 触发时自动用 `refresh_token` 换新的 `access_token`，无需 cron、无需手动维护。
+
+**未配齐前**：n02b + B3.5 节点自动 stub，飞书卡片显示「**类目自动判定：⏸ STUB（等 Shopee 凭证）**」，其他节点照常跑。
 
 凭证齐了之后，`.env` 改 4 行即可，**workflow JSON 不用再动**：
 
@@ -259,10 +261,12 @@ POST https://n8n.smikie-cms.cc/webhook/shopee-mass-upload
 SHOPEE_PARTNER_ID=1234567
 SHOPEE_PARTNER_KEY=abcdef0123456789...
 SHOPEE_SHOP_IDS={"TW":"100001","PH":"200001","MY":"300001","SG":"400001","TH":"500001","VN":"600001","ID":"700001"}
-SHOPEE_ACCESS_TOKENS={"TW":"eyJ...","PH":"eyJ...","..."}
+SHOPEE_REFRESH_TOKENS={"TW":"eyJ...","PH":"eyJ...","..."}
 ```
 
-⚠️ access_token 4 小时过期 — 真生产前必须做 cron auto-refresh（下一个 task）。
+每 30 天 Boss 手工重走 1 次 OAuth → 拿新 `refresh_token` 更新 `.env` SHOPEE_REFRESH_TOKENS 这一行 → recreate n8n。**每月人工 5 分钟**。
+
+n02b 自动 refresh 拿到的最新 refresh_token 持久化在 `D:\Smikie-Images\automation_outputs\shopee_tokens.json`（每次 refresh 后更新）。`.env` 里的 SHOPEE_REFRESH_TOKENS 只是「首次启动」和「持久化文件丢失」时的兜底初始值。
 
 ### v2.2 部署前 Boss 要补的 env
 
