@@ -29,6 +29,7 @@ services:
       - ./schema.postgres.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
     networks:
       - cms_net
+      - smikie_shared    # ← 跨 stack 网络：让 N8N stack 的 cms-api 容器能连进来
     deploy:
       resources:
         limits:
@@ -131,3 +132,12 @@ services:
 networks:
   cms_net:
     driver: bridge
+  # ============================================================
+  # 跨 stack 共享网络（与 deploy/n8n/docker-compose.yml 同名 external）
+  # 部署前需先手动建一次:  docker network create smikie_shared
+  # 然后两边 stack 都 docker compose up -d --force-recreate
+  # 仅 postgres 服务加入此网络（让 N8N stack 的 cms-api 能直连）
+  # ============================================================
+  smikie_shared:
+    external: true
+    name: smikie_shared

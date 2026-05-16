@@ -235,50 +235,72 @@ POST https://n8n.smikie-cms.cc/webhook/shopee-mass-upload
 
 **v2.1 新增 bonus**：cms-api 还实装了 `/api/automation/callback`（之前 README 缺口①「CMS callback endpoint 未实装」一起补了），automation_runs 表会被正常 UPDATE 到 completed，CMS Page 21 Tab 4「📜 历史运行」能看到真状态。
 
-### v2.1 部署前 Boss 要补的 env
+### v2.2 部署前 Boss 要补的 env
 
 `.env` 加这 4 行（v1.8 已有 `WHITEBG_HOST_PATH`）：
 
 ```
 VOLC_ARK_TEXT_MODEL=deepseek-v3-2-251201
 CMS_BASE_URL=https://smikie-cms.cc
-CMS_DB_HOST_PATH=D:/Smikie-CMS/data_warehouse/warehouse.db
+POSTGRES_PASSWORD=<跟 deploy/windows/.env 里 POSTGRES_PASSWORD 完全一致>
 CMS_OUTPUTS_HOST_PATH=D:/Smikie-Images/automation_outputs
 ```
 
-**关键**：`CMS_DB_HOST_PATH` 必须填**真实** warehouse.db 路径。如果 CMS 部署在 `D:\Smikie-CMS\` 之外（比如 `C:\` 或 NAS），按实际填。容器以 **ro** 挂入，不会写库。
+**关键**：
+- `POSTGRES_PASSWORD` 必须跟 CMS V2.3 部署用的密码**完全一致**（在 `C:\Users\smiki\CMS-v230\deploy\windows\.env` 里找）
+- 不一致 → cms-api 启动后 `/health` 报 `authentication failed`
 
-### v2.1 部署步骤
+### v2.2 部署步骤（架构升级：跨 stack network + cms-api 改 Postgres）
 
 ```powershell
-# 1. 拉 docker-compose + workflow JSON
+# === Step 0: 一次性 — 建 docker external network ===
+docker network create smikie_shared
+
+# === Step 1: 改 CMS V2.3 部署（让 cms_postgres 加入 smikie_shared）===
+cd C:\Users\smiki\CMS-v230
+# 拉新的 deploy/windows/docker-compose.yml（postgres 服务加 smikie_shared network）
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/JOE00778/CMS-v230/main/deploy/windows/docker-compose.yml" -OutFile deploy\windows\docker-compose.yml -UseBasicParsing
+cd deploy\windows
+docker compose up -d --force-recreate postgres
+
+# === Step 2: 改 N8N stack（cms-api 加入 smikie_shared + 用 Postgres）===
+cd D:\Smikie-N8N\Smikie-N8N-Installer-v1.5
 Invoke-WebRequest -Uri "https://raw.githubusercontent.com/JOE00778/CMS-v230/main/deploy/n8n/docker-compose.yml" -OutFile docker-compose.yml -UseBasicParsing
 Invoke-WebRequest -Uri "https://raw.githubusercontent.com/JOE00778/CMS-v230/main/deploy/n8n/workflows/shopee-mass-upload.json" -OutFile workflows\shopee-mass-upload.json -UseBasicParsing
 
-# 2. 拉 cms_api sidecar 源码
-New-Item -ItemType Directory -Force -Path cms_api
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/JOE00778/CMS-v230/main/deploy/n8n/cms_api/Dockerfile" -OutFile cms_api\Dockerfile -UseBasicParsing
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/JOE00778/CMS-v230/main/deploy/n8n/cms_api/app.py" -OutFile cms_api\app.py -UseBasicParsing
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/JOE00778/CMS-v230/main/deploy/n8n/cms_api/requirements.txt" -OutFile cms_api\requirements.txt -UseBasicParsing
+# 拉 cms_api / image_processor 源码
+New-Item -ItemType Directory -Force -Path cms_api, image_processor\assets
+foreach ($f in 'Dockerfile','app.py','requirements.txt') {
+  Invoke-WebRequest -Uri "https://raw.githubusercontent.com/JOE00778/CMS-v230/main/deploy/n8n/cms_api/$f" -OutFile cms_api\$f -UseBasicParsing
+  Invoke-WebRequest -Uri "https://raw.githubusercontent.com/JOE00778/CMS-v230/main/deploy/n8n/image_processor/$f" -OutFile image_processor\$f -UseBasicParsing
+}
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/JOE00778/CMS-v230/main/deploy/n8n/image_processor/assets/template_red.png" -OutFile image_processor\assets\template_red.png -UseBasicParsing
 
-# 3. 加新 env vars（如果已存在跳过）
-Add-Content -Path .env -Value "`r`nVOLC_ARK_TEXT_MODEL=deepseek-v3-2-251201"
-Add-Content -Path .env -Value "CMS_BASE_URL=https://smikie-cms.cc"
-Add-Content -Path .env -Value "CMS_DB_HOST_PATH=D:/Smikie-CMS/data_warehouse/warehouse.db"
-Add-Content -Path .env -Value "CMS_OUTPUTS_HOST_PATH=D:/Smikie-Images/automation_outputs"
+# === Step 3: 改 .env（关键! POSTGRES_PASSWORD 跟 CMS V2.3 同密码）===
+# 先在 CMS V2.3 .env 找 POSTGRES_PASSWORD 抄过来
+notepad C:\Users\smiki\CMS-v230\deploy\windows\.env
+# 把那行 POSTGRES_PASSWORD=xxxx 复制
+notepad .env
+# 在 N8N .env 加这 4 行：
+#   VOLC_ARK_TEXT_MODEL=deepseek-v3-2-251201
+#   CMS_BASE_URL=https://smikie-cms.cc
+#   POSTGRES_PASSWORD=<刚抄的那串>
+#   CMS_OUTPUTS_HOST_PATH=D:/Smikie-Images/automation_outputs
 New-Item -ItemType Directory -Force -Path D:\Smikie-Images\automation_outputs
 
-# 4. 起 cms-api + image-processor + 重启 n8n（让新 env 生效）
+# === Step 4: 起 sidecar + 重启 n8n ===
 docker compose up -d --build cms-api image-processor
 docker compose up -d --force-recreate n8n
 
-# 5. 健康检查
-Invoke-RestMethod "http://localhost:8788/health"   # image-processor
-Invoke-RestMethod "http://localhost:8789/health"   # cms-api（应显示 db_exists:true, item_v2_count:数千）
+# === Step 5: 健康检查 ===
+Invoke-RestMethod "http://localhost:8788/health"   # image-processor: template_ready=true
+Invoke-RestMethod "http://localhost:8789/health"   # cms-api: backend=postgres, item_v2_count=数千
+# item_v2_count 若是数字 → ✅ cms-api 成功连上 cms_postgres
+# item_v2_count 是 null + error 含 authentication failed → POSTGRES_PASSWORD 不一致，回 Step 3
 
-# 6. N8N UI 重导 workflow（覆盖 v1.7）
+# === Step 6: N8N UI 重导 workflow（覆盖旧 v1.7）===
 # 浏览器 https://n8n.smikie-cms.cc → Workflows → 找到旧 Shopee 自动上架 → 删除
-# Workflows → Import from File → 选 workflows\shopee-mass-upload.json
+# Workflows → Import from File → 选 D:\Smikie-N8N\...\workflows\shopee-mass-upload.json
 # 右上角 Active toggle 打开
 ```
 

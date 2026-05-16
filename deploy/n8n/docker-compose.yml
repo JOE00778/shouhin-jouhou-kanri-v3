@@ -158,17 +158,20 @@ services:
     restart: unless-stopped
     environment:
       PORT: "8789"
+      # Inspiron 生产用 Postgres：连 CMS V2.3 stack 的 cms_postgres 容器
+      # 通过 external network smikie_shared 跨 stack 访问（用 container_name）
+      DATABASE_URL: ${CMS_DATABASE_URL:-postgresql://cms:${POSTGRES_PASSWORD:-}@cms_postgres:5432/cms}
+      # SQLite 兜底路径（仅在 DATABASE_URL 留空时用，Mac 本地开发场景）
       CMS_DB_PATH: /data/warehouse.db
       CMS_OUTPUTS_DIR: /data/outputs
       CMS_PUBLIC_BASE: ${CMS_BASE_URL:-https://smikie-cms.cc}
       TZ: Asia/Tokyo
     volumes:
-      # CMS 主库 warehouse.db (ro)。Boss 要按 CMS 实际部署位置填 .env 的 CMS_DB_HOST_PATH
-      - ${CMS_DB_HOST_PATH:-D:/Smikie-CMS/data_warehouse/warehouse.db}:/data/warehouse.db:ro
       # XLSX dry-run 产出（rw）；Boss 可在资源管理器看
       - ${CMS_OUTPUTS_HOST_PATH:-D:/Smikie-Images/automation_outputs}:/data/outputs
     networks:
       - smikie_n8n_net
+      - smikie_shared    # ← 跨 stack 网络，跟 cms_postgres / cms_streamlit 通讯
     expose:
       - "8789"
     deploy:
@@ -226,3 +229,11 @@ services:
 networks:
   smikie_n8n_net:
     driver: bridge
+  # ============================================================
+  # 跨 stack 共享网络（与 CMS V2.3 deploy/windows/docker-compose.yml 同名）
+  # 部署前需先手动建一次:   docker network create smikie_shared
+  # 然后两边 stack 都 docker compose up -d --force-recreate
+  # ============================================================
+  smikie_shared:
+    external: true
+    name: smikie_shared
