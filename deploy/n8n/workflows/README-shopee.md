@@ -222,18 +222,47 @@ POST https://n8n.smikie-cms.cc/webhook/shopee-mass-upload
 
 不给 `spu_groups` → 自动退化到 1 SKU = 1 SPU。
 
-### v2.0 已知缺口（**部署前必看**） — v2.1 已补缺口 ①②⑤
+### v2.0 已知缺口（**部署前必看**） — v2.2 已堵 5 个，只剩 Shopee 凭证
 
 | # | 缺口 | 状态 |
 |---|---|---|
-| ~~1~~ | ~~CMS 没装 `/api/sku/master` 端点~~ | ✅ **v2.1 已补**：cms-api sidecar `/api/sku/master?jans=...`（JOIN v_item_master + item_shopify_tags）|
-| ~~2~~ | ~~CMS 没装 `/api/automation/xlsx-upload` 端点~~ | ✅ **v2.1 已补**：cms-api sidecar `/api/automation/xlsx-upload`（multipart，落 `D:\Smikie-Images\automation_outputs\`）|
-| 3 | 类目映射表只填 5 个 cat-* 示例 | ⏳ Boss 提供完整 cat-* → Shopee 7 国 category_id 表 |
-| 4 | category_id 数字是占位的 | ⏳ Boss 在 Shopee Seller Center 拿真实 category_id |
-| ~~5~~ | ~~SKU 主档字段名假设~~ | ✅ **v2.1 已对齐**：cms-api 按 item_v2 真实字段返回，N8N B2 节点 contract 已校准 |
-| 6 | B5c Shopee 上架是 stub | ⏳ 等 Partner Key |
+| ~~1~~ | ~~CMS 没装 `/api/sku/master` 端点~~ | ✅ **v2.1 已补**：cms-api sidecar |
+| ~~2~~ | ~~CMS 没装 `/api/automation/xlsx-upload` 端点~~ | ✅ **v2.1 已补**：cms-api sidecar |
+| ~~3~~ | ~~类目映射表手抄~~ | ✅ **v2.2 砍掉**：n14b 节点改调 Shopee `category_recommend` API 自动判定，**Boss 不用抄任何 ID**（凭证齐了 0 工作量） |
+| ~~4~~ | ~~category_id 占位数字~~ | ✅ **v2.2 同上**：API 直接返回真实叶子类目 |
+| ~~5~~ | ~~SKU 主档字段名假设~~ | ✅ **v2.1 已对齐** |
+| 6 | B5c Shopee 上架是 stub | ⏳ 等 Partner Key + shop_id + access_token |
 
-**v2.1 新增 bonus**：cms-api 还实装了 `/api/automation/callback`（之前 README 缺口①「CMS callback endpoint 未实装」一起补了），automation_runs 表会被正常 UPDATE 到 completed，CMS Page 21 Tab 4「📜 历史运行」能看到真状态。
+**v2.2 架构升级**：
+- n11 节点 (B2 · SPU 聚合) 删除硬编码 CAT_MAP，只做 SPU 分组
+- 新增 n14b 节点 (B3.5 · Shopee category_recommend)，每 SPU 对 7 国并行调 API，自动返回该国叶子类目 ID
+- HMAC-SHA256 签名内嵌（不依赖外部库）
+- Stub fallback：`SHOPEE_PARTNER_KEY` 未设时整节点 skip，workflow 仍跑通（XLSX category_id 列空）
+- 飞书卡片字段从「类目命中 N/M」改为「✅ 全市场 OK · ⚠️ 部分 · ❌ 失败」更准确
+
+### Shopee 凭证准备（v2.2 唯一阻塞项）
+
+要让 B3.5 `category_recommend` 节点真调通（不走 stub），需要 **4 件 Shopee 凭证**：
+
+| # | 凭证 | 怎么拿 |
+|---|---|---|
+| 1 | `SHOPEE_PARTNER_ID` | Shopee Open Platform → 我的应用 → 应用详情 |
+| 2 | `SHOPEE_PARTNER_KEY` | 同上（页面有「显示密钥」按钮，64 位 hex 串）|
+| 3 | `SHOPEE_SHOP_IDS` (JSON dict) | 7 国分别走 OAuth 授权流程：`https://partner.shopeemobile.com/api/v2/shop/auth_partner?partner_id=...&redirect=...` 走完拿 `shop_id`，每国一份 |
+| 4 | `SHOPEE_ACCESS_TOKENS` (JSON dict) | OAuth 完成后回调里的 `code` 换 `access_token`（4 小时有效，需 cron auto-refresh）|
+
+**未配齐前**：B3.5 节点自动 stub，飞书卡片显示「**类目自动判定：⏸ STUB（等 Shopee 凭证）**」，其他节点照常跑。
+
+凭证齐了之后，`.env` 改 4 行即可，**workflow JSON 不用再动**：
+
+```
+SHOPEE_PARTNER_ID=1234567
+SHOPEE_PARTNER_KEY=abcdef0123456789...
+SHOPEE_SHOP_IDS={"TW":"100001","PH":"200001","MY":"300001","SG":"400001","TH":"500001","VN":"600001","ID":"700001"}
+SHOPEE_ACCESS_TOKENS={"TW":"eyJ...","PH":"eyJ...","..."}
+```
+
+⚠️ access_token 4 小时过期 — 真生产前必须做 cron auto-refresh（下一个 task）。
 
 ### v2.2 部署前 Boss 要补的 env
 

@@ -50,9 +50,12 @@ services:
       LARK_WEBHOOK_URL: ${LARK_WEBHOOK_URL:-}
       # 飞书机器人签名校验 Secret（启用「签名校验」时填，留空=用关键词校验）
       LARK_BOT_SIGN_SECRET: ${LARK_BOT_SIGN_SECRET:-}
-      # Shopee Open API 凭证
+      # Shopee Open API 凭证（v2.2 workflow B3.5 category_recommend + B5c 真上架）
       SHOPEE_PARTNER_ID: ${SHOPEE_PARTNER_ID:-}
       SHOPEE_PARTNER_KEY: ${SHOPEE_PARTNER_KEY:-}
+      SHOPEE_API_BASE: ${SHOPEE_API_BASE:-https://partner.shopeemobile.com}
+      SHOPEE_SHOP_IDS: ${SHOPEE_SHOP_IDS:-{}}
+      SHOPEE_ACCESS_TOKENS: ${SHOPEE_ACCESS_TOKENS:-{}}
       # 国产 LLM / 图像模型 API（本地化合规：国内云、承诺不训练用户数据）
       # DeepSeek（备用，主力走火山方舟 DeepSeek-V3.2 endpoint）
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
