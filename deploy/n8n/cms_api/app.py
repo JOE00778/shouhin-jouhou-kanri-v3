@@ -387,20 +387,22 @@ def shopee_oauth_url(market: str, redirect: str | None = None):
         "market": market,
         "authorize_url": url,
         "redirect_url": cb,
-        "sign_mode": _PK_MODE,
         "instruction": (
             f"1) 浏览器打开 authorize_url 登录 Shopee {market} 卖家账号；"
-            f"2) 授权后 Shopee 会跳转 redirect_url，带上 code 和 shop_id；"
-            f"3) 浏览器会自动调 callback 端点完成 refresh_token 持久化。"
+            f"2) 授权后 Shopee 会跳转 redirect_url，带上 code 和 shop_id (Local) 或 main_account_id (CB merchant)；"
+            f"3) cms-api callback 自动完成 refresh_token 持久化（v2.11 起返回 HTML 结果页）。"
         ),
     }
 
 
-def _oauth_result_html(title: str, color: str, lines: list[str]) -> str:
+def _oauth_result_html(title: str, color: str, lines: list[tuple[str, str]]) -> str:
     """简易授权结果页 HTML，避免浏览器看到裸 JSON 或白屏。"""
-    rows = "\n".join(f"<tr><td style='padding:6px 12px;color:#888;'>{k}</td>"
-                     f"<td style='padding:6px 12px;font-family:monospace;'>{v}</td></tr>"
-                     for k, v in lines)
+    import html as _html
+    rows = "\n".join(
+        f"<tr><td style='padding:6px 12px;color:#888;'>{_html.escape(k)}</td>"
+        f"<td style='padding:6px 12px;font-family:monospace;'>{_html.escape(str(v))}</td></tr>"
+        for k, v in lines
+    )
     return (
         "<!doctype html><html><head><meta charset='utf-8'>"
         f"<title>{title}</title>"

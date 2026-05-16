@@ -8,6 +8,8 @@ data_warehouse/warehouse.db-*
 .streamlit/secrets.toml
 data/inputs/
 data/outputs/
+# 审计日志（image_translate 等出境调用记录）
+data/audit/
 *.xlsx
 *.xls
 
@@ -24,3 +26,10 @@ shopee_listing/**/__pycache__/
 deploy/n8n/.build/
 deploy/n8n/data/
 deploy/n8n/.env
+deploy/n8n/dist/*.zip
+# stock_monitor 运行时产物
+deploy/n8n/stock_monitor/state/
+deploy/n8n/stock_monitor/reports/
+deploy/n8n/stock_monitor/logs/
+deploy/n8n/stock_monitor/cookies/*.txt
+deploy/n8n/stock_monitor/cookies/*.json
