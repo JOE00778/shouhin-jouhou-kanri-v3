@@ -171,6 +171,8 @@ services:
       SHOPEE_API_BASE: ${SHOPEE_API_BASE:-https://partner.shopeemobile.com}
       SHOPEE_PARTNER_ID: ${SHOPEE_PARTNER_ID:-}
       SHOPEE_PARTNER_KEY: ${SHOPEE_PARTNER_KEY:-}
+      # v2.9: partner_key 签名模式 (utf8 = Live 环境默认；hex = Test 环境 partner_key 是 hex string)
+      SHOPEE_PARTNER_KEY_MODE: ${SHOPEE_PARTNER_KEY_MODE:-utf8}
       TZ: Asia/Tokyo
     volumes:
       # XLSX dry-run 产出（rw）；Boss 可在资源管理器看
