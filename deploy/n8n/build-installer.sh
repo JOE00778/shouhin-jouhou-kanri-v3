@@ -27,6 +27,7 @@ cp -v "${SCRIPT_DIR}/installer/enable-wsl.ps1" "${STAGING}/installer/"
 cp -v "${SCRIPT_DIR}/installer/install-docker.ps1" "${STAGING}/installer/"
 cp -v "${SCRIPT_DIR}/installer/uninstall.bat" "${STAGING}/installer/"
 cp -v "${SCRIPT_DIR}/installer/uninstall.ps1" "${STAGING}/installer/"
+cp -v "${SCRIPT_DIR}/installer/oauth-7-markets.ps1" "${STAGING}/installer/" 2>/dev/null || true
 
 mkdir -p "${STAGING}/workflows"
 cp -v "${SCRIPT_DIR}"/workflows/*.json "${STAGING}/workflows/" 2>/dev/null || echo "  (no workflows yet)"

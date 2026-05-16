@@ -248,7 +248,7 @@ POST https://n8n.smikie-cms.cc/webhook/shopee-mass-upload
 |---|---|---|
 | 1 | `SHOPEE_PARTNER_ID` | Shopee Open Platform → 我的应用 → 应用详情 |
 | 2 | `SHOPEE_PARTNER_KEY` | 同上（页面有「显示密钥」按钮，64 位 hex 串）|
-| 3 | `SHOPEE_SHOP_IDS` (JSON dict) | 7 国分别走 OAuth 授权流程：`https://partner.shopeemobile.com/api/v2/shop/auth_partner?partner_id=...&redirect=...` 走完拿 `shop_id`，每国一份 |
+| 3 | `SHOPEE_SHOP_IDS` (JSON dict) | 7 国分别走 OAuth 授权流程（Test: `openplatform.sandbox.test-stable.shopee.sg` / Live: `openplatform.shopee.sg`）`/api/v2/shop/auth_partner?partner_id=...&redirect=...` 走完拿 `shop_id`，每国一份。**注意 v2 入口已不在老域名 `partner.shopeemobile.com`，那是 v1 域名 v2 partner_id 不识别。** |
 | 4 | `SHOPEE_REFRESH_TOKENS` (JSON dict) | OAuth 完成后回调里的 `code` 换 `refresh_token`（30 天有效）|
 
 **v2.3+ 已不需要 ACCESS_TOKEN**：n02b 节点每次 workflow 触发时自动用 `refresh_token` 换新的 `access_token`，无需 cron、无需手动维护。

@@ -51,7 +51,9 @@ services:
       # Shopee Open API 凭证（v2.2 workflow B3.5 category_recommend + B5c 真上架）
       SHOPEE_PARTNER_ID: ${SHOPEE_PARTNER_ID:-}
       SHOPEE_PARTNER_KEY: ${SHOPEE_PARTNER_KEY:-}
-      SHOPEE_API_BASE: ${SHOPEE_API_BASE:-https://partner.shopeemobile.com}
+      # v2.10: Shopee Open Platform v2 host（Test sandbox 用 openplatform.sandbox.test-stable.shopee.sg；
+      # 老域名 partner.shopeemobile.com 是 v1 入口，v2 partner_id 不识别会报 Wrong sign）
+      SHOPEE_API_BASE: ${SHOPEE_API_BASE:-https://openplatform.shopee.sg}
       SHOPEE_SHOP_IDS: ${SHOPEE_SHOP_IDS:-{}}
       SHOPEE_ACCESS_TOKENS: ${SHOPEE_ACCESS_TOKENS:-{}}
       SHOPEE_REFRESH_TOKENS: ${SHOPEE_REFRESH_TOKENS:-{}}
@@ -168,11 +170,10 @@ services:
       CMS_OUTPUTS_DIR: /data/outputs
       CMS_PUBLIC_BASE: ${CMS_BASE_URL:-https://smikie-cms.cc}
       # v2.4: cms-api OAuth helper 需要 partner 凭证生成授权链接 + 换 refresh_token
-      SHOPEE_API_BASE: ${SHOPEE_API_BASE:-https://partner.shopeemobile.com}
+      # v2.10: 默认 host 改为 v2 入口 openplatform.shopee.sg（Test 沙箱 .env 覆盖为 sandbox host）
+      SHOPEE_API_BASE: ${SHOPEE_API_BASE:-https://openplatform.shopee.sg}
       SHOPEE_PARTNER_ID: ${SHOPEE_PARTNER_ID:-}
       SHOPEE_PARTNER_KEY: ${SHOPEE_PARTNER_KEY:-}
-      # v2.9: partner_key 签名模式 (utf8 = Live 环境默认；hex = Test 环境 partner_key 是 hex string)
-      SHOPEE_PARTNER_KEY_MODE: ${SHOPEE_PARTNER_KEY_MODE:-utf8}
       TZ: Asia/Tokyo
     volumes:
       # XLSX dry-run 产出（rw）；Boss 可在资源管理器看
