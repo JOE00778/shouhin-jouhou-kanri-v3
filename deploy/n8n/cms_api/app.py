@@ -279,9 +279,16 @@ async def xlsx_upload(
 SHOPEE_TOKENS_FILE = OUTPUTS_DIR / "shopee_tokens.json"
 SHOPEE_API_BASE = os.environ.get("SHOPEE_API_BASE", "https://partner.shopeemobile.com")
 SHOPEE_PARTNER_ID = os.environ.get("SHOPEE_PARTNER_ID", "")
+# Shopee partner_key 处理：
+#   Live 环境: 64 char hex string (没有 prefix)
+#   Test 环境: 'shpk' + 60 char hex string (UI prefix)
+#   两种情况都按 hex string 处理：去 shpk 前缀后用 raw utf-8 当 HMAC key
+#   （Shopee SDK 文档要求 partner_key.encode('utf-8') 当 key，不是 hex decode）
 _RAW_PK = os.environ.get("SHOPEE_PARTNER_KEY", "")
-# Shopee Test 环境 partner_key 带 'shpk' UI 前缀，签名时必须去掉
 SHOPEE_PARTNER_KEY = _RAW_PK.removeprefix("shpk") if _RAW_PK.startswith("shpk") else _RAW_PK
+# 可选: hex decode 模式（v2.8 新增，默认关闭）
+# 如果 utf-8 模式签名总错 → 改 .env 加 SHOPEE_PARTNER_KEY_MODE=hex 切到 bytes.fromhex 模式
+_PK_MODE = os.environ.get("SHOPEE_PARTNER_KEY_MODE", "utf8").lower()
 
 
 @app.get("/api/automation/shopee/tokens")
@@ -316,6 +323,63 @@ def put_shopee_tokens(req: ShopeeTokensReq):
 # Boss 拿到 Partner ID/Key 后，从 cms-api 拿 7 国授权链接 → 浏览器登录 → 自动回写 refresh_token
 # 替代手工构造 OAuth URL 和手工换 token 的繁琐流程
 # ────────────────────────────────────────────────────────────────
+def _shopee_sign(base_string: str) -> str:
+    """根据 SHOPEE_PARTNER_KEY_MODE 生成 sign。
+
+    utf8 (默认): hmac.new(partner_key.encode(), msg).hexdigest()
+    hex:        hmac.new(bytes.fromhex(partner_key), msg).hexdigest()
+    """
+    import hashlib
+    import hmac
+
+    if _PK_MODE == "hex":
+        try:
+            key_bytes = bytes.fromhex(SHOPEE_PARTNER_KEY)
+        except ValueError as e:
+            raise HTTPException(500, f"SHOPEE_PARTNER_KEY 不是合法 hex: {e}")
+    else:
+        key_bytes = SHOPEE_PARTNER_KEY.encode("utf-8")
+    return hmac.new(key_bytes, base_string.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+@app.get("/api/automation/shopee/debug-sign")
+def debug_sign():
+    """诊断端点：输出 4 种签名方案，让 Boss 知道哪种该用。
+
+    各方案区别仅在于 partner_key 的处理：
+      raw_utf8        : 整个 partner_key (含 shpk) utf-8 当 key
+      no_prefix_utf8  : 去 shpk 后 utf-8 当 key
+      no_prefix_hex   : 去 shpk 后 hex decode 30 bytes 当 key
+      raw_hex         : 整个 partner_key hex decode（一般会失败因为 shpk 不是 hex）
+    """
+    import hashlib
+    import hmac
+
+    raw_pk = os.environ.get("SHOPEE_PARTNER_KEY", "")
+    no_prefix = raw_pk.removeprefix("shpk") if raw_pk.startswith("shpk") else raw_pk
+    path = "/api/v2/shop/auth_partner"
+    ts = int(time.time())
+    base = f"{SHOPEE_PARTNER_ID}{path}{ts}"
+    sigs = {}
+    sigs["raw_utf8"] = hmac.new(raw_pk.encode(), base.encode(), hashlib.sha256).hexdigest()
+    sigs["no_prefix_utf8"] = hmac.new(no_prefix.encode(), base.encode(), hashlib.sha256).hexdigest()
+    try:
+        sigs["no_prefix_hex"] = hmac.new(bytes.fromhex(no_prefix), base.encode(), hashlib.sha256).hexdigest()
+    except ValueError as e:
+        sigs["no_prefix_hex"] = f"err: {e}"
+    try:
+        sigs["raw_hex"] = hmac.new(bytes.fromhex(raw_pk), base.encode(), hashlib.sha256).hexdigest()
+    except ValueError as e:
+        sigs["raw_hex"] = f"err: {e}"
+    return {
+        "current_mode": _PK_MODE,
+        "current_partner_key_len": len(SHOPEE_PARTNER_KEY),
+        "base_string": base,
+        "timestamp": ts,
+        "signatures": sigs,
+    }
+
+
 @app.get("/api/automation/shopee/oauth-url/{market}")
 def shopee_oauth_url(market: str, redirect: str | None = None):
     """生成某国的 Shopee OAuth 授权链接。
@@ -325,13 +389,10 @@ def shopee_oauth_url(market: str, redirect: str | None = None):
     """
     if not SHOPEE_PARTNER_ID or not SHOPEE_PARTNER_KEY:
         raise HTTPException(503, "SHOPEE_PARTNER_ID/KEY 未在 cms-api 容器 env 设置")
-    import hashlib
-    import hmac
-
     path = "/api/v2/shop/auth_partner"
-    ts = int(time.time())   # 永远 UTC epoch，不受容器 TZ 影响
+    ts = int(time.time())
     base = f"{SHOPEE_PARTNER_ID}{path}{ts}"
-    sign = hmac.new(SHOPEE_PARTNER_KEY.encode(), base.encode(), hashlib.sha256).hexdigest()
+    sign = _shopee_sign(base)
     cb = redirect or f"{CMS_PUBLIC_BASE}/api/automation/shopee/oauth-callback?market={market}"
     url = (
         f"{SHOPEE_API_BASE}{path}"
@@ -341,6 +402,7 @@ def shopee_oauth_url(market: str, redirect: str | None = None):
         "market": market,
         "authorize_url": url,
         "redirect_url": cb,
+        "sign_mode": _PK_MODE,
         "instruction": (
             f"1) 浏览器打开 authorize_url 登录 Shopee {market} 卖家账号；"
             f"2) 授权后 Shopee 会跳转 redirect_url，带上 code 和 shop_id；"
@@ -354,14 +416,12 @@ def shopee_oauth_callback(market: str, code: str, shop_id: int):
     """Shopee OAuth 回调；用 code 换 refresh_token，自动写入 shopee_tokens.json + shop_ids 提示"""
     if not SHOPEE_PARTNER_ID or not SHOPEE_PARTNER_KEY:
         raise HTTPException(503, "SHOPEE_PARTNER_ID/KEY 未设置")
-    import hashlib
-    import hmac
     import urllib.request
 
     path = "/api/v2/auth/token/get"
-    ts = int(time.time())   # 永远 UTC epoch，不受容器 TZ 影响
+    ts = int(time.time())
     base = f"{SHOPEE_PARTNER_ID}{path}{ts}"
-    sign = hmac.new(SHOPEE_PARTNER_KEY.encode(), base.encode(), hashlib.sha256).hexdigest()
+    sign = _shopee_sign(base)
     url = f"{SHOPEE_API_BASE}{path}?partner_id={SHOPEE_PARTNER_ID}&timestamp={ts}&sign={sign}"
     body = json.dumps({"code": code, "shop_id": shop_id, "partner_id": int(SHOPEE_PARTNER_ID)}).encode()
     req = urllib.request.Request(
