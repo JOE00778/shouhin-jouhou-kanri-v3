@@ -21,10 +21,10 @@
           "string": [
             { "name": "run_id", "value": "={{ $json.body.run_id }}" },
             { "name": "market_list", "value": "={{ JSON.stringify($json.body.markets || ['TW','PH','MY','SG','TH','VN','ID']) }}" },
-            { "name": "sku_master_url", "value": "={{ $json.body.sku_master_url || ($env.CMS_BASE_URL + '/api/sku/master?jans=' + ($json.body.sku_jans || []).join(',')) }}" },
+            { "name": "sku_master_url", "value": "={{ $json.body.sku_master_url || ('http://cms-api:8789/api/sku/master?jans=' + ($json.body.sku_jans || []).join(',')) }}" },
             { "name": "spu_groups_json", "value": "={{ JSON.stringify($json.body.spu_groups || []) }}" },
-            { "name": "cms_callback", "value": "={{ $env.CMS_CALLBACK_URL }}" },
-            { "name": "cms_xlsx_upload_url", "value": "={{ $env.CMS_BASE_URL + '/api/automation/xlsx-upload' }}" },
+            { "name": "cms_callback", "value": "http://cms-api:8789/api/automation/callback" },
+            { "name": "cms_xlsx_upload_url", "value": "http://cms-api:8789/api/automation/xlsx-upload" },
             { "name": "image_processor_base", "value": "http://image-processor:8788" },
             { "name": "volc_ark_url", "value": "https://ark.cn-beijing.volces.com/api/v3/chat/completions" },
             { "name": "volc_ark_model", "value": "={{ $env.VOLC_ARK_TEXT_MODEL || 'deepseek-v3-2-251201' }}" },

@@ -55,6 +55,13 @@ cp -v "${SCRIPT_DIR}/image_processor/requirements.txt" "${STAGING}/image_process
 cp -v "${SCRIPT_DIR}/image_processor/app.py" "${STAGING}/image_processor/"
 cp -v "${SCRIPT_DIR}"/image_processor/assets/*.png "${STAGING}/image_processor/assets/" 2>/dev/null || true
 
+# cms_api 容器源码（SKU 主档查询 / XLSX 上传 / automation_runs 回调）
+echo "==> 复制 cms_api 源码"
+mkdir -p "${STAGING}/cms_api"
+cp -v "${SCRIPT_DIR}/cms_api/Dockerfile" "${STAGING}/cms_api/"
+cp -v "${SCRIPT_DIR}/cms_api/requirements.txt" "${STAGING}/cms_api/"
+cp -v "${SCRIPT_DIR}/cms_api/app.py" "${STAGING}/cms_api/"
+
 # 占位空目录（首次启动后会填充；要让 Windows 上 zip 能解出空目录）
 mkdir -p "${STAGING}/data/n8n"
 mkdir -p "${STAGING}/data/files"

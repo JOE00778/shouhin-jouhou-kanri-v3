@@ -146,6 +146,44 @@ services:
           memory: 512M
 
   # ============================================================
+  # CMS API sidecar · 补 v2.0 workflow 需要的 3 个 endpoint
+  # N8N workflow 走容器名 http://cms-api:8789/，不绕 cloudflared 公网
+  # warehouse.db 以 ro 挂入，xlsx-upload 落 outputs/（read-write）
+  # ============================================================
+  cms-api:
+    build:
+      context: ./cms_api
+      dockerfile: Dockerfile
+    container_name: smikie_cms_api
+    restart: unless-stopped
+    environment:
+      PORT: "8789"
+      CMS_DB_PATH: /data/warehouse.db
+      CMS_OUTPUTS_DIR: /data/outputs
+      CMS_PUBLIC_BASE: ${CMS_BASE_URL:-https://smikie-cms.cc}
+      TZ: Asia/Tokyo
+    volumes:
+      # CMS 主库 warehouse.db (ro)。Boss 要按 CMS 实际部署位置填 .env 的 CMS_DB_HOST_PATH
+      - ${CMS_DB_HOST_PATH:-D:/Smikie-CMS/data_warehouse/warehouse.db}:/data/warehouse.db:ro
+      # XLSX dry-run 产出（rw）；Boss 可在资源管理器看
+      - ${CMS_OUTPUTS_HOST_PATH:-D:/Smikie-Images/automation_outputs}:/data/outputs
+    networks:
+      - smikie_n8n_net
+    expose:
+      - "8789"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8789/health').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ============================================================
   # 商品图处理（image-processor）· N8N HTTP 调用 :8788/{upscale,cutout,compose-spu}
   # N8N workflow shopee-mass-upload v1.8+ 用其生成 Shopee 主图 / SPU 多图
   # 输入图: 远程 URL（CMS / NAS）或 base64

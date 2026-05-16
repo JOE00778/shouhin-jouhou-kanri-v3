@@ -222,41 +222,61 @@ POST https://n8n.smikie-cms.cc/webhook/shopee-mass-upload
 
 不给 `spu_groups` → 自动退化到 1 SKU = 1 SPU。
 
-### v2.0 已知缺口（**部署前必看**）
+### v2.0 已知缺口（**部署前必看**） — v2.1 已补缺口 ①②⑤
 
-| # | 缺口 | 影响 | 后续 |
-|---|---|---|---|
-| 1 | CMS 没装 `/api/sku/master` 端点 | B1 节点 GET 会 404，sku_list 为空 | 起 CMS FastAPI sidecar；或 Page 21 端预查 SKU 主档塞进 webhook payload |
-| 2 | CMS 没装 `/api/automation/xlsx-upload` 端点 | B5b.2 上传 XLSX 会 404；XLSX 仍在 N8N 容器内 `/files/` 可手动下 | 同上 |
-| 3 | 类目映射表只填 5 个 cat-* 示例（cat-bedding / kitchen / bath / stationary / baby） | 其他 cat-* tag 命中不上 → 走 fallback category_id 100636 | Boss 提供完整 cat-* → Shopee 7 国 category_id 表，覆盖 n11 节点 `CAT_MAP` |
-| 4 | category_id 数字是占位的（100636/24474/11013155）非真实 ID | Shopee 上架时会被拒 | Boss 在 Shopee Seller Center 拿真实 category_id |
-| 5 | SKU 主档字段名假设 `jan/sku/tags/main_image_url/image_url` | CMS 实际字段名可能不同 | 拿到 CMS API 第一份响应后校准 n11 / n15 字段名 |
-| 6 | B5c Shopee 上架是 stub | 不会真上架 | 等 Partner Key + 单独排期补真实 Shopee Open API 调用 |
+| # | 缺口 | 状态 |
+|---|---|---|
+| ~~1~~ | ~~CMS 没装 `/api/sku/master` 端点~~ | ✅ **v2.1 已补**：cms-api sidecar `/api/sku/master?jans=...`（JOIN v_item_master + item_shopify_tags）|
+| ~~2~~ | ~~CMS 没装 `/api/automation/xlsx-upload` 端点~~ | ✅ **v2.1 已补**：cms-api sidecar `/api/automation/xlsx-upload`（multipart，落 `D:\Smikie-Images\automation_outputs\`）|
+| 3 | 类目映射表只填 5 个 cat-* 示例 | ⏳ Boss 提供完整 cat-* → Shopee 7 国 category_id 表 |
+| 4 | category_id 数字是占位的 | ⏳ Boss 在 Shopee Seller Center 拿真实 category_id |
+| ~~5~~ | ~~SKU 主档字段名假设~~ | ✅ **v2.1 已对齐**：cms-api 按 item_v2 真实字段返回，N8N B2 节点 contract 已校准 |
+| 6 | B5c Shopee 上架是 stub | ⏳ 等 Partner Key |
 
-### v2.0 部署前 Boss 要补的 env
+**v2.1 新增 bonus**：cms-api 还实装了 `/api/automation/callback`（之前 README 缺口①「CMS callback endpoint 未实装」一起补了），automation_runs 表会被正常 UPDATE 到 completed，CMS Page 21 Tab 4「📜 历史运行」能看到真状态。
 
-`.env` 加这 2 行（v1.8 已有 `WHITEBG_HOST_PATH`）：
+### v2.1 部署前 Boss 要补的 env
+
+`.env` 加这 4 行（v1.8 已有 `WHITEBG_HOST_PATH`）：
 
 ```
 VOLC_ARK_TEXT_MODEL=deepseek-v3-2-251201
 CMS_BASE_URL=https://smikie-cms.cc
+CMS_DB_HOST_PATH=D:/Smikie-CMS/data_warehouse/warehouse.db
+CMS_OUTPUTS_HOST_PATH=D:/Smikie-Images/automation_outputs
 ```
 
-### v2.0 部署步骤
+**关键**：`CMS_DB_HOST_PATH` 必须填**真实** warehouse.db 路径。如果 CMS 部署在 `D:\Smikie-CMS\` 之外（比如 `C:\` 或 NAS），按实际填。容器以 **ro** 挂入，不会写库。
+
+### v2.1 部署步骤
 
 ```powershell
 # 1. 拉 docker-compose + workflow JSON
 Invoke-WebRequest -Uri "https://raw.githubusercontent.com/JOE00778/CMS-v230/main/deploy/n8n/docker-compose.yml" -OutFile docker-compose.yml -UseBasicParsing
 Invoke-WebRequest -Uri "https://raw.githubusercontent.com/JOE00778/CMS-v230/main/deploy/n8n/workflows/shopee-mass-upload.json" -OutFile workflows\shopee-mass-upload.json -UseBasicParsing
 
-# 2. 加新 env vars（如果已存在跳过）
+# 2. 拉 cms_api sidecar 源码
+New-Item -ItemType Directory -Force -Path cms_api
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/JOE00778/CMS-v230/main/deploy/n8n/cms_api/Dockerfile" -OutFile cms_api\Dockerfile -UseBasicParsing
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/JOE00778/CMS-v230/main/deploy/n8n/cms_api/app.py" -OutFile cms_api\app.py -UseBasicParsing
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/JOE00778/CMS-v230/main/deploy/n8n/cms_api/requirements.txt" -OutFile cms_api\requirements.txt -UseBasicParsing
+
+# 3. 加新 env vars（如果已存在跳过）
 Add-Content -Path .env -Value "`r`nVOLC_ARK_TEXT_MODEL=deepseek-v3-2-251201"
 Add-Content -Path .env -Value "CMS_BASE_URL=https://smikie-cms.cc"
+Add-Content -Path .env -Value "CMS_DB_HOST_PATH=D:/Smikie-CMS/data_warehouse/warehouse.db"
+Add-Content -Path .env -Value "CMS_OUTPUTS_HOST_PATH=D:/Smikie-Images/automation_outputs"
+New-Item -ItemType Directory -Force -Path D:\Smikie-Images\automation_outputs
 
-# 3. 重启 N8N 让新 env 生效
+# 4. 起 cms-api + image-processor + 重启 n8n（让新 env 生效）
+docker compose up -d --build cms-api image-processor
 docker compose up -d --force-recreate n8n
 
-# 4. N8N UI 重导 workflow（覆盖 v1.7）
+# 5. 健康检查
+Invoke-RestMethod "http://localhost:8788/health"   # image-processor
+Invoke-RestMethod "http://localhost:8789/health"   # cms-api（应显示 db_exists:true, item_v2_count:数千）
+
+# 6. N8N UI 重导 workflow（覆盖 v1.7）
 # 浏览器 https://n8n.smikie-cms.cc → Workflows → 找到旧 Shopee 自动上架 → 删除
 # Workflows → Import from File → 选 workflows\shopee-mass-upload.json
 # 右上角 Active toggle 打开
