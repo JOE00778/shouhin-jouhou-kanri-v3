@@ -23,6 +23,7 @@ import logging
 import os
 import re
 import sqlite3
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -326,7 +327,7 @@ def shopee_oauth_url(market: str, redirect: str | None = None):
     import hmac
 
     path = "/api/v2/shop/auth_partner"
-    ts = int(dt.datetime.utcnow().timestamp())
+    ts = int(time.time())   # 永远 UTC epoch，不受容器 TZ 影响
     base = f"{SHOPEE_PARTNER_ID}{path}{ts}"
     sign = hmac.new(SHOPEE_PARTNER_KEY.encode(), base.encode(), hashlib.sha256).hexdigest()
     cb = redirect or f"{CMS_PUBLIC_BASE}/api/automation/shopee/oauth-callback?market={market}"
@@ -356,7 +357,7 @@ def shopee_oauth_callback(market: str, code: str, shop_id: int):
     import urllib.request
 
     path = "/api/v2/auth/token/get"
-    ts = int(dt.datetime.utcnow().timestamp())
+    ts = int(time.time())   # 永远 UTC epoch，不受容器 TZ 影响
     base = f"{SHOPEE_PARTNER_ID}{path}{ts}"
     sign = hmac.new(SHOPEE_PARTNER_KEY.encode(), base.encode(), hashlib.sha256).hexdigest()
     url = f"{SHOPEE_API_BASE}{path}?partner_id={SHOPEE_PARTNER_ID}&timestamp={ts}&sign={sign}"
