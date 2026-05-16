@@ -169,6 +169,10 @@ services:
       CMS_DB_PATH: /data/warehouse.db
       CMS_OUTPUTS_DIR: /data/outputs
       CMS_PUBLIC_BASE: ${CMS_BASE_URL:-https://smikie-cms.cc}
+      # v2.4: cms-api OAuth helper 需要 partner 凭证生成授权链接 + 换 refresh_token
+      SHOPEE_API_BASE: ${SHOPEE_API_BASE:-https://partner.shopeemobile.com}
+      SHOPEE_PARTNER_ID: ${SHOPEE_PARTNER_ID:-}
+      SHOPEE_PARTNER_KEY: ${SHOPEE_PARTNER_KEY:-}
       TZ: Asia/Tokyo
     volumes:
       # XLSX dry-run 产出（rw）；Boss 可在资源管理器看

@@ -276,6 +276,9 @@ async def xlsx_upload(
 # 并把新的 refresh_token 持久化（refresh_token 每次也会变）。
 # ────────────────────────────────────────────────────────────────
 SHOPEE_TOKENS_FILE = OUTPUTS_DIR / "shopee_tokens.json"
+SHOPEE_API_BASE = os.environ.get("SHOPEE_API_BASE", "https://partner.shopeemobile.com")
+SHOPEE_PARTNER_ID = os.environ.get("SHOPEE_PARTNER_ID", "")
+SHOPEE_PARTNER_KEY = os.environ.get("SHOPEE_PARTNER_KEY", "")
 
 
 @app.get("/api/automation/shopee/tokens")
@@ -303,3 +306,98 @@ def put_shopee_tokens(req: ShopeeTokensReq):
     }
     SHOPEE_TOKENS_FILE.write_text(json.dumps(body, ensure_ascii=False, indent=2), encoding="utf-8")
     return {"saved": True, "path": str(SHOPEE_TOKENS_FILE), "markets": list(req.refresh_tokens.keys())}
+
+
+# ────────────────────────────────────────────────────────────────
+# Shopee OAuth helper（v2.4 新增）
+# Boss 拿到 Partner ID/Key 后，从 cms-api 拿 7 国授权链接 → 浏览器登录 → 自动回写 refresh_token
+# 替代手工构造 OAuth URL 和手工换 token 的繁琐流程
+# ────────────────────────────────────────────────────────────────
+@app.get("/api/automation/shopee/oauth-url/{market}")
+def shopee_oauth_url(market: str, redirect: str | None = None):
+    """生成某国的 Shopee OAuth 授权链接。
+
+    Shopee 公式: HMAC-SHA256(partner_id + path + ts, partner_key)
+    path = /api/v2/shop/auth_partner
+    """
+    if not SHOPEE_PARTNER_ID or not SHOPEE_PARTNER_KEY:
+        raise HTTPException(503, "SHOPEE_PARTNER_ID/KEY 未在 cms-api 容器 env 设置")
+    import hashlib
+    import hmac
+
+    path = "/api/v2/shop/auth_partner"
+    ts = int(dt.datetime.utcnow().timestamp())
+    base = f"{SHOPEE_PARTNER_ID}{path}{ts}"
+    sign = hmac.new(SHOPEE_PARTNER_KEY.encode(), base.encode(), hashlib.sha256).hexdigest()
+    cb = redirect or f"{CMS_PUBLIC_BASE}/api/automation/shopee/oauth-callback?market={market}"
+    url = (
+        f"{SHOPEE_API_BASE}{path}"
+        f"?partner_id={SHOPEE_PARTNER_ID}&timestamp={ts}&sign={sign}&redirect={cb}"
+    )
+    return {
+        "market": market,
+        "authorize_url": url,
+        "redirect_url": cb,
+        "instruction": (
+            f"1) 浏览器打开 authorize_url 登录 Shopee {market} 卖家账号；"
+            f"2) 授权后 Shopee 会跳转 redirect_url，带上 code 和 shop_id；"
+            f"3) 浏览器会自动调 callback 端点完成 refresh_token 持久化。"
+        ),
+    }
+
+
+@app.get("/api/automation/shopee/oauth-callback")
+def shopee_oauth_callback(market: str, code: str, shop_id: int):
+    """Shopee OAuth 回调；用 code 换 refresh_token，自动写入 shopee_tokens.json + shop_ids 提示"""
+    if not SHOPEE_PARTNER_ID or not SHOPEE_PARTNER_KEY:
+        raise HTTPException(503, "SHOPEE_PARTNER_ID/KEY 未设置")
+    import hashlib
+    import hmac
+    import urllib.request
+
+    path = "/api/v2/auth/token/get"
+    ts = int(dt.datetime.utcnow().timestamp())
+    base = f"{SHOPEE_PARTNER_ID}{path}{ts}"
+    sign = hmac.new(SHOPEE_PARTNER_KEY.encode(), base.encode(), hashlib.sha256).hexdigest()
+    url = f"{SHOPEE_API_BASE}{path}?partner_id={SHOPEE_PARTNER_ID}&timestamp={ts}&sign={sign}"
+    body = json.dumps({"code": code, "shop_id": shop_id, "partner_id": int(SHOPEE_PARTNER_ID)}).encode()
+    req = urllib.request.Request(
+        url, data=body, headers={"Content-Type": "application/json"}, method="POST"
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode())
+    except Exception as e:
+        raise HTTPException(502, f"Shopee /token/get failed: {e}")
+    if data.get("error"):
+        raise HTTPException(502, f"Shopee error: {data.get('error')} {data.get('message','')}")
+    refresh_token = data.get("refresh_token")
+    if not refresh_token:
+        raise HTTPException(502, f"no refresh_token in response: {data}")
+
+    # 持久化：合并进 shopee_tokens.json
+    existing = {}
+    if SHOPEE_TOKENS_FILE.exists():
+        try:
+            existing = json.loads(SHOPEE_TOKENS_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    refresh_tokens = existing.get("refresh_tokens", {})
+    refresh_tokens[market] = refresh_token
+    body_out = {
+        "refresh_tokens": refresh_tokens,
+        "updated_at": dt.datetime.utcnow().isoformat(timespec="seconds") + "Z",
+    }
+    OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
+    SHOPEE_TOKENS_FILE.write_text(json.dumps(body_out, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    return {
+        "market": market,
+        "shop_id": shop_id,
+        "refresh_token_stored": True,
+        "expire_in_seconds": data.get("expire_in"),
+        "tip_for_env": (
+            f'记得把 shop_id 加进 .env 的 SHOPEE_SHOP_IDS dict: '
+            f'"{market}": "{shop_id}"'
+        ),
+    }

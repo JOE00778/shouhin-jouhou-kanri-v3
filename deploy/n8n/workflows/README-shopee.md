@@ -268,6 +268,31 @@ SHOPEE_REFRESH_TOKENS={"TW":"eyJ...","PH":"eyJ...","..."}
 
 n02b 自动 refresh 拿到的最新 refresh_token 持久化在 `D:\Smikie-Images\automation_outputs\shopee_tokens.json`（每次 refresh 后更新）。`.env` 里的 SHOPEE_REFRESH_TOKENS 只是「首次启动」和「持久化文件丢失」时的兜底初始值。
 
+### OAuth 一键工具（v2.4 新增 · 让首次拿 refresh_token 不再手工构造 URL）
+
+cms-api 提供 2 个 helper endpoint，**Boss 拿到 Partner ID/Key 后这样走**：
+
+```powershell
+# 1. 拿台湾的 OAuth 授权 URL（其他国家同理：PH / MY / SG / TH / VN / ID）
+Invoke-RestMethod "http://localhost:8789/api/automation/shopee/oauth-url/TW"
+
+# 输出含 authorize_url，复制到浏览器打开
+```
+
+```
+浏览器流程：
+  authorize_url → 登录 Shopee TW 卖家账号 → 同意授权
+   ↓ Shopee 自动跳转到 redirect_url（带 code + shop_id 参数）
+   ↓ /api/automation/shopee/oauth-callback 自动执行：
+       - 用 code 调 Shopee /auth/token/get 换 refresh_token
+       - 把 refresh_token 写进 shopee_tokens.json
+       - 返回 shop_id 提示 Boss 加进 .env SHOPEE_SHOP_IDS
+```
+
+完成后**重复 7 次**（每国一次），所有 7 国 refresh_token 自动持久化。Boss 只需要手动整理一份 `SHOPEE_SHOP_IDS` JSON dict 写进 `.env`（callback 返回的 tip_for_env 字段帮你拼）。
+
+⚠️ 前置条件：`.env` 必须先填好 `SHOPEE_PARTNER_ID` 和 `SHOPEE_PARTNER_KEY`（cms-api 容器要读这两个生成签名）。
+
 ### v2.2 部署前 Boss 要补的 env
 
 `.env` 加这 4 行（v1.8 已有 `WHITEBG_HOST_PATH`）：
