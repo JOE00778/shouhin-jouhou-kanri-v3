@@ -20,7 +20,7 @@ from pathlib import Path
 
 import streamlit as st
 
-from data_warehouse.db.migrations import init_db
+from shared.schema_bootstrap import init_db
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
@@ -71,7 +71,7 @@ def _get_postgres_connection():
 
     if not _pg_schema_initialized:
         try:
-            from data_warehouse.db.migrations import (
+            from shared.schema_bootstrap import (
                 DEPRECATED_TABLES, PHASE4_REBUILD_TABLES,
             )
             # Phase 4 v2 表 schema 重建（必须在 schema.sql 跑前 DROP）
@@ -89,7 +89,7 @@ def _get_postgres_connection():
                 cur.execute(schema_path.read_text(encoding="utf-8"))
                 raw.commit()
             # ALTER 加列（与 SQLite ALTERS 对齐，幂等）
-            from data_warehouse.db.migrations import ALTERS
+            from shared.schema_bootstrap import ALTERS
             for table, col_def in ALTERS:
                 try:
                     cur = raw.cursor()
@@ -107,7 +107,7 @@ def _get_postgres_connection():
                     raw.rollback()
 
             # Phase 4 · 旧表名 → VIEW 桥接（让 page SQL 不用改）
-            from data_warehouse.db.migrations import PHASE4_LEGACY_VIEWS
+            from shared.schema_bootstrap import PHASE4_LEGACY_VIEWS
             for legacy, target_view in PHASE4_LEGACY_VIEWS:
                 try:
                     cur = raw.cursor()
