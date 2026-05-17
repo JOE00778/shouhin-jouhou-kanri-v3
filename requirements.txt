@@ -10,3 +10,5 @@ python-calamine>=0.2
 beautifulsoup4>=4.12
 # T-303 LLM 调用（免费 Gemini · Streamlit Cloud secrets 配 GEMINI_API_KEY）
 google-generativeai>=0.8
+# Page 26 图片翻译（Gemini 2.5 Flash Image）— 新版 SDK，独立于 google-generativeai
+google-genai>=0.3
