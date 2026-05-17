@@ -62,7 +62,7 @@ if [ ! -d .git ]; then
 fi
 
 git add .
-git commit -m "feat: 商品信息管理 v3（11 新 page + 4 modules + 5 ingestor + 16 表）"
+git commit -m "feat: CMS v3（11 新 page + 4 modules + 5 ingestor + 16 表）"
 
 if ! git remote | grep -q origin; then
   git remote add origin "$REPO_URL"

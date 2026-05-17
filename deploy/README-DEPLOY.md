@@ -1,4 +1,4 @@
-# 商品信息管理 v3 · 生产部署指南
+# CMS v3 · 生产部署指南
 
 > Boss 自助部署 · 全程 30 分钟。
 > 不需要给 Claudex 任何 GitHub / Supabase 凭证。
@@ -36,7 +36,7 @@
 ### Step 1 · 在本机准备代码
 
 ```bash
-cd ~/CC/商品信息管理
+cd ~/CC/CMS
 
 # 检查需要的所有文件齐全
 ls pages/ modules/ shared/ data_warehouse/
@@ -69,7 +69,7 @@ LARK_SHEET_ID = "xxx"
 ### Step 3 · git init + push
 
 ```bash
-cd ~/CC/商品信息管理
+cd ~/CC/CMS
 git init
 git add .
 git commit -m "feat: v3 商品信息管理增强（11 page + 3 模块 + 5 ingestor）"
@@ -96,7 +96,7 @@ git push -u origin main
 
 ```bash
 # 在本地把 schema 导出
-cd ~/CC/商品信息管理
+cd ~/CC/CMS
 sqlite3 data_warehouse/warehouse.db .dump > /tmp/schema_v3.sql
 
 # 提取仅 CREATE TABLE 语句
@@ -113,7 +113,7 @@ grep -E "CREATE TABLE|CREATE INDEX" /tmp/schema_v3.sql > /tmp/schema_v3_ddl.sql
 
 ```bash
 # 本地 SQLite → CSV
-cd ~/CC/商品信息管理
+cd ~/CC/CMS
 for table in item_master item_master_netsuite supplier_cost supply_cycle \
              nst_inventory_snapshot nst_store_sales nst_turnover \
              shopee_orders shopee_payouts shopee_fees; do
