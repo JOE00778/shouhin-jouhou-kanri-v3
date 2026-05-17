@@ -83,7 +83,7 @@ def _qmark(sql: str) -> str:
 
 
 def _placeholders(n: int) -> str:
-    return ",".join("%s" * n) if IS_PG else ",".join("?" * n)
+    return ",".join(["%s"] * n) if IS_PG else ",".join(["?"] * n)
 
 
 def _safe_jan_list(raw: str) -> list[str]:
