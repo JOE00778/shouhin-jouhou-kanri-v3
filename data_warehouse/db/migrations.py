@@ -50,13 +50,10 @@ DEPRECATED_TABLES: list[str] = [
     "sales",                    # 空表，sales_line 替代
 ]
 
-# Phase 4 v2 表 schema 重大变更（UNIQUE 约束等结构变化）
-# 因为 IF NOT EXISTS 不会重建已有表，shop_sales 的 UNIQUE 改了必须 DROP rebuild
-# 系统未正式启用阶段 v2 数据可丢失（Boss 重导一次即可恢复）
-# 注：这是一次性操作，commit 后 1 周删掉这个列表
-PHASE4_REBUILD_TABLES: list[str] = [
-    "shop_sales",   # UNIQUE 加了 granularity 列
-]
+# Phase 4 v2 表 schema 重大变更（UNIQUE 约束等结构変化）
+# 過去 shop_sales を毎回 DROP していたが、本番運用に入ったので空にする。
+# 新たに schema 大改造する時のみ一時的に追加 (commit 後 1 週で外す運用)。
+PHASE4_REBUILD_TABLES: list[str] = []
 
 # Phase 4 桥接 VIEW · 旧表名 → 透传 v2 真表
 # 让现有 page / module SQL 不用改也能继续读到数据

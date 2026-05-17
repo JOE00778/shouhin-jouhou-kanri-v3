@@ -66,7 +66,7 @@ pip install -r requirements.txt
 uv run pytest
 
 # 启动 Web App
-uv run streamlit run 商品信息管理.py
+uv run streamlit run cms.py
 ```
 
 ## 部署到 Streamlit Cloud

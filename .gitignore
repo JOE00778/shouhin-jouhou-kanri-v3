@@ -6,12 +6,14 @@ __pycache__/
 data_warehouse/warehouse.db
 data_warehouse/warehouse.db-*
 .streamlit/secrets.toml
-data/inputs/
-data/outputs/
-# 审计日志（image_translate 等出境调用记录）
-data/audit/
+data/
+# 审计日志（image_translate 等出境调用记录）已并入 data/ 全量 ignore
 *.xlsx
 *.xls
+
+# 大资源（单独物理管理 · Boss 决策 2026-05-18）
+jancode_images_hd/
+主图/
 
 # shopee_listing/ 下的模板和缓存：模板必须入仓，缓存与运行产物不入仓
 !shopee_listing/**/*.xlsx

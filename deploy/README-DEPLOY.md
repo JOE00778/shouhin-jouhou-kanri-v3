@@ -42,8 +42,8 @@ cd ~/CC/商品信息管理
 ls pages/ modules/ shared/ data_warehouse/
 
 # 跟 Boss 之前的源码合并（保留旧 mode 路由）
-cp legacy_streamlit/main.py 商品信息管理.py.bak  # 备份
-# 注：商品信息管理.py 是新主入口，main.py 是旧 mode 路由（保留 backward compat）
+cp legacy_streamlit/main.py cms.py.bak  # 备份
+# 注：cms.py 是新主入口，main.py 是旧 mode 路由（保留 backward compat）
 ```
 
 ### Step 2 · 创建 .streamlit/secrets.toml（**不 commit · 在 Streamlit Cloud 后台填**）
@@ -88,7 +88,7 @@ git push -u origin main
 #### 选项 B · 新 repo 部署（路径 C）
 1. https://share.streamlit.io
 2. **New app** → 选 GitHub repo + branch=main
-3. **Main file**: `商品信息管理.py`
+3. **Main file**: `cms.py`
 4. **Advanced settings → Secrets**：粘 secrets.toml 内容
 5. **Deploy**
 
@@ -130,7 +130,7 @@ done
 
 ```
 shouhin-jouhou-kanri-v3/
-├── 商品信息管理.py                  # 主入口
+├── cms.py                  # 主入口
 ├── requirements.txt                # streamlit / pandas / plotly / supabase / openpyxl
 ├── .streamlit/
 │   ├── config.toml                # 主题配置
