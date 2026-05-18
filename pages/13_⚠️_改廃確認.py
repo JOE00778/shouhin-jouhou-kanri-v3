@@ -120,7 +120,7 @@ from shared.db import get_connection, DB_PATH
 DB = DB_PATH
 conn = get_connection()
 
-tab1, tab2 = st.tabs([t("🆕 待確認"), t("📜 历史回看")])
+tab1, tab2, tab3 = st.tabs([t("🆕 待確認"), t("📜 历史回看"), t("➕ 手动添加")])
 
 # ============================================================================
 # Tab 1: 待確認
@@ -214,5 +214,75 @@ with tab2:
             view_history = history.drop(columns=["month"])
 
         st.dataframe(localize_df(view_history), use_container_width=True, height=500)
+
+
+# ============================================================================
+# Tab 3: ➕ 手动添加改廃信号
+# ============================================================================
+
+with tab3:
+    st.markdown(t("### 手动标记某 SKU 为待改廃確認"))
+    st.caption(t("用于：临时下架、Boss 主动判定停售、月度 cron 之外的紧急流入"))
+
+    with st.form("kaihai_manual_add", clear_on_submit=True):
+        col_a, col_b = st.columns([2, 1])
+        jan_input = col_a.text_input(t("JAN コード"), placeholder="4901234567890",
+                                      help=t("必填 · 13 位 JAN/UPC 码"))
+        signal_type_input = col_b.selectbox(
+            t("信号类型"),
+            options=["boss_flagged", "low_inventory", "supplier_discontinued",
+                     "season_end", "manual_other"],
+            help=t("Boss 手动判定一般选 boss_flagged"),
+        )
+
+        col_c, col_d = st.columns([1, 1])
+        source_input = col_c.text_input(t("来源标签"), value="manual_boss",
+                                          help=t("用于历史回看筛选区分自动 cron vs 手动"))
+        memo_input = col_d.text_input(t("备注（可选）"), placeholder=t("如：供应商通告 / 销量持续低迷"))
+
+        submitted = st.form_submit_button(t("➕ 添加到待确认队列"), type="primary")
+
+        if submitted:
+            if not jan_input or not jan_input.strip():
+                st.error(t("❌ JAN 必填"))
+            else:
+                jan_clean = jan_input.strip()
+                signal_full = signal_type_input
+                if memo_input.strip():
+                    signal_full = f"{signal_type_input}: {memo_input.strip()}"
+                try:
+                    # 用 cms-api 当前用的同一个 conn（兼容 SQLite + Postgres）
+                    conn.execute(
+                        """
+                        INSERT INTO discontinue_alerts (jan, source, signal_type, detected_at)
+                        VALUES (?, ?, ?, ?)
+                        """,
+                        (jan_clean, source_input.strip() or "manual_boss",
+                         signal_full, datetime.now().isoformat()),
+                    )
+                    conn.commit()
+                    st.success(t(f"✅ 已添加 JAN={jan_clean} 到待确认 · 切换到「🆕 待確認」tab 处理"))
+                    st.balloons()
+                except Exception as e:
+                    st.error(t(f"❌ 写入失败: {e}"))
+
+    # 显示最近 10 条手动添加的
+    st.markdown(t("---"))
+    st.markdown(t("#### 最近 10 条 (来源含 manual)"))
+    _recent_manual = conn.execute(
+        """
+        SELECT jan, source, signal_type, detected_at, acknowledged_by, action
+        FROM discontinue_alerts
+        WHERE source LIKE '%manual%'
+        ORDER BY detected_at DESC
+        LIMIT 10
+        """
+    ).fetchall()
+    if _recent_manual:
+        df_recent = pd.DataFrame([dict(r) for r in _recent_manual])
+        st.dataframe(df_recent, use_container_width=True, hide_index=True)
+    else:
+        st.caption(t("暂无手动添加记录"))
+
 
 conn.close()
