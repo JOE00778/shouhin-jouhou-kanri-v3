@@ -68,6 +68,7 @@ services:
       - ${DATA_DIR:-./data}/outputs:/app/data/outputs
     networks:
       - cms_net
+      - smikie_shared    # ← T-318: 让 streamlit 能 resolve n8n / cms-api 主机名
     expose:
       - "8501"
     ports:
