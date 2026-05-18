@@ -221,6 +221,37 @@ with tab2:
 # ============================================================================
 
 with tab3:
+    # ────────────────────────────────────────────────
+    # 上半部分：手动触发 N8N 改廃扫描（不用等月度 cron）
+    # ────────────────────────────────────────────────
+    st.markdown(t("### 🚀 手动启动 N8N 改廃扫描"))
+    st.caption(t("调用 N8N stock-monitor workflow · 即时扫 NetSuite 库存 / 自动塞低库存 SKU 进待确认列表 · 完成后飞书通知"))
+
+    n8n_stock_webhook = os.environ.get(
+        "N8N_WEBHOOK_STOCK_MONITOR",
+        "http://n8n:5678/webhook/stock-monitor-run",
+    )
+
+    col_x, col_y = st.columns([1, 3])
+    if col_x.button(t("🚀 立即扫描"), type="primary", key="trigger_stock_monitor"):
+        try:
+            resp = requests.post(n8n_stock_webhook, json={"trigger": "manual_boss"},
+                                  timeout=30)
+            if resp.status_code in (200, 202):
+                st.success(t(f"✅ N8N 扫描已启动 · 后台执行约 1-5 分钟 · 完成后飞书通知 · http {resp.status_code}"))
+                st.caption(t("提示：扫完后切到「🆕 待確認」tab 看新出现的低库存 SKU"))
+            else:
+                st.error(t(f"❌ N8N 响应 {resp.status_code}: {resp.text[:200]}"))
+        except requests.RequestException as e:
+            st.error(t(f"❌ 调用 N8N 失败: {e}"))
+            st.caption(t(f"webhook: {n8n_stock_webhook}"))
+    col_y.caption(t(f"webhook url: `{n8n_stock_webhook}`"))
+
+    st.markdown(t("---"))
+
+    # ────────────────────────────────────────────────
+    # 下半部分：手动添加单条改廃信号
+    # ────────────────────────────────────────────────
     st.markdown(t("### 手动标记某 SKU 为待改廃確認"))
     st.caption(t("用于：临时下架、Boss 主动判定停售、月度 cron 之外的紧急流入"))
 

@@ -20,6 +20,20 @@
     },
     {
       "parameters": {
+        "httpMethod": "POST",
+        "path": "stock-monitor-run",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "n01b-webhook-manual",
+      "name": "手动触发 Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 460],
+      "webhookId": "stock-monitor-run"
+    },
+    {
+      "parameters": {
         "method": "GET",
         "url": "http://stock-monitor:8787/run",
         "options": {
@@ -57,6 +71,9 @@
   ],
   "connections": {
     "每月 1 日 02:00 JST": {
+      "main": [[{ "node": "调 stock-monitor /run", "type": "main", "index": 0 }]]
+    },
+    "手动触发 Webhook": {
       "main": [[{ "node": "调 stock-monitor /run", "type": "main", "index": 0 }]]
     },
     "调 stock-monitor /run": {
