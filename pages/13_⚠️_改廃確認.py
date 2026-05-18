@@ -65,8 +65,8 @@ def handle_action_webhook(row, action):
         st.caption(t(f"webhook url: {N8N_WEBHOOK_KAIHAI}"))
         st.caption(t("救场：设 LEGACY_KAIHAI=true 切回老路径，或检查 N8N 容器"))
         return False
-    if resp.status_code != 202:
-        st.warning(t(f"⚠️ N8N 响应非 202: {resp.status_code} body={resp.text[:200]}"))
+    if resp.status_code not in (200, 202):
+        st.warning(t(f"⚠️ N8N 响应非 2xx: {resp.status_code} body={resp.text[:200]}"))
         return False
     st.toast(t(f"✅ {action} 已入队 · run_id={run_id}"), icon="🚀")
     return True
@@ -203,7 +203,7 @@ with tab2:
     if history.empty:
         st.info(t("暂无历史确认记录"))
     else:
-        history["month"] = pd.to_datetime(history["acknowledged_at"]).dt.strftime("%Y-%m")
+        history["month"] = pd.to_datetime(history["acknowledged_at"], format="mixed", errors="coerce").dt.strftime("%Y-%m")
         months = sorted(history["month"].unique().tolist(), reverse=True)
         sel_m = st.multiselect(t("月份筛选"), options=months, default=months)
 
