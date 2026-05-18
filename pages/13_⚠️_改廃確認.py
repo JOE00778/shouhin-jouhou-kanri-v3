@@ -273,10 +273,11 @@ with tab3:
         """
         SELECT jan, source, signal_type, detected_at, acknowledged_by, action
         FROM discontinue_alerts
-        WHERE source LIKE '%manual%'
+        WHERE source LIKE ?
         ORDER BY detected_at DESC
         LIMIT 10
-        """
+        """,
+        ("%manual%",),
     ).fetchall()
     if _recent_manual:
         df_recent = pd.DataFrame([dict(r) for r in _recent_manual])
