@@ -79,6 +79,7 @@ services:
       - ./workflows:/workflows:ro   # 预装 workflow（首次启动后由脚本导入）
     networks:
       - smikie_n8n_net
+      - smikie_shared    # T-318: 让 cms_streamlit 跨 stack 调 webhook
     expose:
       - "5678"
     ports:
