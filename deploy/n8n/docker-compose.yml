@@ -44,10 +44,13 @@ services:
       # NODE_FUNCTION_ALLOW_EXTERNAL: "axios,lodash"
       # CMS 回调地址（用于 N8N workflow 内部回写状态）
       CMS_CALLBACK_URL: ${CMS_CALLBACK_URL:-https://smikie-cms.cc/api/automation/callback}
-      # Lark webhook（飞书群机器人，所有 workflow 共用）
+      # Lark webhook（输出运营群 · 通用 ops 通知）
       LARK_WEBHOOK_URL: ${LARK_WEBHOOK_URL:-}
       # 飞书机器人签名校验 Secret（启用「签名校验」时填，留空=用关键词校验）
       LARK_BOT_SIGN_SECRET: ${LARK_BOT_SIGN_SECRET:-}
+      # Lark webhook（输出事業群 · 改廃确认 + 事業级 decisions）
+      LARK_EXPORT_BIZ_WEBHOOK: ${LARK_EXPORT_BIZ_WEBHOOK:-}
+      LARK_EXPORT_BIZ_SIGN_SECRET: ${LARK_EXPORT_BIZ_SIGN_SECRET:-}
       # Shopee Open API 凭证（v2.2 workflow B3.5 category_recommend + B5c 真上架）
       SHOPEE_PARTNER_ID: ${SHOPEE_PARTNER_ID:-}
       SHOPEE_PARTNER_KEY: ${SHOPEE_PARTNER_KEY:-}
