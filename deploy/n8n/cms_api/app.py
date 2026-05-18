@@ -273,6 +273,76 @@ async def xlsx_upload(
 
 
 # ────────────────────────────────────────────────────────────────
+# POST /v1/kaihai/confirm （T-318 · 改廃確認 N8N 化）
+#
+# CMS page 13 按钮 → N8N webhook → 本端点：
+#   1) UPDATE discontinue_alerts (acknowledged_by/at/action)
+#   2) action == 取扱中止 → UPDATE item_master.rank = 停売（联动停售）
+#   3) 返回联动结果给 N8N（N8N 据此组装飞书消息）
+#
+# 原 page 13 直写 SQLite 的 handle_action() 逻辑已迁到这里，page 13 退化为 webhook 调用方。
+# LEGACY_KAIHAI=true 时 page 13 走老路径（紧急回退），本端点继续可用（互不干扰）。
+# ────────────────────────────────────────────────────────────────
+class KaihaiConfirmReq(BaseModel):
+    run_id: str
+    jan: str
+    source: str
+    signal_type: str
+    detected_at: str
+    action: str  # 取扱中止 | 継続 | 代替品調査
+    operator: str = "BOSS"
+
+
+_KAIHAI_ACTIONS = {"取扱中止", "継続", "代替品調査"}
+
+
+@app.post("/v1/kaihai/confirm")
+def kaihai_confirm(req: KaihaiConfirmReq):
+    if req.action not in _KAIHAI_ACTIONS:
+        raise HTTPException(400, f"action must be one of {_KAIHAI_ACTIONS}, got {req.action!r}")
+    if not re.fullmatch(r"[\w\-]+", req.jan):
+        raise HTTPException(400, "invalid jan")
+
+    ts = dt.datetime.utcnow().isoformat(timespec="seconds") + "Z"
+
+    with _conn() as c:
+        cur = c.cursor() if IS_PG else c
+
+        # 1) UPDATE discontinue_alerts
+        upd_alerts = _qmark(
+            "UPDATE discontinue_alerts "
+            "SET acknowledged_by = ?, acknowledged_at = ?, action = ? "
+            "WHERE jan = ? AND source = ? AND signal_type = ? AND detected_at = ? "
+            "AND acknowledged_by IS NULL"
+        )
+        cur.execute(upd_alerts, (req.operator, ts, req.action, req.jan,
+                                 req.source, req.signal_type, req.detected_at))
+        updated_alerts = cur.rowcount
+
+        # 2) 联动停售（仅 取扱中止）
+        linkage_applied = False
+        if req.action == "取扱中止":
+            upd_rank = _qmark("UPDATE item_master SET rank = ? WHERE jan = ?")
+            cur.execute(upd_rank, ("停売", req.jan))
+            linkage_applied = cur.rowcount > 0
+
+        c.commit()
+
+    log.info("kaihai_confirm: run_id=%s jan=%s action=%s updated_alerts=%d linkage=%s",
+             req.run_id, req.jan, req.action, updated_alerts, linkage_applied)
+
+    return {
+        "run_id": req.run_id,
+        "jan": req.jan,
+        "action": req.action,
+        "operator": req.operator,
+        "updated_alerts": updated_alerts,
+        "linkage_applied": linkage_applied,
+        "ts": ts,
+    }
+
+
+# ────────────────────────────────────────────────────────────────
 # Shopee tokens persistence （v2.3 给 shopee-mass-upload n02b 节点用）
 # 文件存储，0 DB 改动；每次 N8N workflow 触发时 refresh 一次 access_token
 # 并把新的 refresh_token 持久化（refresh_token 每次也会变）。
