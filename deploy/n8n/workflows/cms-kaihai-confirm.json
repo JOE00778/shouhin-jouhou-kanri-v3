@@ -41,7 +41,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={ \"run_id\": $('变量提取').first().json.run_id, \"status\": \"accepted\", \"note\": \"async processing\" }",
+        "responseBody": "={{ ({ run_id: $('变量提取').first().json.run_id, status: 'accepted', note: 'async processing' }) }}",
         "options": {
           "responseCode": 202
         }
@@ -58,7 +58,7 @@
         "url": "http://cms-api:8789/api/automation/callback",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={ \"run_id\": $('变量提取').first().json.run_id, \"module\": \"kaihai_confirm\", \"status\": \"processing\" }",
+        "jsonBody": "={{ JSON.stringify({ run_id: $('变量提取').first().json.run_id, module: 'kaihai_confirm', status: 'processing' }) }}",
         "options": {
           "timeout": 10000
         }
@@ -75,7 +75,7 @@
         "url": "http://cms-api:8789/v1/kaihai/confirm",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"run_id\": $('变量提取').first().json.run_id,\n  \"jan\": $('变量提取').first().json.jan,\n  \"source\": $('变量提取').first().json.source,\n  \"signal_type\": $('变量提取').first().json.signal_type,\n  \"detected_at\": $('变量提取').first().json.detected_at,\n  \"action\": $('变量提取').first().json.action,\n  \"operator\": $('变量提取').first().json.operator\n}",
+        "jsonBody": "={{ JSON.stringify({ run_id: $('变量提取').first().json.run_id, jan: $('变量提取').first().json.jan, source: $('变量提取').first().json.source, signal_type: $('变量提取').first().json.signal_type, detected_at: $('变量提取').first().json.detected_at, action: $('变量提取').first().json.action, operator: $('变量提取').first().json.operator }) }}",
         "options": {
           "timeout": 30000
         }
@@ -102,7 +102,7 @@
         "url": "={{ $env.LARK_KAIHAI_WEBHOOK }}",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={ \"msg_type\": \"text\", \"content\": { \"text\": $json.msg } }",
+        "jsonBody": "={{ JSON.stringify({ msg_type: 'text', content: { text: $json.msg } }) }}",
         "options": {
           "timeout": 10000,
           "redirect": {"redirect": {}}
@@ -120,7 +120,7 @@
         "url": "http://cms-api:8789/api/automation/callback",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"run_id\": $('变量提取').first().json.run_id,\n  \"module\": \"kaihai_confirm\",\n  \"status\": \"completed\",\n  \"summary\": {\n    \"action\": $('变量提取').first().json.action,\n    \"jan\": $('变量提取').first().json.jan,\n    \"updated_alerts\": $('飞书 msg 组装').first().json.updated_alerts,\n    \"linkage_applied\": $('飞书 msg 组装').first().json.linkage_applied\n  }\n}",
+        "jsonBody": "={{ JSON.stringify({ run_id: $('变量提取').first().json.run_id, module: 'kaihai_confirm', status: 'completed', summary: { action: $('变量提取').first().json.action, jan: $('变量提取').first().json.jan, updated_alerts: $('飞书 msg 组装').first().json.updated_alerts, linkage_applied: $('飞书 msg 组装').first().json.linkage_applied } }) }}",
         "options": {
           "timeout": 10000
         }
