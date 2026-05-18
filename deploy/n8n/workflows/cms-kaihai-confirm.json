@@ -88,7 +88,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// 组装飞书富文本卡片\nconst v = $('变量提取').first().json;\nconst r = items[0].json;\nconst actionEmoji = { '取扱中止': '🚫', '継続': '✅', '代替品調査': '🔍' }[v.action] || '⚠️';\nconst linkageNote = r.linkage_applied ? '· item_master.rank → 停売 ✅' : '';\nconst msg = `${actionEmoji} 改廃確認 [JAN ${v.jan}] · ${v.action}\\n${linkageNote}\\nupdated_alerts=${r.updated_alerts} · operator=${v.operator}\\nrun_id=${v.run_id}`;\nreturn [{ json: { msg, run_id: v.run_id, updated_alerts: r.updated_alerts, linkage_applied: r.linkage_applied, action: v.action } }];"
+        "jsCode": "// 组装飞书消息 + 计算飞书加签 (HMAC-SHA256)\nconst crypto = require('crypto');\nconst v = $('变量提取').first().json;\nconst r = items[0].json;\nconst actionEmoji = { '取扱中止': '🚫', '継続': '✅', '代替品調査': '🔍' }[v.action] || '⚠️';\nconst linkageNote = r.linkage_applied ? '· item_master.rank → 停売 ✅' : '';\nconst msg = `${actionEmoji} 改廃確認 [JAN ${v.jan}] · ${v.action}\\n${linkageNote}\\nupdated_alerts=${r.updated_alerts} · operator=${v.operator}\\nrun_id=${v.run_id}`;\n// 飞书自定义机器人加签: HMAC-SHA256(secret, timestamp+\"\\n\"+secret) → base64\nconst ts = Math.floor(Date.now() / 1000);\nconst secret = $env.LARK_KAIHAI_SIGN_SECRET || '';\nconst stringToSign = `${ts}\\n${secret}`;\nconst sign = crypto.createHmac('sha256', stringToSign).update('').digest('base64');\nreturn [{ json: { msg, timestamp: String(ts), sign, run_id: v.run_id, updated_alerts: r.updated_alerts, linkage_applied: r.linkage_applied, action: v.action } }];"
       },
       "id": "k0006-format-lark",
       "name": "飞书 msg 组装",
@@ -102,7 +102,7 @@
         "url": "={{ $env.LARK_KAIHAI_WEBHOOK }}",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ msg_type: 'text', content: { text: $json.msg } }) }}",
+        "jsonBody": "={{ JSON.stringify({ timestamp: $json.timestamp, sign: $json.sign, msg_type: 'text', content: { text: $json.msg } }) }}",
         "options": {
           "timeout": 10000,
           "redirect": {"redirect": {}}
