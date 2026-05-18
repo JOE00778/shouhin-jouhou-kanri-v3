@@ -203,7 +203,7 @@ with tab2:
     if history.empty:
         st.info(t("暂无历史确认记录"))
     else:
-        history["month"] = pd.to_datetime(history["acknowledged_at"], format="mixed", errors="coerce").dt.strftime("%Y-%m")
+        history["month"] = pd.to_datetime(history["acknowledged_at"], format="mixed", errors="coerce", utc=True).dt.strftime("%Y-%m")
         months = sorted(history["month"].unique().tolist(), reverse=True)
         sel_m = st.multiselect(t("月份筛选"), options=months, default=months)
 
