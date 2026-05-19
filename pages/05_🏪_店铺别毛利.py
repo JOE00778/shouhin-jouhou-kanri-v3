@@ -91,42 +91,10 @@ if not period_choices:
         f"📊 当前选择「{sel_dim}」对应 source = {allowed_srcs}，"
         f"但 sales_line 表里没有任何这种 source 的数据。"
     )
-    # 内嵌上传：直接路由到该维度的第一个 ingester（asean_daily / asean_monthly）
-    target_ingester = allowed_srcs[0]
-    st.markdown(f"#### 🚀 直接上传文件到 `{target_ingester}` ingester")
-    st.caption(
-        "绕过文件名识别，强制路由。适合文件名已变 / 自动识别失败的情况。"
+    st.info(
+        "💡 手动 Excel ingester 已于 2026-05-19 移除（迁移至 NetSuite API 自动定时拉取）。\n"
+        "数据缺失请联系管理员从 PG / NST API 路径补齐。"
     )
-    inline_file = st.file_uploader(
-        f"上传 {target_ingester} 报表（.xls / .xlsx）",
-        type=["xls", "xlsx"],
-        key=f"__inline_upload_{target_ingester}",
-    )
-    if inline_file is not None:
-        from data_warehouse.ingest.xls_ingest import INGESTOR_REGISTRY
-        from shared.db import INPUTS_DIR
-        from datetime import datetime as _dt
-        INPUTS_DIR.mkdir(parents=True, exist_ok=True)
-        ts = _dt.now().strftime("%Y%m%d_%H%M%S")
-        save_path = INPUTS_DIR / f"{ts}_{inline_file.name}"
-        save_path.write_bytes(inline_file.getvalue())
-        try:
-            result = INGESTOR_REGISTRY[target_ingester](
-                save_path, conn, source_name=inline_file.name
-            )
-            st.success(
-                f"✅ 已导入 `{inline_file.name}` → {target_ingester} · "
-                f"总 {result['total']:,} · 入库 {result['inserted']:,} · "
-                f"错误 {result['errors']:,}"
-            )
-            if result["inserted"] > 0:
-                st.balloons()
-                if st.button("🔄 刷新页面查看数据"):
-                    st.rerun()
-            else:
-                st.error("❌ 入库 0 行——文件格式可能不对，把文件第 1-3 行截图给我")
-        except Exception as e:
-            st.error(f"❌ 导入失败：{e}")
     st.stop()
 
 # ----- 期间 + 市场（与维度同一行，全部 selectbox 风格统一） -----

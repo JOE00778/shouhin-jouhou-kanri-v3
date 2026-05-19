@@ -99,15 +99,10 @@ def _has_supplier_quotes() -> bool:
 
 
 def _ingest_supplier_file(file_bytes: bytes, filename: str) -> dict:
-    import tempfile, os
-    from data_warehouse.ingest.supplier_ingest import ingest_supplier_master
-    with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
-        tmp.write(file_bytes)
-        path = tmp.name
-    try:
-        return ingest_supplier_master(path, conn)
-    finally:
-        os.unlink(path)
+    """⚠️ Deprecated 2026-05-19：手动 Excel ingester 已移除（迁移至 PG/NST API 路径）。"""
+    raise RuntimeError(
+        "supplier_ingest 已弃用。仕入先报价更新请走 PG SQL 或 NST API（T-NST-001）路径。"
+    )
 
 
 def _build_nst_csv(df_sup: pd.DataFrame, *, nst_supplier: str, order_date: date,
@@ -372,29 +367,15 @@ with top_v2:
     # ------------------------------------------------------------
     with tab_calc:
         st.subheader(t("① 仕入先管理リスト"))
-        c_up, c_st = st.columns([2, 1])
-        with c_up:
-            up = st.file_uploader(t("仕入先管理リスト.xlsx をアップロード"), type=["xlsx"], key="sup_upload")
-            if up is not None:
-                with st.spinner(t("解析中…")):
-                    res = _ingest_supplier_file(up.getvalue(), up.name)
-                st.success(t(
-                    f"✅ {res['sheets_processed']} 仕入先 sheet · {res['rows_inserted']:,} 件報価入库 "
-                    f"(JAN無効スキップ {res['skipped_no_jan']:,})"
-                ))
-                if res["sheets_skipped"]:
-                    st.warning(t("スキップ sheet: " + ", ".join(res["sheets_skipped"])))
-                if res["warnings"]:
-                    with st.expander(t("⚠️ warnings")):
-                        for w in res["warnings"]:
-                            st.text(w)
-        with c_st:
-            if _has_supplier_quotes():
-                n = conn.execute("SELECT COUNT(*) FROM supplier_quote").fetchone()[0]
-                ns = conn.execute("SELECT COUNT(DISTINCT supplier_name) FROM supplier_quote").fetchone()[0]
-                st.metric(t("登録済み報価"), f"{n:,}", f"{ns} 仕入先")
-            else:
-                st.info(t("← 先に仕入先管理リストをアップロード"))
+        if _has_supplier_quotes():
+            n = conn.execute("SELECT COUNT(*) FROM supplier_quote").fetchone()[0]
+            ns = conn.execute("SELECT COUNT(DISTINCT supplier_name) FROM supplier_quote").fetchone()[0]
+            st.metric(t("登録済み報価"), f"{n:,}", f"{ns} 仕入先")
+        else:
+            st.warning(t(
+                "⚠️ supplier_quote 表为空。手动 Excel ingester 已于 2026-05-19 弃用，"
+                "请通过 PG SQL 或 NST API（T-NST-001）路径补齐数据。"
+            ))
     
         st.divider()
         st.subheader(t("② パラメータ"))
