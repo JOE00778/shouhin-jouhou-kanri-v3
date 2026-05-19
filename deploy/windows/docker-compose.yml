@@ -64,8 +64,19 @@ services:
       ADMIN_LARK_EMAILS: ${ADMIN_LARK_EMAILS:-}
       TZ: Asia/Tokyo
     volumes:
-      - ${DATA_DIR:-./data}/inputs:/app/data/inputs
-      - ${DATA_DIR:-./data}/outputs:/app/data/outputs
+      # 代码 bind mount（2026-05-19）: git pull 后立即生效，不需 --build
+      # 详见 README.md「开发流程」+ T-MIG-001
+      - ../../cms.py:/app/cms.py:ro
+      - ../../pages:/app/pages:ro
+      - ../../shared:/app/shared:ro
+      - ../../modules:/app/modules:ro
+      - ../../data_warehouse:/app/data_warehouse:ro
+      - ../../tools:/app/tools:ro
+      - ../../.streamlit:/app/.streamlit:ro
+      - ../../assets:/app/assets:ro
+      - ../../README.md:/app/README.md:ro
+      # 数据卷（运行时读写）
+      - ${DATA_DIR:-./data}/files:/app/data/files
     networks:
       - cms_net
       - smikie_shared    # ← T-318: 让 streamlit 能 resolve n8n / cms-api 主机名
