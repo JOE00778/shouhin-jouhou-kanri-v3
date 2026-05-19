@@ -104,6 +104,7 @@ services:
       - streamlit
     networks:
       - cms_net
+      - smikie_shared
     deploy:
       resources:
         limits:
