@@ -28,29 +28,46 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
-# Fleet C3 重组：shopify_classifier 已移到 shopify/lib/（业务规则归 shopify 仓库）
+# Fleet C3 重组：shopify_classifier 在 shopify/lib/（业务规则归 shopify 仓库 · 与 CMS 解耦）
+# 路径来源优先级：①环境变量 SHOPIFY_LIB_PATH ②~/CC/shopify/lib（Mac 开发态）
 import os as _os, sys as _sys
-_shopify_lib = _os.path.expanduser("~/CC/shopify/lib")
-if _shopify_lib not in _sys.path:
+_shopify_lib = _os.environ.get("SHOPIFY_LIB_PATH") or _os.path.expanduser("~/CC/shopify/lib")
+if _os.path.isdir(_shopify_lib) and _shopify_lib not in _sys.path:
     _sys.path.insert(0, _shopify_lib)
 
 from shared.auth import require_admin
 from shared.db import get_connection
-from shopify_classifier import (
-    MARKET_TAG_NAMESPACES,
-    SHOPIFY_FULL_CSV_HEADERS,
-    add_market_tag,
-    classify_sku,
-    get_market_tags,
-    init_item_shopify_tags_table,
-    load_shopify_token,
-    market_tags_to_shopify_tags,
-    remove_market_tag,
-    upsert_classification,
-)
+
+_SHOPIFY_CLASSIFIER_AVAILABLE = False
+try:
+    from shopify_classifier import (
+        MARKET_TAG_NAMESPACES,
+        SHOPIFY_FULL_CSV_HEADERS,
+        add_market_tag,
+        classify_sku,
+        get_market_tags,
+        init_item_shopify_tags_table,
+        load_shopify_token,
+        market_tags_to_shopify_tags,
+        remove_market_tag,
+        upsert_classification,
+    )
+    _SHOPIFY_CLASSIFIER_AVAILABLE = True
+except ImportError:
+    pass
 
 st.set_page_config(page_title="Tag 管理", page_icon="🏷️", layout="wide")
 require_admin()
+
+if not _SHOPIFY_CLASSIFIER_AVAILABLE:
+    st.error(
+        "🚫 Shopify 分类器模块未加载\n\n"
+        "本页依赖 `shopify_classifier`（位于 shopify 仓库的 lib/ 下），当前环境找不到。\n\n"
+        "**解决方案**（任选其一）：\n"
+        "- 设置环境变量 `SHOPIFY_LIB_PATH` 指向 shopify/lib 目录\n"
+        "- 把 shopify/lib 部署到本机 `~/CC/shopify/lib`（仅 Mac 开发态）"
+    )
+    st.stop()
 
 st.title("🏷️ Tag 管理")
 st.caption("基础属性（固化）+ 市场标签（打便签 · 不定期改）· Shopify 上架专用")

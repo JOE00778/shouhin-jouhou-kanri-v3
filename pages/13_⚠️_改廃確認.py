@@ -11,7 +11,6 @@ env 依赖：
     LEGACY_KAIHAI=true   — 走老路径（默认 false）
 """
 import os
-import subprocess
 import time
 from datetime import datetime
 from pathlib import Path
@@ -86,14 +85,6 @@ def handle_action_legacy(conn, row, action):
     if action == "取扱中止":
         conn.execute("UPDATE item_master SET rank = ? WHERE jan = ?", ("停売", row["jan"]))
     conn.commit()
-    try:
-        msg = f"⚠️ 改廃確認 [LEGACY] · JAN={row['jan']} · 操作={action} · By BOSS"
-        subprocess.run(
-            ["bash", "/Users/joe/CC/.tasks/lark-notify.sh", msg],
-            check=False, timeout=10, capture_output=True,
-        )
-    except Exception:
-        pass
     st.toast(t(f"✅ [LEGACY] {action} 已写入"), icon="📝")
     return True
 
