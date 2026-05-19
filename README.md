@@ -1,108 +1,240 @@
-# 商品信息管理 v3 · SmikieJapan 综合商品分析平台
+# CMS · SmikieJapan 商品情報管理システム
 
-> Streamlit 多页 App · JD-千叶仓库 SKU 三维体检系统
-> 4 月份真实数据落地：3,594 SKU · 137,010 行业务数据 · 等级 + 健康度 + 运营建议三维标签
+> Streamlit 経営看板 · 25 ページ · **元川さん（Inspiron 5405 Windows）本番稼働**
+> NetSuite API 自動 pull + Postgres 16 + Cloudflare Tunnel + CF Access
+> 最終更新：2026-05-19
 
-## 功能页（12 page）
+---
 
-| Page | 模块 | 用途 |
+## 一行サマリ
+
+NetSuite から毎日自動で業務データを抽出し、元川さん上の Postgres に集約 → 運営が `https://smikie-cms.cc` で経営看板を操作するシステム。
+
+---
+
+## 全体アーキテクチャ（最新）
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ [NetSuite Cloud]                                                │
+│   ・item master / 在庫 / 売上 / 原価（輸出事業のみ）            │
+│   ・TBA OAuth1 認証                                             │
+└────────────────────────┬────────────────────────────────────────┘
+                         │  毎日定時 pull
+                         │  REST + SuiteQL
+                         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ [元川さん（Inspiron 5405 / Windows / Ryzen 5 4500U / 16GB）]    │
+│ ─────────────────────────────────────────────────────────────── │
+│                                                                 │
+│  Windows タスクスケジューラ                                      │
+│       ↓ 毎日 6:00 起動                                          │
+│  Docker stack（docker-compose）                                 │
+│   ├ database/nst_api/daily_pull.py（NST → PG）                 │
+│   ├ postgres:16 ⭐ 業務データ単一事実源                          │
+│   │    └ nst schema：item_master / cost_history /              │
+│   │                   sales_raw / inventory_raw                 │
+│   ├ streamlit（cms.py）                                         │
+│   ├ cloudflared（smikie-cms.cc トンネル終端）                   │
+│   └ pgweb（DB GUI · 内部限定）                                  │
+│                                                                 │
+└────────────────────────┬────────────────────────────────────────┘
+                         │  Cloudflare Tunnel
+                         │  + CF Access（@mitsukin.info 限定）
+                         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ [運営ブラウザ] https://smikie-cms.cc                             │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## データソース（2 系統）
+
+### 自動系統（最新の中核）⭐
+
+NetSuite API → 元川さん上 daily_pull → Postgres `nst` schema
+
+| ドメイン | 実装 | テーブル |
 |---|---|---|
-| 02_🔍_商品情报检索 | #7 | 多维筛选 + 全文搜索 + CSV 导出 |
-| 03_💰_定義原価編集 | #1 | NetSuite Standard Cost 统一管理（自动判定 + Boss 手动覆盖）|
-| 04_📊_销售数据查询 | #8 | 时间序列 + 维度交叉 |
-| 05_🏪_店铺别毛利 | #6 | 整月 / 单月切换 + Plotly |
-| **06_📦_库存健康监控** | **②** | **库存月数 4 档健康度（🟢🟡🟠🔴）** |
-| **07_🏷️_商品等级判定** | **①** | **A/B/C/停售 4 档（季度·Boss-only） + ⬆️⬇️ 趋势 + 运营建议**|
-| **11_💡_运营调整建议** | **②** | **毛利 × 周转 5 档矩阵**|
-| 12_🚫_入荷困難商品 | - | 难进货管理 |
-| **13_⚠️_改廃確認** | **③** | **Boss 三按钮（取扱中止 / 継続 / 代替品調査） · 联动停售**|
-| **14_💱_Shopee財務** | **④** | **拨款 + 订单级对账 + 站点对比**|
-| **15_📝_商品登录** | **⑦** | **iframe 嵌入现有 HTML 工具 + Supabase 同步**|
-| **16_📈_等级历史趋势** | **②** | **Sankey 图 + 跨季度等级流向**|
-| 99_⚙️_数据导入与设置 | - | 数据上传 + 系统设置 |
+| 商品マスタ + 原価 | `database/data_warehouse/nst_api/pull_items.py` | `nst.item_master_raw` + `nst.cost_history` |
+| 売上 | `pull_sales.py` | `nst.sales_raw` |
+| 在庫 | `pull_inventory.py`（JD-物流-千葉のみ · 弁天倉庫除外）| `nst.inventory_raw` |
+| 原価 | `pull_costs.py` → リダイレクト → `pull_items` | 同上 |
 
-## 三维标签体系
+実体は **`~/CC/database/data_warehouse/nst_api/`**（database nested repo）。詳細は [`docs/15-nst-api-field-spec.md`](docs/15-nst-api-field-spec.md)。
 
-每个 JD-千叶仓库 SKU 拿到三个独立维度：
+### 手動系統（移行中・近日廃止予定）
+
+運営が Excel/XML を Streamlit の `99_⚙️_数据导入与设置` ページからアップロード → ingester が PG に書き込み。NST API 全ドメイン稼働後に廃止。
+
+---
+
+## 機能ページ一覧（25 ページ）
+
+| Page | 用途 |
+|---|---|
+| 02_🔍_商品情报检索 | 多次元フィルタ + 全文検索 + CSV エクスポート |
+| 03_💰_定義原価編集 | 原価統一管理（自動判定 + Boss 手動上書き）|
+| 04_📊_销售数据查询 | 時系列 + 次元クロス |
+| 05_🏪_店铺别毛利 | 月度切替 + Plotly |
+| **06_📦_库存健康监控** | 在庫月数 4 段階健康度（🟢🟡🟠🔴）|
+| **07_🏷️_商品等级判定** | A/B/C/停売 4 段階 + 趨勢 + 運営提案 |
+| 09_📜_発注履歴 | 過去発注一覧 |
+| 10_📦_発注書作成 | 発注書出力 |
+| **11_💡_运营调整建议** | 粗利 × 回転 5 段階マトリクス |
+| 12_🚫_入荷困難商品 | 仕入困難管理 |
+| **13_⚠️_改廃確認** | Boss 三按鈕（取扱中止/継続/代替品調査）|
+| **14_💱_財務** | 拨款 + 注文級照合 |
+| 15_📝_商品登录 | 商品登録 |
+| 16_📈_等级历史趋势 | Sankey 図 |
+| 17_💰_价格改善 | 価格改善候補 |
+| 18_📦_订货依据 | 発注ロジック説明 |
+| 19_🧊_保质期管理 | 賞味期限管理 |
+| 20_📈_定义原価波動图 | 原価変動可視化 |
+| **21_🚀_Shopee上架** | Shopee 自動上架 |
+| 22_🗄️_数据库管理 | DB 管理 |
+| 23_🏷️_Tag管理 | Tag 管理 |
+| 24_♻️_不良品処分CSV | 廃棄処理 |
+| **25_📦_発注AI_v2** | AI 発注（多仕入先決定版）|
+| 26_🌐_图片翻译 | 商品画像多言語化 |
+| 99_⚙️_数据导入与设置 | データ手動取り込み + システム設定 |
+
+---
+
+## ディレクトリ構造
 
 ```
-等级（订货依据 + 死钱信号）
-├── A（销售前 80% × 利润率 ≥ 59%）
-├── B（销售前 80% × 利润率 < 59%）
-├── C（销售后 20%）
-└── 停售（取扱中止）
-
-健康度（库存视角 · 库存月数 ratio_months）
-├── 🟢 优秀（≤ 0.7 月卖完）
-├── 🟡 健康（0.7-2 月 · 黄金区）
-├── 🟠 注意（2-6 月 · 偏滞）
-└── 🔴 死钱（> 6 月 · 严重滞销）
-
-运营建议（毛利 × 周转矩阵）
-├── 🔥 重点提价 / 🔥 重点降价
-├── ⬆️ 提价候选 / ⚠️ 降价候选
-├── ⬇️ 降级候选（B→C / C→停售）
-└── ✅ 维持
+CMS/
+├── cms.py                  Streamlit エントリ
+├── pages/                  25 ページ
+├── modules/                業務ロジック（cost_sync / inventory_health / rank_classifier / operation_advice / image_translate）
+├── shared/                 横断ユーティリティ（db / auth / lark_* / forex / purchase_engine 等）
+├── data_warehouse/         旧 ingester（ローカル開発用 SQLite · 本番は PG）
+├── tools/                  補助スクリプト
+├── shopee_listing/         Shopee 自動上架サブシステム
+├── tests/                  pytest（unit + integration）
+├── deploy/
+│   ├── push.sh             Mac → GitHub → 元川さん デプロイ
+│   ├── windows/            元川さん デプロイ用 PS1 + compose
+│   └── n8n/                N8N 連携
+├── docs/                   設計ドキュメント（最新版は本 README とリンク先）
+└── .streamlit/             config.toml + secrets.toml.example
 ```
 
-## 技术栈
+⚠️ NetSuite からのデータ取得実装は **`~/CC/database/data_warehouse/nst_api/`**（別 repo）。
 
-- Streamlit 多页 App（>=1.32）
-- Pandas / Plotly / openpyxl
-- 后端兼容：本地 SQLite（dev）/ Supabase（prod）
-- 5 个 ingestor：excel_unified / xml_netsuite / excel_supplier / excel_shopee_income / excel_orders
+---
 
-## 启动（本地 dev）
+## 開発フロー（Mac → 元川さん）
+
+```
+[Mac] Boss が編集
+   ↓ git push
+[GitHub: JOE00778/CMS-v230]（コードのみ · データ・凭据は除外）
+   ↓ git pull
+[元川さん] docker compose up -d --build streamlit
+   ↓ 自動再起動
+[smikie-cms.cc] 運営が新バージョン使用
+```
+
+**Mac は編集専用**。稼働コアは全て元川さんにあります（[mac-editor-only-policy](../.claude/memory/feedback_mac_editor_only_policy.md) 参照）。
+
+---
+
+## 起動
+
+### Mac（ローカル開発）
 
 ```bash
-cd ~/CC/商品信息管理
-
-# 装依赖（首次）
-uv venv && uv pip install -e ".[dev]"
-# 或纯 pip：
-pip install -r requirements.txt
-
-# 跑测试
-uv run pytest
-
-# 启动 Web App
+cd ~/CC/CMS
+uv venv && uv sync
 uv run streamlit run cms.py
 ```
 
-## 部署到 Streamlit Cloud
+→ `http://localhost:8501` で動作確認（本番データには接続せず、ローカル SQLite を使用）。
 
-详见 [deploy/README-DEPLOY.md](deploy/README-DEPLOY.md)。一键脚本：
+### 元川さん（本番）
 
-```bash
-bash deploy/push.sh https://github.com/<your-username>/<repo>.git
+```powershell
+cd C:\Users\smiki\CMS-v230
+git pull origin main
+docker compose -f deploy\windows\docker-compose.yml up -d --build streamlit
 ```
 
-部署完成后在 Streamlit Cloud → app → Settings → Secrets 粘贴：
+または `redeploy.bat` ダブルクリック。詳細は [`deploy/windows/README.md`](deploy/windows/README.md)。
 
-```toml
-BACKEND = "supabase"
-SUPABASE_URL = "https://xxx.supabase.co"
-SUPABASE_KEY = "eyJ..."
-UPLOAD_PASSWORD = "pass1234"
-LARK_APP_ID = "..."
-LARK_APP_SECRET = "..."
-```
+---
 
-## 设计文档
+## 公開・認証
 
-- `docs/01-增强方案-2026-05-05.md` v1 设计草案
-- `docs/02-增强方案-v2-2026-05-05.md` v2 战略修订
-- **`docs/03-metrics-v3-2026-05-05.md` v3 公式 + 阈值 + 业务规则（最新）**
+| 項目 | 内容 |
+|---|---|
+| 公開 URL | https://smikie-cms.cc |
+| ドメイン管理 | Cloudflare |
+| トンネル | Cloudflare Tunnel（cloudflared コンテナ）|
+| アクセス制御 | Cloudflare Access · `@mitsukin.info` ドメイン限定 |
+| 一次パスワード | CMS ログイン（統一）|
+| 二次パスワード | `99_⚙️_数据导入与设置` ページ専用 |
 
-## 重要术语区分
+---
 
-| 词 | 含义 | 处理 page |
+## バックアップ
+
+| 対象 | 場所 | 方式 |
 |---|---|---|
-| **改廃** | 品牌方/メーカー产品迭代（外部信号）| page 13 改廃確認 |
-| **降级** | 内部数据驱动的渐变下调（A→B→C→停售）| page 11 运营建议 |
+| コード | GitHub `JOE00778/CMS-v230`（private） | git push |
+| 業務 PG データ | NAS は 2026-05-18 廃止決定 → 現状単点（Inspiron 内のみ）| ⚠️ 離機バックアップなし |
+| シークレット | 元川さんの compose env / Mac の `~/.smikie-shopify-token` | ⚠️ 中央化未実施 |
+| 商品画像（6,304 枚）| Mac `~/CC/CMS/jancode_images_hd/`（gitignore）| ⚠️ Mac のみ・移転待ち（T-MIG-001）|
 
-两者**完全不同**，处理流程互相独立。
+---
 
-## License
+## ステータス・進行中タスク
+
+| タスク | 状態 |
+|---|---|
+| **T-NST-001** NetSuite API 自動 pull 本番稼働 | scaffolding 完了（2026-05-18）· D-101 解除済 · credentials 投入 + run() 実装中 |
+| **T-MIG-001** Mac → 元川さん アセット移転 | 起票済（2026-05-19）· 接続情報待ち |
+| **Supabase 廃止** | T-NST-001 完了後・ASEAN 7 ストリーム PG 統合後 |
+| **Phase 4 DB 整理** | ✅ 完了（2026-05-09 · `commits 7b6bf61 + 2dbcf67`）|
+
+---
+
+## 関連ドキュメント
+
+### 最新の中核ドキュメント
+
+| ファイル | 内容 |
+|---|---|
+| [`docs/15-nst-api-field-spec.md`](docs/15-nst-api-field-spec.md) | NetSuite REST API フィールド仕様 |
+| [`docs/16-purchase-decision-spec.md`](docs/16-purchase-decision-spec.md) | 自動発注（多仕入先決定版）設計 |
+| [`docs/17-订货算法选型.md`](docs/17-订货算法选型.md) | 発注アルゴリズム選定（最新）|
+| [`docs/11-architecture-final.md`](docs/11-architecture-final.md) | Phase 4 DB 最終アーキテクチャ |
+| [`docs/10-database-tables-reference.md`](docs/10-database-tables-reference.md) | DB テーブル完全リファレンス |
+| [`docs/08-data-model-v2.md`](docs/08-data-model-v2.md) | データモデル v2（JAN 中心）|
+| [`docs/03-metrics-v3-2026-05-05.md`](docs/03-metrics-v3-2026-05-05.md) | metrics v3 計算式 |
+| [`docs/04-automation-architecture.md`](docs/04-automation-architecture.md) | 自動化アーキテクチャ |
+| [`docs/07-lark-integration.md`](docs/07-lark-integration.md) | 飞书連携 |
+| [`订货逻辑.md`](订货逻辑.md) | Boss 公式（発注ロジック単一事実源）|
+
+### アーカイブ済（参考のみ · 最新版に統合された旧文書）
+
+`docs/01`（v1 増強方案）/ `docs/02`（v2 増強方案）/ `docs/05`（ComfyUI 調研）/ `docs/06`（N8N 画像生成）/ `docs/09`（明日デプロイ清单 · 既に完了）/ `docs/12-13`（NST Saved Search 検討 · NST API に置換済）
+
+---
+
+## 重要な用語
+
+| 用語 | 意味 | 対応ページ |
+|---|---|---|
+| **改廃** | 品牌方/メーカー 製品迭代（外部信号）| page 13 改廃確認 |
+| **降级** | 内部データ駆動の渐变下調（A→B→C→停売）| page 11 運営調整建議 |
+| **定義原価** | Boss 確定の原価（NS の `cost` + `averagecost` + `lastpurchaseprice` + `costestimate` から算出）| page 03 定義原価編集 |
+| **元川さん** | Inspiron 5405 Windows の愛称・CMS 本番ホスト | — |
+
+---
+
+## ライセンス
 
 Private · SmikieJapan internal use only.
