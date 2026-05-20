@@ -1,5 +1,17 @@
 # CMS v3 · 生产部署指南
 
+> ⚠️ **本文档已过时（2026-05-08）** —— 描述的是 Streamlit Cloud 部署 SOP，生产已迁至元川さん（Dell Inspiron 5405）Docker bind mount 模式。
+>
+> 当前生产部署见：[deploy/windows/](windows/) · README + FRESH_INSTALL + MIGRATION
+> 推送流程见：根 CLAUDE.md L64
+> 部署链路：Mac push → GitHub → **元川さん 手动 git pull**（无 cron · 2026-05-20 确认）
+>
+> 本文档保留作历史参考，不再维护。
+
+---
+
+# 旧版 · CMS v3 · 生产部署指南（Streamlit Cloud · 已废止）
+
 > Boss 自助部署 · 全程 30 分钟。
 > 不需要给 Claudex 任何 GitHub / Supabase 凭证。
 

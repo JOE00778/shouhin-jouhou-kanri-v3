@@ -25,7 +25,7 @@
 
 | ID | 题目 | Owner | Prio |
 |----|------|-------|------|
-| D-101 | **6 大决策一次性敲定**：① 6+ 个 NetSuite Saved Search 命名 / 字段 / 频率 ② 订货算法选型（再订货点 vs EOQ vs Min/Max）③ PO 创建审批流程（直接生成 vs Boss 复核）④ 商品登录字段最小集 ⑤ Streamlit 部署位置（本地 / Streamlit Cloud / Docker）⑥ 数据备份策略（warehouse.db 频率 / 位置） | boss + opus | P0 |
+| D-101 | **6 大决策一次性敲定**：① 6+ 个 NetSuite Saved Search 命名 / 字段 / 频率 ② 订货算法选型（再订货点 vs EOQ vs Min/Max）③ PO 创建审批流程（直接生成 vs Boss 复核）④ 商品登录字段最小集 ⑤ ~~Streamlit 部署位置~~ ✅ 2026-05-08 已定 Docker on 元川さん（Inspiron 5405）⑥ 数据备份策略（PG dump 频率 / 位置） | boss + opus | P0 |
 
 ---
 

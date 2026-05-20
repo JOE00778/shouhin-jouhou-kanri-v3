@@ -92,7 +92,7 @@ N8N 容器启动时**只自动导入一次**（首次 install）。之后改 wor
 
 ### 步骤 4：从 CMS Page 21 触发
 
-1. 浏览器开 https://smikie-cms.cc（或 Streamlit Cloud 的 CMS 部署）
+1. 浏览器开 https://smikie-cms.cc（元川さん · Cloudflare Tunnel）
 2. 登录 admin 账户
 3. 进 Page 21「🚀 Shopee 上架」
 4. Tab 1「🤖 全自动管线」
