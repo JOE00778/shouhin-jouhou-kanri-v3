@@ -28,6 +28,9 @@ services:
     networks:
       - cms_net
       - smikie_shared    # ← 跨 stack 网络：让 N8N stack 的 cms-api 容器能连进来
+    ports:
+      # NST API daily_pull（host 上 uv 実行）→ PG 書き込み用。loopback のみ・公網非公開
+      - "127.0.0.1:5432:5432"
     deploy:
       resources:
         limits:
